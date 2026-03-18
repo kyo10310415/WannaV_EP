@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { createTables } = require('./src/models/schema');
 const { scheduleInactiveUserReminders } = require('./src/utils/scheduler');
 const User = require('./src/models/User');
@@ -53,6 +54,13 @@ app.get('/admin/users', (req, res) => {
 const initializeApp = async () => {
   try {
     console.log('🚀 Initializing WannaV eラーニング...');
+    
+    // Create uploads directory if it doesn't exist
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log('✅ Uploads directory created');
+    }
     
     // Create tables
     await createTables();
