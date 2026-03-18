@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ダッシュボード - WannaV eラーニング</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV eラーニング</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <span class="user-role" id="user-role"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 管理者メニュー -->
+        <div id="admin-menu" class="nav" style="display: none;">
+            <a href="/dashboard" class="nav-link active">📊 ダッシュボード</a>
+            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
+            <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
+            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
+        </div>
+
+        <!-- 進捗統計 -->
+        <div class="dashboard-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="completion-rate">0%</div>
+                <div class="stat-label">履修進捗率</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="completed-lessons">0</div>
+                <div class="stat-label">完了レッスン数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-lessons">0</div>
+                <div class="stat-label">総レッスン数</div>
+            </div>
+        </div>
+
+        <!-- 進捗バー -->
+        <div class="card">
+            <h2 style="margin-bottom: 20px;">🎯 全体の進捗</h2>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                <span class="progress-text" id="progress-text">0%</span>
+            </div>
+        </div>
+
+        <!-- レッスン一覧 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">📚 レッスン一覧</h2>
+            <div id="lessons-container">
+                <div class="loading" style="margin: 50px auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let currentUser = null;
+
+        // 認証チェック
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('認証失敗');
+
+                currentUser = await response.json();
+                document.getElementById('user-name').textContent = currentUser.name;
+                document.getElementById('user-role').textContent = currentUser.role;
+
+                // 管理者メニュー表示
+                if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
+                    document.getElementById('admin-menu').style.display = 'flex';
+                }
+
+                loadDashboard();
+            } catch (error) {
+                console.error('認証エラー:', error);
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            }
+        }
+
+        // ダッシュボード読み込み
+        async function loadDashboard() {
+            const token = localStorage.getItem('token');
+
+            try {
+                // 進捗統計
+                const progressRes = await fetch(`${API_URL}/progress`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const progressData = await progressRes.json();
+                const stats = progressData.stats;
+
+                document.getElementById('completion-rate').textContent = 
+                    Math.round(stats.completion_percentage || 0) + '%';
+                document.getElementById('completed-lessons').textContent = stats.completed_lessons || 0;
+                document.getElementById('total-lessons').textContent = stats.total_lessons || 0;
+
+                const percentage = Math.round(stats.completion_percentage || 0);
+                document.getElementById('progress-fill').style.width = percentage + '%';
+                document.getElementById('progress-text').textContent = percentage + '%';
+
+                // レッスン一覧
+                const lessonsRes = await fetch(`${API_URL}/lessons`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const lessons = await lessonsRes.json();
+
+                renderLessons(lessons);
+            } catch (error) {
+                console.error('データ読み込みエラー:', error);
+                document.getElementById('lessons-container').innerHTML = 
+                    '<p style="color: var(--danger);">データの読み込みに失敗しました</p>';
+            }
+        }
+
+        // レッスン描画
+        function renderLessons(lessons) {
+            const container = document.getElementById('lessons-container');
+            
+            if (lessons.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-text);">レッスンがまだありません</p>';
+                return;
+            }
+
+            let html = '<div style="display: flex; flex-direction: column; gap: 20px;">';
+            
+            lessons.forEach((lesson, index) => {
+                const isCompleted = lesson.completed;
+                const isLocked = index > 0 && !lessons[index - 1].completed;
+                const canAccess = index === 0 || lessons[index - 1].completed;
+
+                html += `
+                    <div class="card" style="opacity: ${isLocked ? 0.5 : 1}">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+                            <div style="flex: 1; min-width: 250px;">
+                                <h3 style="color: var(--primary-pink); margin-bottom: 10px;">
+                                    ${isCompleted ? '✅' : isLocked ? '🔒' : '📹'} ${lesson.title}
+                                </h3>
+                                <p style="color: var(--gray-text);">${lesson.description || 'レッスンの説明'}</p>
+                                <p style="margin-top: 10px;">
+                                    <span style="color: var(--primary-blue);">📚 ${lesson.course_title || 'コース'}</span>
+                                </p>
+                                ${isCompleted ? '<p style="color: var(--success); margin-top: 10px; font-weight: bold;">🎉 完了済み！</p>' : ''}
+                            </div>
+                            <div>
+                                ${canAccess ? 
+                                    `<a href="/lesson/${lesson.id}" class="btn btn-primary" style="min-width: 150px;">
+                                        ${isCompleted ? '復習する' : 'レッスン開始'}
+                                    </a>` :
+                                    `<button class="btn btn-secondary" disabled style="min-width: 150px;">
+                                        🔒 ロック中
+                                    </button>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // ログアウト
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        // 初期化
+        checkAuth();
+    </script>
+</body>
+</html>

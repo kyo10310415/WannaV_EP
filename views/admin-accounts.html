@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アカウント管理 - WannaV eラーニング</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV eラーニング</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav">
+            <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
+            <a href="/admin/accounts" class="nav-link active">👥 アカウント管理</a>
+            <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
+            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- アカウント追加 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">➕ 新規アカウント作成</h2>
+            <form id="create-user-form">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">名前</label>
+                        <input type="text" class="form-input" id="new-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">メールアドレス</label>
+                        <input type="email" class="form-input" id="new-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">パスワード</label>
+                        <input type="password" class="form-input" id="new-password" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">権限</label>
+                        <select class="form-select" id="new-role" required>
+                            <option value="生徒">生徒</option>
+                            <option value="クルー">クルー</option>
+                            <option value="管理者">管理者</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" style="margin-top: 20px;">
+                    ✅ アカウント作成
+                </button>
+            </form>
+        </div>
+
+        <!-- アカウント一覧 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">📋 アカウント一覧</h2>
+            <div id="users-container">
+                <div class="loading" style="margin: 50px auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+
+        // 認証チェック
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('認証失敗');
+
+                const user = await response.json();
+                document.getElementById('user-name').textContent = user.name;
+
+                if (user.role !== '管理者') {
+                    alert('管理者権限が必要です');
+                    window.location.href = '/dashboard';
+                    return;
+                }
+
+                loadUsers();
+            } catch (error) {
+                console.error('認証エラー:', error);
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            }
+        }
+
+        // ユーザー一覧読み込み
+        async function loadUsers() {
+            const token = localStorage.getItem('token');
+
+            try {
+                const response = await fetch(`${API_URL}/admin/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const users = await response.json();
+                renderUsers(users);
+            } catch (error) {
+                console.error('ユーザー読み込みエラー:', error);
+                showAlert('ユーザーの読み込みに失敗しました', 'error');
+            }
+        }
+
+        // ユーザー描画
+        function renderUsers(users) {
+            const container = document.getElementById('users-container');
+
+            if (users.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-text);">ユーザーがいません</p>';
+                return;
+            }
+
+            let html = '<table class="table"><thead><tr><th>名前</th><th>メール</th><th>権限</th><th>登録日</th><th>操作</th></tr></thead><tbody>';
+
+            users.forEach(user => {
+                const createdDate = new Date(user.created_at).toLocaleDateString('ja-JP');
+                html += `
+                    <tr>
+                        <td>${user.name}</td>
+                        <td>${user.email}</td>
+                        <td>
+                            <select onchange="updateRole(${user.id}, this.value)" style="padding: 8px; border-radius: 10px; background: rgba(15, 15, 30, 0.8); color: white; border: 2px solid rgba(255, 107, 157, 0.3);">
+                                <option value="生徒" ${user.role === '生徒' ? 'selected' : ''}>生徒</option>
+                                <option value="クルー" ${user.role === 'クルー' ? 'selected' : ''}>クルー</option>
+                                <option value="管理者" ${user.role === '管理者' ? 'selected' : ''}>管理者</option>
+                            </select>
+                        </td>
+                        <td>${createdDate}</td>
+                        <td>
+                            <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 20px; font-size: 14px;">
+                                🗑️ 削除
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // ユーザー作成
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('create-user-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const token = localStorage.getItem('token');
+                const data = {
+                    name: document.getElementById('new-name').value,
+                    email: document.getElementById('new-email').value,
+                    password: document.getElementById('new-password').value,
+                    role: document.getElementById('new-role').value
+                };
+
+                try {
+                    const response = await fetch(`${API_URL}/admin/users`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'アカウント作成に失敗しました');
+                    }
+
+                    showAlert('アカウントを作成しました', 'success');
+                    document.getElementById('create-user-form').reset();
+                    loadUsers();
+                } catch (error) {
+                    console.error('アカウント作成エラー:', error);
+                    showAlert(error.message, 'error');
+                }
+            });
+        });
+
+        // 権限更新
+        async function updateRole(userId, newRole) {
+            const token = localStorage.getItem('token');
+
+            try {
+                const response = await fetch(`${API_URL}/admin/users/${userId}/role`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ role: newRole })
+                });
+
+                if (!response.ok) throw new Error('権限更新に失敗しました');
+
+                showAlert('権限を更新しました', 'success');
+            } catch (error) {
+                console.error('権限更新エラー:', error);
+                showAlert(error.message, 'error');
+                loadUsers();
+            }
+        }
+
+        // ユーザー削除
+        async function deleteUser(userId, userName) {
+            if (!confirm(`${userName}を削除してもよろしいですか？`)) return;
+
+            const token = localStorage.getItem('token');
+
+            try {
+                const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('削除に失敗しました');
+
+                showAlert('ユーザーを削除しました', 'success');
+                loadUsers();
+            } catch (error) {
+                console.error('削除エラー:', error);
+                showAlert(error.message, 'error');
+            }
+        }
+
+        // アラート表示
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `
+                <div class="alert alert-${type === 'error' ? 'error' : 'success'}">
+                    ${message}
+                </div>
+            `;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        // ログアウト
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>

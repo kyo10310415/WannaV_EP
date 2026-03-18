@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>コンテンツ管理 - WannaV eラーニング</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV eラーニング</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav">
+            <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
+            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
+            <a href="/admin/contents" class="nav-link active">📹 コンテンツ管理</a>
+            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- コース作成 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">➕ 新規コース作成</h2>
+            <form id="create-course-form">
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">コース名</label>
+                        <input type="text" class="form-input" id="course-title" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">表示順</label>
+                        <input type="number" class="form-input" id="course-order" value="0" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">説明</label>
+                    <textarea class="form-textarea" id="course-description" rows="3"></textarea>
+                </div>
+                <button type="submit" class="btn btn-success">✅ コース作成</button>
+            </form>
+        </div>
+
+        <!-- レッスン作成 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">➕ 新規レッスン作成</h2>
+            <form id="create-lesson-form" enctype="multipart/form-data">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">コース選択</label>
+                        <select class="form-select" id="lesson-course" required>
+                            <option value="">コースを選択...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">レッスン名</label>
+                        <input type="text" class="form-input" id="lesson-title" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">表示順</label>
+                        <input type="number" class="form-input" id="lesson-order" value="0" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">説明</label>
+                    <textarea class="form-textarea" id="lesson-description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">動画ファイル (MP4, MOV, AVI, MKV - 最大500MB)</label>
+                    <input type="file" class="form-input" id="lesson-video" accept="video/*" required>
+                </div>
+                <button type="submit" class="btn btn-success">✅ レッスン作成</button>
+                <div id="upload-progress" style="display: none; margin-top: 20px;">
+                    <p style="color: var(--primary-pink);">アップロード中...</p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="upload-progress-bar" style="width: 0%"></div>
+                        <span class="progress-text" id="upload-progress-text">0%</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- クイズ作成 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">📝 クイズ作成・編集</h2>
+            <div class="form-group">
+                <label class="form-label">レッスン選択</label>
+                <select class="form-select" id="quiz-lesson" onchange="loadQuiz()">
+                    <option value="">レッスンを選択...</option>
+                </select>
+            </div>
+            <div id="quiz-editor" style="display: none;">
+                <div id="quiz-questions-container"></div>
+                <button onclick="addQuestion()" class="btn btn-primary" style="margin: 20px 0;">
+                    ➕ 問題を追加
+                </button>
+                <button onclick="saveQuiz()" class="btn btn-success" style="display: block; width: 100%;">
+                    ✅ クイズを保存
+                </button>
+            </div>
+        </div>
+
+        <!-- レッスン一覧 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">📋 レッスン一覧</h2>
+            <div id="lessons-container">
+                <div class="loading" style="margin: 50px auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let courses = [];
+        let lessons = [];
+        let quizQuestions = [];
+
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('認証失敗');
+
+                const user = await response.json();
+                document.getElementById('user-name').textContent = user.name;
+
+                if (user.role !== '管理者') {
+                    alert('管理者権限が必要です');
+                    window.location.href = '/dashboard';
+                    return;
+                }
+
+                loadCourses();
+                loadLessons();
+            } catch (error) {
+                console.error('認証エラー:', error);
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            }
+        }
+
+        async function loadCourses() {
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_URL}/admin/courses`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                courses = await response.json();
+
+                const courseSelect = document.getElementById('lesson-course');
+                courseSelect.innerHTML = '<option value="">コースを選択...</option>';
+                courses.forEach(course => {
+                    courseSelect.innerHTML += `<option value="${course.id}">${course.title}</option>`;
+                });
+            } catch (error) {
+                console.error('コース読み込みエラー:', error);
+            }
+        }
+
+        async function loadLessons() {
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_URL}/admin/lessons`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                lessons = await response.json();
+
+                const quizLessonSelect = document.getElementById('quiz-lesson');
+                quizLessonSelect.innerHTML = '<option value="">レッスンを選択...</option>';
+                lessons.forEach(lesson => {
+                    quizLessonSelect.innerHTML += `<option value="${lesson.id}">${lesson.title}</option>`;
+                });
+
+                renderLessons();
+            } catch (error) {
+                console.error('レッスン読み込みエラー:', error);
+            }
+        }
+
+        function renderLessons() {
+            const container = document.getElementById('lessons-container');
+            if (lessons.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-text);">レッスンがありません</p>';
+                return;
+            }
+
+            let html = '<table class="table"><thead><tr><th>タイトル</th><th>コース</th><th>順序</th><th>操作</th></tr></thead><tbody>';
+            lessons.forEach(lesson => {
+                html += `
+                    <tr>
+                        <td>${lesson.title}</td>
+                        <td>${lesson.course_title || 'なし'}</td>
+                        <td>${lesson.order_index}</td>
+                        <td>
+                            <button onclick="deleteLesson(${lesson.id}, '${lesson.title}')" class="btn btn-danger" style="padding: 8px 20px; font-size: 14px;">
+                                🗑️ 削除
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // コース作成
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('create-course-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const token = localStorage.getItem('token');
+                const data = {
+                    title: document.getElementById('course-title').value,
+                    description: document.getElementById('course-description').value,
+                    orderIndex: document.getElementById('course-order').value
+                };
+
+                try {
+                    const response = await fetch(`${API_URL}/admin/courses`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (!response.ok) throw new Error('コース作成に失敗しました');
+
+                    showAlert('コースを作成しました', 'success');
+                    document.getElementById('create-course-form').reset();
+                    loadCourses();
+                } catch (error) {
+                    console.error('コース作成エラー:', error);
+                    showAlert(error.message, 'error');
+                }
+            });
+
+            // レッスン作成
+            document.getElementById('create-lesson-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const token = localStorage.getItem('token');
+
+                const formData = new FormData();
+                formData.append('courseId', document.getElementById('lesson-course').value);
+                formData.append('title', document.getElementById('lesson-title').value);
+                formData.append('description', document.getElementById('lesson-description').value);
+                formData.append('orderIndex', document.getElementById('lesson-order').value);
+                formData.append('duration', 0);
+                
+                const videoFile = document.getElementById('lesson-video').files[0];
+                if (videoFile) {
+                    formData.append('video', videoFile);
+                }
+
+                try {
+                    document.getElementById('upload-progress').style.display = 'block';
+                    
+                    const response = await fetch(`${API_URL}/admin/lessons`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+
+                    if (!response.ok) throw new Error('レッスン作成に失敗しました');
+
+                    showAlert('レッスンを作成しました', 'success');
+                    document.getElementById('create-lesson-form').reset();
+                    document.getElementById('upload-progress').style.display = 'none';
+                    loadLessons();
+                } catch (error) {
+                    console.error('レッスン作成エラー:', error);
+                    showAlert(error.message, 'error');
+                    document.getElementById('upload-progress').style.display = 'none';
+                }
+            });
+        });
+
+        // クイズ読み込み
+        async function loadQuiz() {
+            const lessonId = document.getElementById('quiz-lesson').value;
+            if (!lessonId) {
+                document.getElementById('quiz-editor').style.display = 'none';
+                return;
+            }
+
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                quizQuestions = await response.json();
+
+                if (quizQuestions.length === 0) {
+                    quizQuestions = [{ question: '', options: ['', '', ''], correctAnswer: 0, orderIndex: 0 }];
+                }
+
+                document.getElementById('quiz-editor').style.display = 'block';
+                renderQuizEditor();
+            } catch (error) {
+                console.error('クイズ読み込みエラー:', error);
+            }
+        }
+
+        function renderQuizEditor() {
+            const container = document.getElementById('quiz-questions-container');
+            container.innerHTML = '';
+
+            quizQuestions.forEach((q, index) => {
+                const div = document.createElement('div');
+                div.className = 'quiz-question';
+                div.innerHTML = `
+                    <h3 style="color: var(--primary-pink); margin-bottom: 15px;">問題 ${index + 1}</h3>
+                    <div class="form-group">
+                        <label class="form-label">問題文</label>
+                        <input type="text" class="form-input" value="${q.question || ''}" onchange="updateQuestion(${index}, 'question', this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">選択肢（正解を選択）</label>
+                        ${[0, 1, 2].map(i => `
+                            <div style="display: flex; gap: 10px; margin: 10px 0; align-items: center;">
+                                <input type="radio" name="correct-${index}" value="${i}" ${q.correctAnswer === i ? 'checked' : ''} 
+                                    onchange="updateQuestion(${index}, 'correctAnswer', ${i})" 
+                                    style="width: auto; min-height: auto;">
+                                <input type="text" class="form-input" value="${q.options[i] || ''}" 
+                                    onchange="updateQuestionOption(${index}, ${i}, this.value)">
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="removeQuestion(${index})" class="btn btn-danger" style="margin-top: 10px;">🗑️ この問題を削除</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function addQuestion() {
+            quizQuestions.push({ question: '', options: ['', '', ''], correctAnswer: 0, orderIndex: quizQuestions.length });
+            renderQuizEditor();
+        }
+
+        function removeQuestion(index) {
+            quizQuestions.splice(index, 1);
+            renderQuizEditor();
+        }
+
+        function updateQuestion(index, field, value) {
+            quizQuestions[index][field] = value;
+        }
+
+        function updateQuestionOption(index, optionIndex, value) {
+            quizQuestions[index].options[optionIndex] = value;
+        }
+
+        async function saveQuiz() {
+            const lessonId = document.getElementById('quiz-lesson').value;
+            const token = localStorage.getItem('token');
+
+            try {
+                const response = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ questions: quizQuestions })
+                });
+
+                if (!response.ok) throw new Error('クイズ保存に失敗しました');
+
+                showAlert('クイズを保存しました', 'success');
+            } catch (error) {
+                console.error('クイズ保存エラー:', error);
+                showAlert(error.message, 'error');
+            }
+        }
+
+        async function deleteLesson(id, title) {
+            if (!confirm(`「${title}」を削除してもよろしいですか？`)) return;
+
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_URL}/admin/lessons/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('削除に失敗しました');
+
+                showAlert('レッスンを削除しました', 'success');
+                loadLessons();
+            } catch (error) {
+                console.error('削除エラー:', error);
+                showAlert(error.message, 'error');
+            }
+        }
+
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `
+                <div class="alert alert-${type === 'error' ? 'error' : 'success'}">
+                    ${message}
+                </div>
+            `;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>

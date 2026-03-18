@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レッスン - WannaV eラーニング</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV eラーニング</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <a href="/dashboard" class="btn btn-secondary">📊 ダッシュボードへ</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="alert-container"></div>
+
+        <!-- レッスン情報 -->
+        <div class="card">
+            <h1 id="lesson-title" style="color: var(--primary-pink); margin-bottom: 15px;">Loading...</h1>
+            <p id="lesson-description" style="color: var(--gray-text);"></p>
+        </div>
+
+        <!-- 動画プレーヤー -->
+        <div class="video-container" id="video-container">
+            <video id="video-player" controls controlsList="nodownload">
+                <source src="" type="video/mp4">
+                お使いのブラウザは動画再生に対応していません。
+            </video>
+        </div>
+
+        <!-- クイズセクション -->
+        <div class="card" id="quiz-section" style="display: none;">
+            <h2 style="margin-bottom: 30px;">📝 小テスト（全問正解で次のレッスンへ！）</h2>
+            <div id="quiz-container"></div>
+            <button onclick="submitQuiz()" class="btn btn-success" style="width: 100%; margin-top: 30px;">
+                ✅ 回答を提出
+            </button>
+        </div>
+
+        <!-- 完了メッセージ -->
+        <div class="card" id="completion-section" style="display: none; text-align: center;">
+            <h2 style="color: var(--success); font-size: 36px; margin-bottom: 20px;">
+                🎉 おめでとうございます！
+            </h2>
+            <p style="font-size: 24px; color: var(--primary-pink); margin-bottom: 30px;">
+                クイズに合格しました！素晴らしい！
+            </p>
+            <p style="color: var(--gray-text); margin-bottom: 40px;">
+                この調子でどんどん成長していきましょう！
+            </p>
+            <a href="/dashboard" class="btn btn-primary" style="font-size: 20px; padding: 20px 50px;">
+                📚 次のレッスンへ
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let currentLesson = null;
+        let questions = [];
+        let selectedAnswers = {};
+
+        // ページ読み込み
+        async function loadLesson() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            // ユーザー情報取得
+            try {
+                const userRes = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const user = await userRes.json();
+                document.getElementById('user-name').textContent = user.name;
+            } catch (error) {
+                console.error('ユーザー情報取得エラー:', error);
+            }
+
+            // レッスンID取得
+            const lessonId = window.location.pathname.split('/').pop();
+
+            try {
+                const response = await fetch(`${API_URL}/lessons/${lessonId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        showAlert('前のレッスンを完了してください', 'error');
+                        setTimeout(() => window.location.href = '/dashboard', 2000);
+                        return;
+                    }
+                    throw new Error('レッスンの取得に失敗しました');
+                }
+
+                const data = await response.json();
+                currentLesson = data.lesson;
+                questions = data.questions;
+
+                renderLesson();
+                recordView(lessonId);
+            } catch (error) {
+                console.error('レッスン読み込みエラー:', error);
+                showAlert('レッスンの読み込みに失敗しました', 'error');
+            }
+        }
+
+        // レッスン描画
+        function renderLesson() {
+            document.getElementById('lesson-title').textContent = currentLesson.title;
+            document.getElementById('lesson-description').textContent = 
+                currentLesson.description || 'レッスンの説明';
+
+            // 動画設定
+            const video = document.getElementById('video-player');
+            video.src = currentLesson.video_url;
+
+            // 動画終了時にクイズ表示
+            video.addEventListener('ended', () => {
+                if (questions.length > 0) {
+                    showQuiz();
+                } else {
+                    showAlert('このレッスンにはクイズがありません。ダッシュボードに戻ります。', 'success');
+                    setTimeout(() => window.location.href = '/dashboard', 2000);
+                }
+            });
+
+            // クイズがある場合は手動でも表示可能
+            if (questions.length > 0) {
+                setTimeout(() => {
+                    const skipBtn = document.createElement('button');
+                    skipBtn.textContent = '📝 クイズへスキップ';
+                    skipBtn.className = 'btn btn-primary';
+                    skipBtn.style.marginTop = '20px';
+                    skipBtn.onclick = showQuiz;
+                    document.getElementById('video-container').after(skipBtn);
+                }, 5000);
+            }
+        }
+
+        // 視聴記録
+        async function recordView(lessonId) {
+            const token = localStorage.getItem('token');
+            try {
+                await fetch(`${API_URL}/lessons/${lessonId}/view`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+            } catch (error) {
+                console.error('視聴記録エラー:', error);
+            }
+        }
+
+        // クイズ表示
+        function showQuiz() {
+            document.getElementById('quiz-section').style.display = 'block';
+            document.getElementById('quiz-section').scrollIntoView({ behavior: 'smooth' });
+
+            let html = '';
+            questions.forEach((q, index) => {
+                html += `
+                    <div class="quiz-question">
+                        <h3 style="color: var(--primary-pink); margin-bottom: 20px;">
+                            問題 ${index + 1}: ${q.question}
+                        </h3>
+                        <div class="quiz-options">
+                            ${q.options.map((option, optIndex) => `
+                                <div class="quiz-option" onclick="selectAnswer(${index}, ${optIndex})" id="option-${index}-${optIndex}">
+                                    ${option}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('quiz-container').innerHTML = html;
+        }
+
+        // 回答選択
+        function selectAnswer(questionIndex, optionIndex) {
+            // 既存の選択を解除
+            questions[questionIndex].options.forEach((_, i) => {
+                const el = document.getElementById(`option-${questionIndex}-${i}`);
+                if (el) el.classList.remove('selected');
+            });
+
+            // 新しい選択を設定
+            const selectedEl = document.getElementById(`option-${questionIndex}-${optionIndex}`);
+            if (selectedEl) selectedEl.classList.add('selected');
+
+            selectedAnswers[questionIndex] = optionIndex;
+        }
+
+        // クイズ提出
+        async function submitQuiz() {
+            // 全問回答チェック
+            if (Object.keys(selectedAnswers).length !== questions.length) {
+                showAlert('全ての問題に回答してください', 'error');
+                return;
+            }
+
+            const token = localStorage.getItem('token');
+            const lessonId = window.location.pathname.split('/').pop();
+
+            try {
+                const response = await fetch(`${API_URL}/lessons/${lessonId}/quiz`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ answers: selectedAnswers })
+                });
+
+                const result = await response.json();
+
+                if (result.passed) {
+                    document.getElementById('quiz-section').style.display = 'none';
+                    document.getElementById('completion-section').style.display = 'block';
+                    document.getElementById('completion-section').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    showAlert(
+                        `残念！${result.correct}/${result.total}問正解でした。全問正解が必要です。もう一度チャレンジしてください！`,
+                        'error'
+                    );
+                    selectedAnswers = {};
+                    setTimeout(() => showQuiz(), 2000);
+                }
+            } catch (error) {
+                console.error('クイズ提出エラー:', error);
+                showAlert('クイズの提出に失敗しました', 'error');
+            }
+        }
+
+        // アラート表示
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `
+                <div class="alert alert-${type === 'error' ? 'error' : 'success'}">
+                    ${message}
+                </div>
+            `;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        // 初期化
+        loadLesson();
+    </script>
+</body>
+</html>

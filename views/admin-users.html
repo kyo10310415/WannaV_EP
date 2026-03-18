@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザー進捗管理 - WannaV eラーニング</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV eラーニング</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav">
+            <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
+            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
+            <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
+            <a href="/admin/users" class="nav-link active">📈 ユーザー進捗管理</a>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- ユーザー進捗一覧 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">📊 全ユーザーの進捗状況</h2>
+            <div id="progress-container">
+                <div class="loading" style="margin: 50px auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('認証失敗');
+
+                const user = await response.json();
+                document.getElementById('user-name').textContent = user.name;
+
+                if (user.role !== '管理者' && user.role !== 'クルー') {
+                    alert('管理者またはクルー権限が必要です');
+                    window.location.href = '/dashboard';
+                    return;
+                }
+
+                loadProgress();
+            } catch (error) {
+                console.error('認証エラー:', error);
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            }
+        }
+
+        async function loadProgress() {
+            const token = localStorage.getItem('token');
+
+            try {
+                const response = await fetch(`${API_URL}/admin/users/progress`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const progressData = await response.json();
+                renderProgress(progressData);
+            } catch (error) {
+                console.error('進捗読み込みエラー:', error);
+                showAlert('進捗の読み込みに失敗しました', 'error');
+            }
+        }
+
+        function renderProgress(progressData) {
+            const container = document.getElementById('progress-container');
+
+            if (progressData.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-text);">生徒がいません</p>';
+                return;
+            }
+
+            let html = '<table class="table"><thead><tr><th>生徒名</th><th>メール</th><th>進捗率</th><th>完了 / 総数</th><th>最終活動</th><th>状態</th></tr></thead><tbody>';
+
+            progressData.forEach(user => {
+                const percentage = Math.round(user.completion_percentage || 0);
+                const lastActivity = user.last_activity ? 
+                    new Date(user.last_activity).toLocaleDateString('ja-JP') : 
+                    '未受講';
+                
+                // 最終活動日から日数計算
+                const daysSinceActivity = user.last_activity ? 
+                    Math.floor((new Date() - new Date(user.last_activity)) / (1000 * 60 * 60 * 24)) :
+                    999;
+
+                let statusColor = 'var(--success)';
+                let statusText = '✅ アクティブ';
+                
+                if (daysSinceActivity >= 3) {
+                    statusColor = 'var(--warning)';
+                    statusText = '⚠️ 要注意';
+                }
+                
+                if (daysSinceActivity >= 7) {
+                    statusColor = 'var(--danger)';
+                    statusText = '🚨 非アクティブ';
+                }
+
+                html += `
+                    <tr style="${daysSinceActivity >= 3 ? 'background: rgba(243, 156, 18, 0.1);' : ''}">
+                        <td><strong>${user.name}</strong></td>
+                        <td>${user.email}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="progress-bar" style="width: 150px; height: 25px;">
+                                    <div class="progress-fill" style="width: ${percentage}%"></div>
+                                    <span class="progress-text" style="font-size: 12px;">${percentage}%</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <strong style="color: var(--primary-pink);">${user.completed_lessons}</strong> / ${user.total_lessons}
+                        </td>
+                        <td>${lastActivity}</td>
+                        <td>
+                            <span style="color: ${statusColor}; font-weight: bold;">
+                                ${statusText}
+                            </span>
+                            ${daysSinceActivity >= 3 ? 
+                                `<br><span style="color: var(--gray-text); font-size: 12px;">${daysSinceActivity}日間未活動</span>` : 
+                                ''}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            
+            // 統計サマリー
+            const totalUsers = progressData.length;
+            const activeUsers = progressData.filter(u => {
+                const days = u.last_activity ? 
+                    Math.floor((new Date() - new Date(u.last_activity)) / (1000 * 60 * 60 * 24)) : 999;
+                return days < 3;
+            }).length;
+            const warningUsers = progressData.filter(u => {
+                const days = u.last_activity ? 
+                    Math.floor((new Date() - new Date(u.last_activity)) / (1000 * 60 * 60 * 24)) : 999;
+                return days >= 3 && days < 7;
+            }).length;
+            const inactiveUsers = progressData.filter(u => {
+                const days = u.last_activity ? 
+                    Math.floor((new Date() - new Date(u.last_activity)) / (1000 * 60 * 60 * 24)) : 999;
+                return days >= 7;
+            }).length;
+
+            const avgCompletion = progressData.reduce((sum, u) => sum + (u.completion_percentage || 0), 0) / totalUsers;
+
+            const summary = `
+                <div class="dashboard-grid" style="margin-bottom: 30px;">
+                    <div class="stat-card">
+                        <div class="stat-value">${totalUsers}</div>
+                        <div class="stat-label">総生徒数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--success);">${activeUsers}</div>
+                        <div class="stat-label">アクティブ</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--warning);">${warningUsers}</div>
+                        <div class="stat-label">要注意</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--danger);">${inactiveUsers}</div>
+                        <div class="stat-label">非アクティブ</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Math.round(avgCompletion)}%</div>
+                        <div class="stat-label">平均進捗率</div>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = summary + html;
+        }
+
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `
+                <div class="alert alert-${type === 'error' ? 'error' : 'success'}">
+                    ${message}
+                </div>
+            `;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>
