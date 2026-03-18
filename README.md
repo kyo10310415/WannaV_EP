@@ -169,7 +169,7 @@ git push -u origin main
 ## 🌐 URL情報
 
 - **本番環境**: (Renderデプロイ後に更新)
-- **GitHub**: (リポジトリURL)
+- **GitHub**: https://github.com/kyo10310415/WannaV_EP
 
 ## 📋 今後の開発推奨事項
 
