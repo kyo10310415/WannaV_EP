@@ -453,22 +453,50 @@ body {
 }
 
 /* ===== ビデオプレーヤー ===== */
+
+/* 外側ラッパー（lesson.html で id="video-container" に付与） */
+.video-outer {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto 20px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 50px rgba(74, 144, 217, 0.25);
+}
+
+/* iframeモード（YouTube / Vimeo）: 16:9 アスペクト比を保持 */
+.video-iframe-container {
+  position: relative;
+  padding-top: 56.25%; /* 16:9 */
+  background: #000;
+  border: 2px solid rgba(74, 144, 217, 0.5);
+  border-radius: 16px;
+}
+
+/* 通常の動画ファイルモード */
+.video-file-container {
+  border: 2px solid rgba(74, 144, 217, 0.5);
+  border-radius: 16px;
+  background: #000;
+}
+
+/* 旧クラス .video-container も念のため残す */
 .video-container {
   position: relative;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1100px;
   margin: 0 auto;
-  border-radius: 20px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 15px 60px rgba(74, 144, 217, 0.3);
-  border: 2px solid var(--primary-blue);
+  box-shadow: 0 12px 50px rgba(74, 144, 217, 0.25);
+  border: 2px solid rgba(74, 144, 217, 0.5);
 }
 
-/* YouTube iframeラッパー */
+/* YouTube / Vimeo iframeラッパー（旧コード互換） */
 .video-iframe-wrapper {
   position: relative;
   width: 100%;
-  padding-top: 56.25%; /* 16:9 */
+  padding-top: 56.25%;
 }
 
 .video-iframe-wrapper iframe {
