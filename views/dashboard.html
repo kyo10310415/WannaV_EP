@@ -149,7 +149,7 @@
                 const canAccess = index === 0 || lessons[index - 1].completed;
 
                 // サムネイル生成
-                const thumb = getThumbnail(lesson.video_url);
+                const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url);
 
                 // カテゴリタグの色
                 const tagColor = getCourseTagColor(lesson.course_title);
@@ -228,21 +228,31 @@
         }
 
         // サムネイル取得ロジック
-        function getThumbnail(videoUrl) {
+        function getThumbnail(videoUrl, thumbnailUrl) {
+            // 1. DBに保存されたサムネイル（MP4アップロード時に自動生成）
+            if (thumbnailUrl) {
+                return { type: 'img', src: thumbnailUrl };
+            }
+
             if (!videoUrl) return { type: 'placeholder', emoji: '🎬' };
 
-            // YouTube
+            // 2. YouTube: 動画IDからサムネイルURL自動生成
             const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
             if (ytMatch) {
                 return { type: 'img', src: `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg` };
             }
 
-            // Vimeo (APIなしのデフォルトサムネイル)
+            // 3. Vimeo (APIなしのデフォルトサムネイル)
             if (videoUrl.includes('vimeo.com')) {
                 return { type: 'placeholder', emoji: '🎥' };
             }
 
-            // 直接動画ファイル
+            // 4. Google Drive
+            if (videoUrl.includes('drive.google.com')) {
+                return { type: 'placeholder', emoji: '📁' };
+            }
+
+            // 5. 直接動画ファイル（サムネイル未生成）
             if (videoUrl.match(/\.(mp4|mov|avi|mkv)$/i)) {
                 return { type: 'placeholder', emoji: '📹' };
             }

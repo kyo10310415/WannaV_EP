@@ -1,11 +1,11 @@
 const db = require('../config/database');
 
 class Lesson {
-  static async create(courseId, title, description, videoFilename, videoUrl, duration, orderIndex) {
+  static async create(courseId, title, description, videoFilename, videoUrl, duration, orderIndex, thumbnailUrl = null) {
     const result = await db.query(
-      `INSERT INTO lessons (course_id, title, description, video_filename, video_url, duration, order_index)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [courseId, title, description, videoFilename, videoUrl, duration, orderIndex]
+      `INSERT INTO lessons (course_id, title, description, video_filename, video_url, thumbnail_url, duration, order_index)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [courseId, title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex]
     );
     return result.rows[0];
   }
@@ -34,13 +34,13 @@ class Lesson {
   }
 
   static async update(id, data) {
-    const { title, description, videoFilename, videoUrl, duration, orderIndex } = data;
+    const { title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex } = data;
     const result = await db.query(
       `UPDATE lessons 
-       SET title = $1, description = $2, video_filename = $3, video_url = $4, 
-           duration = $5, order_index = $6, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $7 RETURNING *`,
-      [title, description, videoFilename, videoUrl, duration, orderIndex, id]
+       SET title = $1, description = $2, video_filename = $3, video_url = $4,
+           thumbnail_url = $5, duration = $6, order_index = $7, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $8 RETURNING *`,
+      [title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex, id]
     );
     return result.rows[0];
   }

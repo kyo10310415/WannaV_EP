@@ -8,6 +8,7 @@ const Lesson = require('../models/Lesson');
 const Quiz = require('../models/Quiz');
 const Progress = require('../models/Progress');
 const db = require('../config/database');
+const { generateThumbnail } = require('../utils/thumbnail');
 
 // 動画アップロード設定
 const storage = multer.diskStorage({
@@ -150,11 +151,14 @@ router.post('/lessons', auth, checkRole('管理者'), upload.single('video'), as
 
     let videoFilename = null;
     let videoUrl = null;
+    let thumbnailUrl = null;
 
     if (req.file) {
       // ファイルアップロード優先
       videoFilename = req.file.filename;
       videoUrl = `/uploads/${req.file.filename}`;
+      // MP4サムネイル自動生成（非同期・失敗しても続行）
+      thumbnailUrl = await generateThumbnail(req.file.path, req.file.filename);
     } else if (externalVideoUrl && externalVideoUrl.trim()) {
       // 外部URL（YouTube等）
       videoFilename = 'external';
@@ -172,7 +176,8 @@ router.post('/lessons', auth, checkRole('管理者'), upload.single('video'), as
       videoFilename,
       videoUrl,
       duration,
-      orderIndex || 0
+      orderIndex || 0,
+      thumbnailUrl
     );
 
     res.status(201).json(lesson);
@@ -205,13 +210,17 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'
 
     let videoFilename = lesson.video_filename;
     let videoUrl = lesson.video_url;
+    let thumbnailUrl = lesson.thumbnail_url || null;
 
     if (req.file) {
       videoFilename = req.file.filename;
       videoUrl = `/uploads/${req.file.filename}`;
+      // 新しい動画のサムネイルを生成
+      thumbnailUrl = await generateThumbnail(req.file.path, req.file.filename);
     } else if (externalVideoUrl && externalVideoUrl.trim()) {
       videoFilename = 'external';
       videoUrl = externalVideoUrl.trim();
+      thumbnailUrl = null; // 外部URLに変更した場合はサムネイルをリセット
     }
 
     const updated = await Lesson.update(req.params.id, {
@@ -219,6 +228,7 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'
       description,
       videoFilename,
       videoUrl,
+      thumbnailUrl,
       duration,
       orderIndex
     });
@@ -238,6 +248,61 @@ router.delete('/lessons/:id', auth, checkRole('管理者'), async (req, res) => 
   } catch (error) {
     console.error('Delete lesson error:', error);
     res.status(500).json({ error: 'レッスンの削除に失敗しました' });
+  }
+});
+
+// サムネイル再生成（既存MP4レッスン用）
+router.post('/lessons/:id/regenerate-thumbnail', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    const lesson = await Lesson.findById(req.params.id);
+    if (!lesson) return res.status(404).json({ error: 'レッスンが見つかりません' });
+    if (!lesson.video_filename || lesson.video_filename === 'external') {
+      return res.status(400).json({ error: 'MP4ファイルのレッスンのみ対象です' });
+    }
+
+    const videoPath = require('path').join(__dirname, '../../uploads', lesson.video_filename);
+    const fs = require('fs');
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({ error: '動画ファイルが見つかりません' });
+    }
+
+    const thumbnailUrl = await generateThumbnail(videoPath, lesson.video_filename);
+    if (!thumbnailUrl) return res.status(500).json({ error: 'サムネイル生成に失敗しました' });
+
+    // DBに保存
+    await db.query('UPDATE lessons SET thumbnail_url = $1 WHERE id = $2', [thumbnailUrl, lesson.id]);
+    res.json({ success: true, thumbnail_url: thumbnailUrl });
+  } catch (error) {
+    console.error('Regenerate thumbnail error:', error);
+    res.status(500).json({ error: 'サムネイル再生成に失敗しました' });
+  }
+});
+
+// 全MP4レッスンのサムネイルを一括再生成
+router.post('/lessons/bulk-regenerate-thumbnails', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    const lessons = await Lesson.getAll();
+    const path = require('path');
+    const fs = require('fs');
+    const results = [];
+
+    for (const lesson of lessons) {
+      if (!lesson.video_filename || lesson.video_filename === 'external') continue;
+      if (lesson.thumbnail_url) continue; // 既に生成済みはスキップ
+
+      const videoPath = path.join(__dirname, '../../uploads', lesson.video_filename);
+      if (!fs.existsSync(videoPath)) continue;
+
+      const thumbnailUrl = await generateThumbnail(videoPath, lesson.video_filename);
+      if (thumbnailUrl) {
+        await db.query('UPDATE lessons SET thumbnail_url = $1 WHERE id = $2', [thumbnailUrl, lesson.id]);
+        results.push({ id: lesson.id, title: lesson.title, thumbnail_url: thumbnailUrl });
+      }
+    }
+    res.json({ success: true, generated: results.length, results });
+  } catch (error) {
+    console.error('Bulk thumbnail error:', error);
+    res.status(500).json({ error: '一括サムネイル生成に失敗しました' });
   }
 });
 
