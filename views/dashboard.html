@@ -148,32 +148,94 @@
                 const isLocked = index > 0 && !lessons[index - 1].completed;
                 const canAccess = index === 0 || lessons[index - 1].completed;
 
-                const icon = isCompleted ? '✅' : isLocked ? '🔒' : '🎬';
-                const cardClass = isCompleted ? 'lesson-card completed' : isLocked ? 'lesson-card locked' : 'lesson-card';
+                // サムネイル生成
+                const thumb = getThumbnail(lesson.video_url);
+
+                // カテゴリタグの色
+                const tagColor = getCourseTagColor(lesson.course_title);
+
+                const cardClass = 'lesson-card' +
+                    (isCompleted ? ' completed' : '') +
+                    (isLocked   ? ' locked'    : '');
+
+                const overlayIcon = isCompleted ? '✅' : isLocked ? '🔒' : '▶';
+                const overlayClass = isCompleted ? 'thumb-overlay completed' : isLocked ? 'thumb-overlay locked' : 'thumb-overlay play';
+
+                const linkStart = canAccess ? `<a href="/lesson/${lesson.id}" class="lesson-card-link">` : `<div class="lesson-card-link no-pointer">`;
+                const linkEnd   = canAccess ? `</a>` : `</div>`;
 
                 html += `
+                    ${linkStart}
                     <div class="${cardClass}">
-                        <div class="lesson-card-icon">${icon}</div>
-                        <div>
-                            <div class="lesson-card-course">📚 ${lesson.course_title || 'コース'}</div>
-                            <div class="lesson-card-title">${lesson.title}</div>
+                        <!-- サムネイル -->
+                        <div class="lesson-thumb-wrap">
+                            ${thumb.type === 'img'
+                                ? `<img src="${thumb.src}" alt="${lesson.title}" class="lesson-thumb-img" loading="lazy">`
+                                : `<div class="lesson-thumb-placeholder"><span>${thumb.emoji}</span></div>`
+                            }
+                            <div class="${overlayClass}">
+                                <span class="overlay-icon">${overlayIcon}</span>
+                            </div>
+                            ${isCompleted ? '<div class="thumb-badge-done">✅ 完了</div>' : ''}
                         </div>
-                        <div class="lesson-card-desc">${lesson.description || 'レッスンの説明'}</div>
-                        ${isCompleted ? '<div class="lesson-card-status">🎉 完了済み！</div>' : ''}
-                        ${canAccess ?
-                            `<a href="/lesson/${lesson.id}" class="lesson-card-btn lesson-card-btn-primary">
-                                ${isCompleted ? '🔄 復習する' : '▶️ レッスン開始'}
-                            </a>` :
-                            `<button class="lesson-card-btn lesson-card-btn-disabled" disabled>
-                                🔒 ロック中
-                            </button>`
-                        }
+                        <!-- 情報 -->
+                        <div class="lesson-card-body">
+                            <div class="lesson-card-title">${lesson.title}</div>
+                            <div class="lesson-card-meta">
+                                <span class="lesson-tag" style="background:${tagColor.bg}; color:${tagColor.text};">${lesson.course_title || 'コース'}</span>
+                                ${isCompleted ? '<span class="lesson-tag-done">学習済み</span>' : ''}
+                            </div>
+                        </div>
                     </div>
+                    ${linkEnd}
                 `;
             });
 
             html += '</div>';
             container.innerHTML = html;
+        }
+
+        // サムネイル取得ロジック
+        function getThumbnail(videoUrl) {
+            if (!videoUrl) return { type: 'placeholder', emoji: '🎬' };
+
+            // YouTube
+            const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            if (ytMatch) {
+                return { type: 'img', src: `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg` };
+            }
+
+            // Vimeo (APIなしのデフォルトサムネイル)
+            if (videoUrl.includes('vimeo.com')) {
+                return { type: 'placeholder', emoji: '🎥' };
+            }
+
+            // 直接動画ファイル
+            if (videoUrl.match(/\.(mp4|mov|avi|mkv)$/i)) {
+                return { type: 'placeholder', emoji: '📹' };
+            }
+
+            return { type: 'placeholder', emoji: '🎬' };
+        }
+
+        // コースごとのタグカラー（ローテーション）
+        const TAG_COLORS = [
+            { bg: 'rgba(74,144,217,0.25)',  text: '#6FB3F5' },
+            { bg: 'rgba(52,200,232,0.2)',   text: '#34C8E8' },
+            { bg: 'rgba(155,89,182,0.25)',  text: '#BF8FE0' },
+            { bg: 'rgba(46,204,113,0.2)',   text: '#6AEBB7' },
+            { bg: 'rgba(243,156,18,0.2)',   text: '#F7C55B' },
+            { bg: 'rgba(231,76,60,0.2)',    text: '#F1948A' },
+        ];
+        const _tagMap = {};
+        let _tagIdx = 0;
+        function getCourseTagColor(course) {
+            const key = course || 'default';
+            if (!_tagMap[key]) {
+                _tagMap[key] = TAG_COLORS[_tagIdx % TAG_COLORS.length];
+                _tagIdx++;
+            }
+            return _tagMap[key];
         }
 
         // ログアウト
