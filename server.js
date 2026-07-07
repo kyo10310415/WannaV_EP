@@ -53,7 +53,7 @@ app.get('/admin/users', (req, res) => {
 // Initialize database and create admin user
 const initializeApp = async () => {
   try {
-    console.log('🚀 Initializing WannaV eラーニング...');
+    console.log('🚀 Initializing WannaV エントリープラン...');
     
     // Create uploads directory if it doesn't exist
     const uploadsDir = path.join(__dirname, 'uploads');
@@ -90,7 +90,7 @@ const startServer = async () => {
   await initializeApp();
   
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🎉 WannaV eラーニング server running on http://0.0.0.0:${PORT}`);
+    console.log(`🎉 WannaV エントリープラン server running on http://0.0.0.0:${PORT}`);
   });
 };
 
