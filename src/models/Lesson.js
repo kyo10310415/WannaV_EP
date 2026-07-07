@@ -56,6 +56,7 @@ class Lesson {
         c.title as course_title,
         COALESCE(up.completed, false) as completed,
         COALESCE(up.quiz_passed, false) as quiz_passed,
+        COALESCE(up.watch_percent, 0) as watch_percent,
         up.last_watched_at
       FROM lessons l
       LEFT JOIN courses c ON l.course_id = c.id

@@ -12,6 +12,36 @@ class Progress {
     return result.rows[0];
   }
 
+  // 視聴率を更新（最大値のみ保存・下がらない）
+  static async updateWatchPercent(userId, lessonId, percent) {
+    const result = await db.query(`
+      INSERT INTO user_progress (user_id, lesson_id, watch_percent, last_watched_at)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (user_id, lesson_id)
+      DO UPDATE SET
+        watch_percent = GREATEST(user_progress.watch_percent, $3),
+        last_watched_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [userId, lessonId, Math.min(100, Math.max(0, Math.round(percent)))]);
+    return result.rows[0];
+  }
+
+  // 動画視聴完了（クイズなしのレッスン用）
+  static async completeByWatching(userId, lessonId) {
+    const result = await db.query(`
+      INSERT INTO user_progress (user_id, lesson_id, completed, watch_percent, last_watched_at, completed_at)
+      VALUES ($1, $2, true, 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT (user_id, lesson_id)
+      DO UPDATE SET
+        completed = true,
+        watch_percent = 100,
+        last_watched_at = CURRENT_TIMESTAMP,
+        completed_at = COALESCE(user_progress.completed_at, CURRENT_TIMESTAMP)
+      RETURNING *
+    `, [userId, lessonId]);
+    return result.rows[0];
+  }
+
   static async completeQuiz(userId, lessonId, passed) {
     const result = await db.query(`
       INSERT INTO user_progress (user_id, lesson_id, quiz_passed, quiz_attempts, completed, completed_at)
@@ -38,7 +68,8 @@ class Progress {
         up.quiz_passed,
         up.last_watched_at,
         up.completed_at,
-        up.quiz_attempts
+        up.quiz_attempts,
+        COALESCE(up.watch_percent, 0) as watch_percent
       FROM user_progress up
       JOIN lessons l ON up.lesson_id = l.id
       JOIN courses c ON l.course_id = c.id

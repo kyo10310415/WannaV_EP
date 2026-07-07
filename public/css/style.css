@@ -355,6 +355,57 @@ body {
   white-space: nowrap;
 }
 
+.lesson-tag-locked {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(120, 120, 140, 0.18);
+  color: #888;
+  white-space: nowrap;
+}
+
+/* ===== レッスンカード 視聴進捗バー ===== */
+.lesson-watch-bar-wrap {
+  margin-top: 6px;
+}
+
+.lesson-watch-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--gray-text);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.lesson-watch-bar-pct {
+  font-weight: 700;
+  font-size: 11px;
+}
+.lesson-watch-bar-pct.low  { color: var(--primary-blue-light); }
+.lesson-watch-bar-pct.mid  { color: var(--accent-cyan); }
+.lesson-watch-bar-pct.near { color: #6AEBB7; }
+.lesson-watch-bar-pct.done { color: #6AEBB7; }
+
+.lesson-watch-bar-bg {
+  height: 5px;
+  background: rgba(74, 144, 217, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.lesson-watch-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.lesson-watch-bar-fill.low  { background: linear-gradient(90deg, var(--primary-blue), var(--primary-blue-light)); }
+.lesson-watch-bar-fill.mid  { background: linear-gradient(90deg, var(--primary-blue), var(--accent-cyan)); }
+.lesson-watch-bar-fill.near { background: linear-gradient(90deg, #2ECC71, #1ABC9C); }
+.lesson-watch-bar-fill.done { background: linear-gradient(90deg, #2ECC71, #6AEBB7); }
+
 /* ===== 進捗バー ===== */
 .progress-bar {
   width: 100%;

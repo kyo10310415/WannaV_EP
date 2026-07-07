@@ -68,8 +68,14 @@ const createTables = async () => {
         last_watched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         completed_at TIMESTAMP,
         quiz_attempts INTEGER DEFAULT 0,
+        watch_percent INTEGER DEFAULT 0,
         UNIQUE(user_id, lesson_id)
       )
+    `);
+
+    // watch_percent カラムが既存テーブルに存在しない場合は追加（マイグレーション）
+    await db.query(`
+      ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS watch_percent INTEGER DEFAULT 0
     `);
 
     // Notifications log table
