@@ -5,6 +5,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>コンテンツ管理 - WannaV エントリープラン</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* ===== 編集モーダル ===== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.open {
+            display: flex;
+        }
+        .modal-box {
+            background: var(--card-bg);
+            border: 1px solid rgba(74, 144, 217, 0.25);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 680px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 36px 40px;
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .modal-close {
+            position: absolute;
+            top: 16px; right: 20px;
+            background: none;
+            border: none;
+            color: var(--gray-text);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        .modal-close:hover { color: var(--light-text); }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary-blue-light);
+            margin-bottom: 28px;
+        }
+        .modal-section-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-text);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin: 22px 0 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(74,144,217,0.15);
+        }
+        .modal-thumb-preview {
+            width: 120px; height: 68px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .modal-thumb-placeholder {
+            width: 120px; height: 68px;
+            background: rgba(74,144,217,0.12);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px;
+            margin-bottom: 12px;
+        }
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid rgba(74,144,217,0.15);
+        }
+        /* テーブル操作列のボタン間隔 */
+        .action-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    </style>
 </head>
 <body>
     <div class="header">
@@ -102,7 +183,7 @@
                 </div>
                 <button type="submit" class="btn btn-success">✅ レッスン作成</button>
                 <div id="upload-progress" style="display: none; margin-top: 20px;">
-                    <p style="color: var(--primary-pink);">アップロード中...</p>
+                    <p style="color: var(--accent-cyan);">アップロード中...</p>
                     <div class="progress-bar">
                         <div class="progress-fill" id="upload-progress-bar" style="width: 0%"></div>
                         <span class="progress-text" id="upload-progress-text">0%</span>
@@ -140,88 +221,183 @@
         </div>
     </div>
 
+    <!-- ===== レッスン編集モーダル ===== -->
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeEditModal()">✕</button>
+            <div class="modal-title">✏️ レッスン編集</div>
+
+            <!-- サムネイルプレビュー -->
+            <div id="modal-thumb-area"></div>
+
+            <div class="modal-section-label">基本情報</div>
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">レッスン名 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" class="form-input" id="edit-title">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">表示順</label>
+                    <input type="number" class="form-input" id="edit-order" min="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">コース</label>
+                <select class="form-select" id="edit-course"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">説明</label>
+                <textarea class="form-textarea" id="edit-description" rows="3"></textarea>
+            </div>
+
+            <div class="modal-section-label">動画</div>
+
+            <!-- 現在の動画情報 -->
+            <div id="edit-current-video" style="margin-bottom:14px; padding:12px 16px; background:rgba(74,144,217,0.08); border-radius:10px; font-size:13px; color:var(--gray-text); word-break:break-all;"></div>
+
+            <!-- 動画変更（任意） -->
+            <details style="margin-bottom: 8px;">
+                <summary style="cursor:pointer; font-size:13px; font-weight:600; color:var(--primary-blue-light); user-select:none; outline:none; padding:6px 0;">
+                    🔄 動画を差し替える（変更しない場合は不要）
+                </summary>
+                <div style="margin-top:14px;">
+                    <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap:wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
+                            <input type="radio" name="edit-video-type" value="keep" id="edit-type-keep" checked onchange="toggleEditVideoInput()" style="width:auto;min-height:auto;">
+                            変更しない
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
+                            <input type="radio" name="edit-video-type" value="file" id="edit-type-file" onchange="toggleEditVideoInput()" style="width:auto;min-height:auto;">
+                            📁 ファイル
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
+                            <input type="radio" name="edit-video-type" value="url" id="edit-type-url" onchange="toggleEditVideoInput()" style="width:auto;min-height:auto;">
+                            🔗 URL
+                        </label>
+                    </div>
+                    <div id="edit-video-file-input" style="display:none;">
+                        <input type="file" class="form-input" id="edit-video-file" accept="video/*">
+                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">MP4 / MOV / AVI / MKV（最大500MB）</p>
+                    </div>
+                    <div id="edit-video-url-input" style="display:none;">
+                        <input type="url" class="form-input" id="edit-video-url" placeholder="https://drive.google.com/file/d/XXXXX/view">
+                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">YouTube / Vimeo / Google ドライブ / MP4直接リンク</p>
+                    </div>
+                </div>
+            </details>
+
+            <div class="modal-footer">
+                <button onclick="saveEdit()" class="btn btn-success" id="edit-save-btn" style="flex:1; font-size:16px; padding:16px;">
+                    💾 保存する
+                </button>
+                <button onclick="closeEditModal()" class="btn btn-secondary" style="padding:16px 24px;">
+                    キャンセル
+                </button>
+            </div>
+
+            <!-- アップロード中プログレス -->
+            <div id="edit-upload-progress" style="display:none; margin-top:16px;">
+                <p style="color:var(--accent-cyan); margin-bottom:8px; font-size:13px;">動画をアップロード中...</p>
+                <div class="progress-bar" style="height:16px;">
+                    <div class="progress-fill" id="edit-upload-bar" style="width:0%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_URL = '/api';
         let courses = [];
         let lessons = [];
         let quizQuestions = [];
+        let editingLesson = null; // 現在編集中のレッスンオブジェクト
 
+        // ===== 新規作成フォームの動画切替 =====
         function toggleVideoInput() {
             const isFile = document.getElementById('video-type-file').checked;
             document.getElementById('video-file-input').style.display = isFile ? 'block' : 'none';
             document.getElementById('video-url-input').style.display = isFile ? 'none' : 'block';
         }
 
+        // ===== 編集モーダルの動画切替 =====
+        function toggleEditVideoInput() {
+            const val = document.querySelector('input[name="edit-video-type"]:checked').value;
+            document.getElementById('edit-video-file-input').style.display = val === 'file' ? 'block' : 'none';
+            document.getElementById('edit-video-url-input').style.display  = val === 'url'  ? 'block' : 'none';
+        }
+
+        // ===== 認証チェック =====
         async function checkAuth() {
             const token = localStorage.getItem('token');
-            if (!token) {
-                window.location.href = '/';
-                return;
-            }
-
+            if (!token) { window.location.href = '/'; return; }
             try {
-                const response = await fetch(`${API_URL}/auth/me`, {
+                const res = await fetch(`${API_URL}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
-                if (!response.ok) throw new Error('認証失敗');
-
-                const user = await response.json();
+                if (!res.ok) throw new Error();
+                const user = await res.json();
                 document.getElementById('user-name').textContent = user.name;
-
                 if (user.role !== '管理者') {
                     alert('管理者権限が必要です');
                     window.location.href = '/dashboard';
                     return;
                 }
-
                 loadCourses();
                 loadLessons();
-            } catch (error) {
-                console.error('認証エラー:', error);
+            } catch {
                 localStorage.removeItem('token');
                 window.location.href = '/';
             }
         }
 
+        // ===== コース読み込み =====
         async function loadCourses() {
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_URL}/admin/courses`, {
+                const res = await fetch(`${API_URL}/admin/courses`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                courses = await response.json();
+                courses = await res.json();
 
-                const courseSelect = document.getElementById('lesson-course');
-                courseSelect.innerHTML = '<option value="">コースを選択...</option>';
-                courses.forEach(course => {
-                    courseSelect.innerHTML += `<option value="${course.id}">${course.title}</option>`;
+                // 新規作成フォーム
+                const sel = document.getElementById('lesson-course');
+                sel.innerHTML = '<option value="">コースを選択...</option>';
+                courses.forEach(c => {
+                    sel.innerHTML += `<option value="${c.id}">${c.title}</option>`;
                 });
-            } catch (error) {
-                console.error('コース読み込みエラー:', error);
-            }
+
+                // 編集モーダル用
+                const editSel = document.getElementById('edit-course');
+                editSel.innerHTML = '';
+                courses.forEach(c => {
+                    editSel.innerHTML += `<option value="${c.id}">${c.title}</option>`;
+                });
+            } catch (e) { console.error(e); }
         }
 
+        // ===== レッスン読み込み =====
         async function loadLessons() {
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_URL}/admin/lessons`, {
+                const res = await fetch(`${API_URL}/admin/lessons`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                lessons = await response.json();
+                lessons = await res.json();
 
-                const quizLessonSelect = document.getElementById('quiz-lesson');
-                quizLessonSelect.innerHTML = '<option value="">レッスンを選択...</option>';
-                lessons.forEach(lesson => {
-                    quizLessonSelect.innerHTML += `<option value="${lesson.id}">${lesson.title}</option>`;
+                // クイズ選択プルダウン更新
+                const quizSel = document.getElementById('quiz-lesson');
+                const prevVal = quizSel.value;
+                quizSel.innerHTML = '<option value="">レッスンを選択...</option>';
+                lessons.forEach(l => {
+                    quizSel.innerHTML += `<option value="${l.id}">${l.title}</option>`;
                 });
+                if (prevVal) quizSel.value = prevVal;
 
                 renderLessons();
-            } catch (error) {
-                console.error('レッスン読み込みエラー:', error);
-            }
+            } catch (e) { console.error(e); }
         }
 
+        // ===== レッスン一覧テーブル描画 =====
         function renderLessons() {
             const container = document.getElementById('lessons-container');
             if (lessons.length === 0) {
@@ -229,23 +405,46 @@
                 return;
             }
 
-            let html = '<table class="table"><thead><tr><th>サムネイル</th><th>タイトル</th><th>コース</th><th>順序</th><th>操作</th></tr></thead><tbody>';
+            let html = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:90px;">サムネイル</th>
+                            <th>タイトル</th>
+                            <th>コース</th>
+                            <th style="width:60px; text-align:center;">順序</th>
+                            <th style="width:220px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
             lessons.forEach(lesson => {
                 const thumbHtml = lesson.thumbnail_url
                     ? `<img src="${lesson.thumbnail_url}" style="width:80px;height:45px;object-fit:cover;border-radius:6px;">`
                     : `<div style="width:80px;height:45px;background:rgba(74,144,217,0.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">📹</div>`;
                 const isLocal = lesson.video_filename && lesson.video_filename !== 'external';
+
+                // タイトル内のシングルクォートをエスケープ
+                const safeTitle = lesson.title.replace(/'/g, "\\'");
+
                 html += `
                     <tr>
                         <td>${thumbHtml}</td>
-                        <td>${lesson.title}</td>
-                        <td>${lesson.course_title || 'なし'}</td>
-                        <td>${lesson.order_index}</td>
-                        <td style="white-space:nowrap;">
-                            ${isLocal && !lesson.thumbnail_url ? `<button onclick="regenThumb(${lesson.id}, this)" class="btn btn-secondary" style="padding:6px 14px;font-size:13px;margin-right:6px;">🖼️ サムネ生成</button>` : ''}
-                            <button onclick="deleteLesson(${lesson.id}, '${lesson.title}')" class="btn btn-danger" style="padding: 8px 20px; font-size: 14px;">
-                                🗑️ 削除
-                            </button>
+                        <td style="font-weight:600;">${lesson.title}</td>
+                        <td style="color:var(--gray-text);">${lesson.course_title || 'なし'}</td>
+                        <td style="text-align:center;">${lesson.order_index}</td>
+                        <td>
+                            <div class="action-btns">
+                                <button onclick="openEditModal(${lesson.id})" class="btn btn-primary" style="padding:7px 16px; font-size:13px;">
+                                    ✏️ 編集
+                                </button>
+                                ${isLocal && !lesson.thumbnail_url
+                                    ? `<button onclick="regenThumb(${lesson.id}, this)" class="btn btn-secondary" style="padding:7px 14px;font-size:13px;">🖼️ サムネ</button>`
+                                    : ''}
+                                <button onclick="deleteLesson(${lesson.id}, '${safeTitle}')" class="btn btn-danger" style="padding:7px 14px; font-size:13px;">
+                                    🗑️ 削除
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -254,133 +453,220 @@
             container.innerHTML = html;
         }
 
-        // コース作成
+        // ===== 編集モーダルを開く =====
+        function openEditModal(lessonId) {
+            editingLesson = lessons.find(l => l.id === lessonId);
+            if (!editingLesson) return;
+
+            // フォームに値をセット
+            document.getElementById('edit-title').value       = editingLesson.title || '';
+            document.getElementById('edit-order').value       = editingLesson.order_index ?? 0;
+            document.getElementById('edit-description').value = editingLesson.description || '';
+
+            // コース選択
+            const editSel = document.getElementById('edit-course');
+            editSel.value = editingLesson.course_id || '';
+
+            // サムネイルプレビュー
+            const thumbArea = document.getElementById('modal-thumb-area');
+            if (editingLesson.thumbnail_url) {
+                thumbArea.innerHTML = `<img src="${editingLesson.thumbnail_url}" class="modal-thumb-preview" alt="サムネイル">`;
+            } else {
+                const emoji = editingLesson.video_filename === 'external' ? '🔗' : '📹';
+                thumbArea.innerHTML = `<div class="modal-thumb-placeholder">${emoji}</div>`;
+            }
+
+            // 現在の動画情報
+            const videoInfoEl = document.getElementById('edit-current-video');
+            if (editingLesson.video_filename === 'external') {
+                videoInfoEl.innerHTML = `🔗 現在の動画URL:<br><span style="color:var(--primary-blue-light);">${editingLesson.video_url || '—'}</span>`;
+            } else if (editingLesson.video_filename) {
+                videoInfoEl.innerHTML = `📁 現在のファイル: <span style="color:var(--primary-blue-light);">${editingLesson.video_filename}</span>`;
+            } else {
+                videoInfoEl.innerHTML = `<span style="color:var(--gray-text);">動画未設定</span>`;
+            }
+
+            // 動画差し替えラジオをリセット
+            document.getElementById('edit-type-keep').checked = true;
+            document.getElementById('edit-video-file-input').style.display = 'none';
+            document.getElementById('edit-video-url-input').style.display  = 'none';
+            document.getElementById('edit-video-file').value = '';
+            document.getElementById('edit-video-url').value  = editingLesson.video_url || '';
+
+            // プログレスリセット
+            document.getElementById('edit-upload-progress').style.display = 'none';
+            document.getElementById('edit-save-btn').disabled = false;
+            document.getElementById('edit-save-btn').textContent = '💾 保存する';
+
+            // モーダルを開く
+            document.getElementById('edit-modal').classList.add('open');
+            document.getElementById('edit-title').focus();
+        }
+
+        // ===== 編集モーダルを閉じる =====
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.remove('open');
+            editingLesson = null;
+        }
+        // オーバーレイクリックで閉じる
+        document.getElementById('edit-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('edit-modal')) closeEditModal();
+        });
+        // ESCキーで閉じる
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeEditModal();
+        });
+
+        // ===== 編集保存 =====
+        async function saveEdit() {
+            if (!editingLesson) return;
+
+            const title = document.getElementById('edit-title').value.trim();
+            if (!title) { showAlert('レッスン名を入力してください', 'error'); return; }
+
+            const token = localStorage.getItem('token');
+            const videoType = document.querySelector('input[name="edit-video-type"]:checked').value;
+            const formData  = new FormData();
+
+            formData.append('title',       title);
+            formData.append('description', document.getElementById('edit-description').value);
+            formData.append('orderIndex',  document.getElementById('edit-order').value);
+            formData.append('courseId',    document.getElementById('edit-course').value);
+            formData.append('duration',    editingLesson.duration || 0);
+
+            if (videoType === 'file') {
+                const file = document.getElementById('edit-video-file').files[0];
+                if (!file) { showAlert('差し替えるファイルを選択してください', 'error'); return; }
+                formData.append('video', file);
+            } else if (videoType === 'url') {
+                const url = document.getElementById('edit-video-url').value.trim();
+                if (!url) { showAlert('URLを入力してください', 'error'); return; }
+                formData.append('externalVideoUrl', url);
+            }
+            // videoType === 'keep' の場合はファイル/URL何も送らない（サーバー側で現在値を維持）
+
+            const saveBtn = document.getElementById('edit-save-btn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '保存中...';
+            if (videoType === 'file') {
+                document.getElementById('edit-upload-progress').style.display = 'block';
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/admin/lessons/${editingLesson.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '保存に失敗しました');
+
+                showAlert(`「${title}」を更新しました ✅`, 'success');
+                closeEditModal();
+                loadLessons();
+            } catch (e) {
+                showAlert(e.message, 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = '💾 保存する';
+                document.getElementById('edit-upload-progress').style.display = 'none';
+            }
+        }
+
+        // ===== コース作成 =====
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('create-course-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const token = localStorage.getItem('token');
-                const data = {
-                    title: document.getElementById('course-title').value,
-                    description: document.getElementById('course-description').value,
-                    orderIndex: document.getElementById('course-order').value
-                };
-
                 try {
-                    const response = await fetch(`${API_URL}/admin/courses`, {
+                    const res = await fetch(`${API_URL}/admin/courses`, {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(data)
+                        body: JSON.stringify({
+                            title:       document.getElementById('course-title').value,
+                            description: document.getElementById('course-description').value,
+                            orderIndex:  document.getElementById('course-order').value
+                        })
                     });
-
-                    if (!response.ok) throw new Error('コース作成に失敗しました');
-
+                    if (!res.ok) throw new Error('コース作成に失敗しました');
                     showAlert('コースを作成しました', 'success');
                     document.getElementById('create-course-form').reset();
                     loadCourses();
-                } catch (error) {
-                    console.error('コース作成エラー:', error);
-                    showAlert(error.message, 'error');
-                }
+                } catch (e) { showAlert(e.message, 'error'); }
             });
 
-            // レッスン作成
+            // ===== レッスン作成 =====
             document.getElementById('create-lesson-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const token = localStorage.getItem('token');
-
                 const isFileMode = document.getElementById('video-type-file').checked;
-                const videoFile = document.getElementById('lesson-video').files[0];
-                const videoUrl = document.getElementById('lesson-video-url').value.trim();
+                const videoFile  = document.getElementById('lesson-video').files[0];
+                const videoUrl   = document.getElementById('lesson-video-url').value.trim();
 
-                // バリデーション
-                if (isFileMode && !videoFile) {
-                    showAlert('動画ファイルを選択してください', 'error');
-                    return;
-                }
-                if (!isFileMode && !videoUrl) {
-                    showAlert('動画URLを入力してください', 'error');
-                    return;
-                }
+                if (isFileMode && !videoFile) { showAlert('動画ファイルを選択してください', 'error'); return; }
+                if (!isFileMode && !videoUrl) { showAlert('動画URLを入力してください', 'error'); return; }
 
                 const formData = new FormData();
-                formData.append('courseId', document.getElementById('lesson-course').value);
-                formData.append('title', document.getElementById('lesson-title').value);
+                formData.append('courseId',    document.getElementById('lesson-course').value);
+                formData.append('title',       document.getElementById('lesson-title').value);
                 formData.append('description', document.getElementById('lesson-description').value);
-                formData.append('orderIndex', document.getElementById('lesson-order').value);
-                formData.append('duration', 0);
-
-                if (isFileMode && videoFile) {
-                    formData.append('video', videoFile);
-                } else if (!isFileMode && videoUrl) {
-                    formData.append('externalVideoUrl', videoUrl);
-                }
+                formData.append('orderIndex',  document.getElementById('lesson-order').value);
+                formData.append('duration',    0);
+                if (isFileMode && videoFile)  formData.append('video', videoFile);
+                else if (!isFileMode && videoUrl) formData.append('externalVideoUrl', videoUrl);
 
                 try {
                     document.getElementById('upload-progress').style.display = 'block';
-                    
-                    const response = await fetch(`${API_URL}/admin/lessons`, {
+                    const res = await fetch(`${API_URL}/admin/lessons`, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}` },
                         body: formData
                     });
-
-                    if (!response.ok) {
-                        const err = await response.json();
+                    if (!res.ok) {
+                        const err = await res.json();
                         throw new Error(err.error || 'レッスン作成に失敗しました');
                     }
-
                     showAlert('レッスンを作成しました', 'success');
                     document.getElementById('create-lesson-form').reset();
                     document.getElementById('video-file-input').style.display = 'block';
-                    document.getElementById('video-url-input').style.display = 'none';
-                    document.getElementById('upload-progress').style.display = 'none';
+                    document.getElementById('video-url-input').style.display  = 'none';
+                    document.getElementById('upload-progress').style.display  = 'none';
                     loadLessons();
-                } catch (error) {
-                    console.error('レッスン作成エラー:', error);
-                    showAlert(error.message, 'error');
+                } catch (e) {
+                    showAlert(e.message, 'error');
                     document.getElementById('upload-progress').style.display = 'none';
                 }
             });
         });
 
-        // クイズ読み込み
+        // ===== クイズ読み込み =====
         async function loadQuiz() {
             const lessonId = document.getElementById('quiz-lesson').value;
-            if (!lessonId) {
-                document.getElementById('quiz-editor').style.display = 'none';
-                return;
-            }
-
+            if (!lessonId) { document.getElementById('quiz-editor').style.display = 'none'; return; }
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
+                const res = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                quizQuestions = await response.json();
-
+                quizQuestions = await res.json();
                 if (quizQuestions.length === 0) {
                     quizQuestions = [{ question: '', options: ['', '', ''], correctAnswer: 0, orderIndex: 0 }];
                 }
-
                 document.getElementById('quiz-editor').style.display = 'block';
                 renderQuizEditor();
-            } catch (error) {
-                console.error('クイズ読み込みエラー:', error);
-            }
+            } catch (e) { console.error(e); }
         }
 
         function renderQuizEditor() {
             const container = document.getElementById('quiz-questions-container');
             container.innerHTML = '';
-
             quizQuestions.forEach((q, index) => {
                 const div = document.createElement('div');
                 div.className = 'quiz-question';
                 div.innerHTML = `
-                    <h3 style="color: var(--primary-pink); margin-bottom: 15px;">問題 ${index + 1}</h3>
+                    <h3 style="color: var(--primary-blue-light); margin-bottom: 15px;">問題 ${index + 1}</h3>
                     <div class="form-group">
                         <label class="form-label">問題文</label>
                         <input type="text" class="form-input" value="${q.question || ''}" onchange="updateQuestion(${index}, 'question', this.value)">
@@ -389,10 +675,10 @@
                         <label class="form-label">選択肢（正解を選択）</label>
                         ${[0, 1, 2].map(i => `
                             <div style="display: flex; gap: 10px; margin: 10px 0; align-items: center;">
-                                <input type="radio" name="correct-${index}" value="${i}" ${q.correctAnswer === i ? 'checked' : ''} 
-                                    onchange="updateQuestion(${index}, 'correctAnswer', ${i})" 
+                                <input type="radio" name="correct-${index}" value="${i}" ${q.correctAnswer === i ? 'checked' : ''}
+                                    onchange="updateQuestion(${index}, 'correctAnswer', ${i})"
                                     style="width: auto; min-height: auto;">
-                                <input type="text" class="form-input" value="${q.options[i] || ''}" 
+                                <input type="text" class="form-input" value="${q.options[i] || ''}"
                                     onchange="updateQuestionOption(${index}, ${i}, this.value)">
                             </div>
                         `).join('')}
@@ -407,67 +693,43 @@
             quizQuestions.push({ question: '', options: ['', '', ''], correctAnswer: 0, orderIndex: quizQuestions.length });
             renderQuizEditor();
         }
-
-        function removeQuestion(index) {
-            quizQuestions.splice(index, 1);
-            renderQuizEditor();
-        }
-
-        function updateQuestion(index, field, value) {
-            quizQuestions[index][field] = value;
-        }
-
-        function updateQuestionOption(index, optionIndex, value) {
-            quizQuestions[index].options[optionIndex] = value;
-        }
+        function removeQuestion(index) { quizQuestions.splice(index, 1); renderQuizEditor(); }
+        function updateQuestion(index, field, value) { quizQuestions[index][field] = value; }
+        function updateQuestionOption(index, optionIndex, value) { quizQuestions[index].options[optionIndex] = value; }
 
         async function saveQuiz() {
             const lessonId = document.getElementById('quiz-lesson').value;
-            const token = localStorage.getItem('token');
-
+            const token    = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
+                const res = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ questions: quizQuestions })
                 });
-
-                if (!response.ok) throw new Error('クイズ保存に失敗しました');
-
+                if (!res.ok) throw new Error('クイズ保存に失敗しました');
                 showAlert('クイズを保存しました', 'success');
-            } catch (error) {
-                console.error('クイズ保存エラー:', error);
-                showAlert(error.message, 'error');
-            }
+            } catch (e) { showAlert(e.message, 'error'); }
         }
 
+        // ===== レッスン削除 =====
         async function deleteLesson(id, title) {
             if (!confirm(`「${title}」を削除してもよろしいですか？`)) return;
-
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_URL}/admin/lessons/${id}`, {
+                const res = await fetch(`${API_URL}/admin/lessons/${id}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
-                if (!response.ok) throw new Error('削除に失敗しました');
-
+                if (!res.ok) throw new Error('削除に失敗しました');
                 showAlert('レッスンを削除しました', 'success');
                 loadLessons();
-            } catch (error) {
-                console.error('削除エラー:', error);
-                showAlert(error.message, 'error');
-            }
+            } catch (e) { showAlert(e.message, 'error'); }
         }
 
-        // サムネイル再生成（既存MP4レッスン用）
+        // ===== サムネイル再生成 =====
         async function regenThumb(id, btn) {
             btn.disabled = true;
-            btn.textContent = '⏳ 生成中...';
+            btn.textContent = '⏳';
             const token = localStorage.getItem('token');
             try {
                 const res = await fetch(`${API_URL}/admin/lessons/${id}/regenerate-thumbnail`, {
@@ -477,31 +739,24 @@
                 const data = await res.json();
                 if (data.success) {
                     showAlert('サムネイルを生成しました ✅', 'success');
-                    loadLessons(); // テーブルを再描画
+                    loadLessons();
                 } else {
                     throw new Error(data.error || '失敗');
                 }
             } catch (e) {
-                showAlert('サムネイル生成に失敗しました: ' + e.message, 'error');
+                showAlert('サムネイル生成に失敗: ' + e.message, 'error');
                 btn.disabled = false;
-                btn.textContent = '🖼️ サムネ生成';
+                btn.textContent = '🖼️ サムネ';
             }
         }
 
+        // ===== ユーティリティ =====
         function showAlert(message, type) {
-            const container = document.getElementById('alert-container');
-            container.innerHTML = `
-                <div class="alert alert-${type === 'error' ? 'error' : 'success'}">
-                    ${message}
-                </div>
-            `;
-            setTimeout(() => container.innerHTML = '', 5000);
+            const el = document.getElementById('alert-container');
+            el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            setTimeout(() => el.innerHTML = '', 5000);
         }
-
-        function logout() {
-            localStorage.removeItem('token');
-            window.location.href = '/';
-        }
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
 
         checkAuth();
     </script>

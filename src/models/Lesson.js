@@ -34,13 +34,15 @@ class Lesson {
   }
 
   static async update(id, data) {
-    const { title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex } = data;
+    const { title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex, courseId } = data;
     const result = await db.query(
-      `UPDATE lessons 
+      `UPDATE lessons
        SET title = $1, description = $2, video_filename = $3, video_url = $4,
-           thumbnail_url = $5, duration = $6, order_index = $7, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $8 RETURNING *`,
-      [title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex, id]
+           thumbnail_url = $5, duration = $6, order_index = $7,
+           course_id = COALESCE($8, course_id),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $9 RETURNING *`,
+      [title, description, videoFilename, videoUrl, thumbnailUrl, duration, orderIndex, courseId || null, id]
     );
     return result.rows[0];
   }

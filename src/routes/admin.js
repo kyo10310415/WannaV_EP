@@ -204,7 +204,7 @@ router.get('/lessons', auth, checkRole('管理者', 'クルー'), async (req, re
 // レッスン更新
 router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'), async (req, res) => {
   try {
-    const { title, description, duration, orderIndex, externalVideoUrl } = req.body;
+    const { title, description, duration, orderIndex, externalVideoUrl, courseId } = req.body;
     const lesson = await Lesson.findById(req.params.id);
     
     if (!lesson) {
@@ -212,18 +212,17 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'
     }
 
     let videoFilename = lesson.video_filename;
-    let videoUrl = lesson.video_url;
-    let thumbnailUrl = lesson.thumbnail_url || null;
+    let videoUrl      = lesson.video_url;
+    let thumbnailUrl  = lesson.thumbnail_url || null;
 
     if (req.file) {
       videoFilename = req.file.filename;
-      videoUrl = `/uploads/${req.file.filename}`;
-      // 新しい動画のサムネイルを生成
-      thumbnailUrl = await generateThumbnail(req.file.path, req.file.filename);
+      videoUrl      = `/uploads/${req.file.filename}`;
+      thumbnailUrl  = await generateThumbnail(req.file.path, req.file.filename);
     } else if (externalVideoUrl && externalVideoUrl.trim()) {
       videoFilename = 'external';
-      videoUrl = externalVideoUrl.trim();
-      thumbnailUrl = null; // 外部URLに変更した場合はサムネイルをリセット
+      videoUrl      = externalVideoUrl.trim();
+      thumbnailUrl  = null;
     }
 
     const updated = await Lesson.update(req.params.id, {
@@ -233,7 +232,8 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'
       videoUrl,
       thumbnailUrl,
       duration,
-      orderIndex
+      orderIndex,
+      courseId: courseId || lesson.course_id  // コース変更対応
     });
 
     res.json(updated);
