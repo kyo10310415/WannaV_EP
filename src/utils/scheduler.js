@@ -25,4 +25,29 @@ const scheduleInactiveUserReminders = () => {
   console.log('✅ Cron job scheduled: Daily inactive user reminders at 10:00 AM');
 };
 
-module.exports = { scheduleInactiveUserReminders };
+/**
+ * Notion 生徒データを毎日 2:00 AM に自動同期するクロンジョブ
+ * NOTION_TOKEN と NOTION_DATABASE_ID が設定されていない場合はスキップ
+ */
+const scheduleNotionSync = () => {
+  if (!process.env.NOTION_TOKEN || !process.env.NOTION_DATABASE_ID) {
+    console.log('⏭️  Notion cron skipped: NOTION_TOKEN or NOTION_DATABASE_ID not set');
+    return;
+  }
+
+  // 毎日 02:00 に実行（サーバー時刻）
+  cron.schedule('0 2 * * *', async () => {
+    console.log('🔄 [Cron] Notion daily sync starting...');
+    try {
+      const { syncNotionStudents } = require('./notionSync');
+      const result = await syncNotionStudents();
+      console.log(`✅ [Cron] Notion sync done: ${result.synced} records`);
+    } catch (error) {
+      console.error('❌ [Cron] Notion sync error:', error.message);
+    }
+  });
+
+  console.log('✅ Cron job scheduled: Daily Notion sync at 02:00 AM');
+};
+
+module.exports = { scheduleInactiveUserReminders, scheduleNotionSync };

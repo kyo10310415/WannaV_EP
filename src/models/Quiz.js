@@ -54,7 +54,7 @@ class Quiz {
     });
 
     const score = Math.round((correct / questions.length) * 100);
-    const passed = score === 100; // 全問正解が必要
+    const passed = score >= 80; // 80%以上で合格
 
     return {
       passed,

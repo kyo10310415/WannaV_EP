@@ -64,16 +64,20 @@ router.get('/users/progress', auth, checkRole('管理者', 'クルー'), async (
   }
 });
 
-// ユーザー作成
+// ユーザー作成（username + 初期PW=1111 固定）
 router.post('/users', auth, checkRole('管理者'), async (req, res) => {
   try {
-    const { email, password, name, role } = req.body;
-    const user = await User.create(email, password, name, role);
+    const { username, name, role } = req.body;
+    if (!username || !name) {
+      return res.status(400).json({ error: 'ユーザー名と名前は必須です' });
+    }
+    // username をそのまま email フィールドとして渡す（User.create内で変換）
+    const user = await User.create(username, '1111', name, role || '生徒');
     res.status(201).json(user);
   } catch (error) {
     console.error('Create user error:', error);
     if (error.code === '23505') {
-      return res.status(400).json({ error: 'このメールアドレスは既に登録されています' });
+      return res.status(400).json({ error: 'このユーザー名は既に使われています' });
     }
     res.status(500).json({ error: 'ユーザーの作成に失敗しました' });
   }

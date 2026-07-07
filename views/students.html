@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生徒一覧 - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* ===== Students ページ専用スタイル ===== */
+        .students-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .sync-info {
+            font-size: 13px;
+            color: var(--gray-text);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sync-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: rgba(74,144,217,0.12);
+            border: 1px solid rgba(74,144,217,0.3);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--primary-blue-light);
+        }
+
+        /* 検索バー */
+        .search-wrap {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            max-width: 400px;
+            padding: 10px 16px;
+            border: 1px solid rgba(74,144,217,0.35);
+            border-radius: 25px;
+            background: rgba(7,16,24,0.7);
+            color: var(--light-text);
+            font-size: 14px;
+        }
+
+        .search-input::placeholder { color: rgba(148,184,212,0.5); }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(74,144,217,0.2);
+        }
+
+        /* テーブルラッパー（横スクロール） */
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 14px;
+        }
+
+        /* 生徒テーブル */
+        .students-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
+            min-width: 900px;
+        }
+
+        .students-table th {
+            background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue));
+            padding: 12px 14px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 13px;
+            color: white;
+            white-space: nowrap;
+        }
+
+        .students-table th:first-child { border-radius: 10px 0 0 10px; }
+        .students-table th:last-child  { border-radius: 0 10px 10px 0; }
+
+        .students-table td {
+            background: rgba(23,42,63,0.75);
+            padding: 13px 14px;
+            font-size: 13px;
+            border-top: 1px solid rgba(74,144,217,0.1);
+            border-bottom: 1px solid rgba(74,144,217,0.1);
+            vertical-align: middle;
+        }
+
+        .students-table tr:hover td {
+            background: rgba(74,144,217,0.1);
+        }
+
+        /* ステータスバッジ */
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .status-active   { background: rgba(46,204,113,0.18); color: #6AEBB7; border: 1px solid rgba(46,204,113,0.3); }
+        .status-pause    { background: rgba(243,156,18,0.18);  color: #F7C55B; border: 1px solid rgba(243,156,18,0.3); }
+        .status-stop     { background: rgba(231,76,60,0.18);   color: #F1948A; border: 1px solid rgba(231,76,60,0.3); }
+        .status-default  { background: rgba(148,184,212,0.12); color: var(--gray-text); border: 1px solid rgba(148,184,212,0.2); }
+
+        /* 経過月数バッジ */
+        .month-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            background: rgba(74,144,217,0.15);
+            color: var(--primary-blue-light);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        /* Notionリンクボタン */
+        .notion-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            background: rgba(74,144,217,0.12);
+            border: 1px solid rgba(74,144,217,0.3);
+            border-radius: 20px;
+            color: var(--primary-blue-light);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .notion-link:hover {
+            background: rgba(74,144,217,0.25);
+            border-color: var(--primary-blue-light);
+            transform: translateY(-2px);
+        }
+
+        /* 学籍番号 */
+        .student-number-code {
+            font-family: monospace;
+            font-size: 12px;
+            background: rgba(52,200,232,0.1);
+            color: var(--accent-cyan);
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+        /* 件数バッジ */
+        .count-badge {
+            display: inline-block;
+            padding: 4px 14px;
+            background: rgba(74,144,217,0.15);
+            border: 1px solid rgba(74,144,217,0.3);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary-blue-light);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-text);
+        }
+
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state p { font-size: 15px; margin-bottom: 8px; }
+        .empty-state small { font-size: 12px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <span class="user-role" id="user-role"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- ナビゲーション（管理者/クルー向け） -->
+        <div class="nav" id="admin-nav" style="display:none;">
+            <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
+            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
+            <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
+            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
+            <a href="/students" class="nav-link active">🎓 生徒一覧</a>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- 生徒一覧カード -->
+        <div class="card">
+            <div class="students-header-row">
+                <div>
+                    <h2 style="margin-bottom: 4px;">🎓 生徒一覧（エントリープラン）</h2>
+                    <div class="sync-info">
+                        <span id="last-synced-text">同期日時を取得中...</span>
+                    </div>
+                </div>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <span class="count-badge" id="student-count">0 名</span>
+                    <button id="sync-btn" onclick="syncNotion()" class="btn btn-secondary"
+                        style="padding:10px 20px; font-size:13px; min-height:auto; min-width:auto;">
+                        🔄 今すぐ同期
+                    </button>
+                </div>
+            </div>
+
+            <!-- 検索 -->
+            <div class="search-wrap">
+                <input
+                    type="text"
+                    class="search-input"
+                    id="search-input"
+                    placeholder="🔍 生徒名・ふりがな・学籍番号で検索..."
+                    oninput="filterStudents()"
+                >
+                <select id="status-filter" class="form-select"
+                    style="width:auto; min-width:140px; padding:10px 14px; font-size:13px;"
+                    onchange="filterStudents()">
+                    <option value="">すべてのステータス</option>
+                    <option value="受講中">受講中</option>
+                    <option value="休会中">休会中</option>
+                    <option value="退会">退会</option>
+                </select>
+            </div>
+
+            <!-- テーブル -->
+            <div id="students-container">
+                <div class="loading" style="margin: 50px auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let allStudents = [];
+        let currentUser = null;
+
+        // ===== 認証チェック =====
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = '/'; return; }
+
+            try {
+                const res = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('認証失敗');
+
+                currentUser = await res.json();
+                document.getElementById('user-name').textContent = currentUser.name;
+                document.getElementById('user-role').textContent = currentUser.role;
+
+                if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
+                    document.getElementById('admin-nav').style.display = 'flex';
+                } else {
+                    // 生徒はアクセス不可
+                    showAlert('このページは管理者・クルーのみアクセスできます', 'error');
+                    setTimeout(() => window.location.href = '/dashboard', 2000);
+                    return;
+                }
+
+                loadStudents();
+            } catch (err) {
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            }
+        }
+
+        // ===== 生徒データ読み込み =====
+        async function loadStudents() {
+            const token = localStorage.getItem('token');
+            const container = document.getElementById('students-container');
+
+            try {
+                const res = await fetch(`${API_URL}/notion/students`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) throw new Error('データ取得失敗');
+
+                const data = await res.json();
+                allStudents = data.students || [];
+
+                // 最終同期日時
+                updateLastSynced(data.lastSynced);
+
+                renderStudents(allStudents);
+            } catch (err) {
+                console.error('生徒データ取得エラー:', err);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <p>データの読み込みに失敗しました</p>
+                        <small>「今すぐ同期」ボタンで Notion から取得してください</small>
+                    </div>
+                `;
+            }
+        }
+
+        // ===== 手動 Notion 同期 =====
+        async function syncNotion() {
+            const token = localStorage.getItem('token');
+            const btn = document.getElementById('sync-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ 同期中...';
+
+            try {
+                const res = await fetch(`${API_URL}/notion/sync`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || '同期に失敗しました');
+                }
+
+                showAlert(`✅ ${data.message}`, 'success');
+                loadStudents(); // 再読み込み
+            } catch (err) {
+                console.error('Notion sync error:', err);
+                showAlert(err.message || 'Notion 同期に失敗しました', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 今すぐ同期';
+            }
+        }
+
+        // ===== 生徒テーブルを描画 =====
+        function renderStudents(students) {
+            const container = document.getElementById('students-container');
+            document.getElementById('student-count').textContent = `${students.length} 名`;
+
+            if (students.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🎓</div>
+                        <p>エントリープランの生徒データがありません</p>
+                        <small>「今すぐ同期」ボタンで Notion から取得してください</small>
+                    </div>
+                `;
+                return;
+            }
+
+            const today = new Date();
+
+            let html = `
+                <div class="table-wrap">
+                    <table class="students-table">
+                        <thead>
+                            <tr>
+                                <th>生徒名</th>
+                                <th>本名ふりがな</th>
+                                <th>学籍番号</th>
+                                <th>Notion</th>
+                                <th>開始月</th>
+                                <th>経過月数</th>
+                                <th>ステータス</th>
+                                <th>契約プラン</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            students.forEach(s => {
+                // ===== 経過月数計算 =====
+                // 「1ヶ月目からカウント」= 開始月が今月なら 1ヶ月目
+                let elapsedMonths = '—';
+                if (s.lesson_start_month) {
+                    const start = new Date(s.lesson_start_month);
+                    // 年月差 + 1（開始月を1ヶ月目とする）
+                    const yearDiff  = today.getFullYear() - start.getFullYear();
+                    const monthDiff = today.getMonth() - start.getMonth();
+                    const total = yearDiff * 12 + monthDiff + 1;
+                    elapsedMonths = total > 0 ? total : 1;
+                }
+
+                // ===== ステータスバッジ =====
+                const statusClass = getStatusClass(s.status);
+
+                // ===== 開始月表示 =====
+                let startMonthDisplay = '—';
+                if (s.lesson_start_month) {
+                    const d = new Date(s.lesson_start_month);
+                    startMonthDisplay = `${d.getFullYear()}年${d.getMonth() + 1}月`;
+                }
+
+                // ===== Notion URL =====
+                const notionBtn = s.notion_url
+                    ? `<a href="${escHtml(s.notion_url)}" target="_blank" rel="noopener" class="notion-link">
+                            📄 開く
+                       </a>`
+                    : '<span style="color:var(--gray-text); font-size:12px;">—</span>';
+
+                html += `
+                    <tr>
+                        <td style="font-weight:600; color:var(--light-text);">${escHtml(s.student_name || '—')}</td>
+                        <td style="color:var(--gray-text);">${escHtml(s.name_furigana || '—')}</td>
+                        <td>
+                            ${s.student_number
+                                ? `<span class="student-number-code">${escHtml(s.student_number)}</span>`
+                                : '<span style="color:var(--gray-text);">—</span>'
+                            }
+                        </td>
+                        <td>${notionBtn}</td>
+                        <td style="color:var(--gray-text); white-space:nowrap;">${startMonthDisplay}</td>
+                        <td>
+                            ${elapsedMonths !== '—'
+                                ? `<span class="month-badge">${elapsedMonths} ヶ月目</span>`
+                                : '<span style="color:var(--gray-text);">—</span>'
+                            }
+                        </td>
+                        <td>
+                            ${s.status
+                                ? `<span class="status-badge ${statusClass}">${escHtml(s.status)}</span>`
+                                : '<span style="color:var(--gray-text);">—</span>'
+                            }
+                        </td>
+                        <td style="color:var(--accent-cyan); font-size:12px; font-weight:600;">
+                            ${escHtml(s.contract_plan || '—')}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+
+        // ===== フィルタリング =====
+        function filterStudents() {
+            const query  = document.getElementById('search-input').value.toLowerCase().trim();
+            const status = document.getElementById('status-filter').value;
+
+            const filtered = allStudents.filter(s => {
+                const matchSearch = !query ||
+                    (s.student_name   || '').toLowerCase().includes(query) ||
+                    (s.name_furigana  || '').toLowerCase().includes(query) ||
+                    (s.student_number || '').toLowerCase().includes(query);
+
+                const matchStatus = !status || s.status === status;
+
+                return matchSearch && matchStatus;
+            });
+
+            renderStudents(filtered);
+        }
+
+        // ===== 最終同期日時の更新 =====
+        function updateLastSynced(lastSynced) {
+            const el = document.getElementById('last-synced-text');
+            if (!lastSynced) {
+                el.innerHTML = '<span class="sync-badge">⚠️ 未同期</span>';
+            } else {
+                const d = new Date(lastSynced);
+                const fmt = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                el.innerHTML = `<span class="sync-badge">🕐 最終同期: ${fmt}</span>`;
+            }
+        }
+
+        // ===== ステータスに応じた CSS クラス =====
+        function getStatusClass(status) {
+            if (!status) return 'status-default';
+            if (status.includes('受講') || status.includes('在籍') || status.includes('Active')) return 'status-active';
+            if (status.includes('休') || status.includes('Pause')) return 'status-pause';
+            if (status.includes('退') || status.includes('Stop') || status.includes('卒業')) return 'status-stop';
+            return 'status-default';
+        }
+
+        // ===== XSS対策エスケープ =====
+        function escHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // ===== アラート =====
+        function showAlert(message, type) {
+            const el = document.getElementById('alert-container');
+            el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            setTimeout(() => el.innerHTML = '', 6000);
+        }
+
+        // ===== ログアウト =====
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        // 初期化
+        checkAuth();
+    </script>
+</body>
+</html>

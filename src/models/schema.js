@@ -9,7 +9,9 @@ const createTables = async () => {
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
+        username VARCHAR(255) UNIQUE,
         role VARCHAR(50) NOT NULL CHECK (role IN ('管理者', 'クルー', '生徒')),
+        password_changed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP
@@ -83,6 +85,43 @@ const createTables = async () => {
     await db.query(`
       ALTER TABLE lessons ADD COLUMN IF NOT EXISTS thumbnail_url TEXT
     `);
+
+    // username / password_changed_at マイグレーション
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(255)`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP`);
+    // 既存ユーザーの username が未設定なら email の @ 前を初期値に設定
+    await db.query(`
+      UPDATE users SET username = SPLIT_PART(email, '@', 1)
+      WHERE username IS NULL
+    `);
+    // username に UNIQUE 制約（存在しない場合のみ）
+    await db.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'users_username_key'
+        ) THEN
+          ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
+        END IF;
+      END $$
+    `);
+
+    // Notion students cache table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS notion_students (
+        id SERIAL PRIMARY KEY,
+        notion_page_id VARCHAR(255) UNIQUE NOT NULL,
+        student_name VARCHAR(255),
+        name_furigana VARCHAR(255),
+        student_number VARCHAR(255),
+        notion_url TEXT,
+        lesson_start_month DATE,
+        status VARCHAR(255),
+        contract_plan VARCHAR(255),
+        raw_data JSONB,
+        synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_plan ON notion_students(contract_plan)`);
 
     // Notifications log table
     await db.query(`

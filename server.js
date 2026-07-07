@@ -4,7 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { createTables } = require('./src/models/schema');
-const { scheduleInactiveUserReminders } = require('./src/utils/scheduler');
+const { scheduleInactiveUserReminders, scheduleNotionSync } = require('./src/utils/scheduler');
 const User = require('./src/models/User');
 
 const app = express();
@@ -36,6 +36,7 @@ app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/lessons', require('./src/routes/lessons'));
 app.use('/api/progress', require('./src/routes/progress'));
 app.use('/api/admin', require('./src/routes/admin'));
+app.use('/api/notion', require('./src/routes/notion'));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
@@ -62,6 +63,10 @@ app.get('/admin/users', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-users.html'));
 });
 
+app.get('/students', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'students.html'));
+});
+
 // Initialize database and create admin user
 const initializeApp = async () => {
   try {
@@ -80,17 +85,19 @@ const initializeApp = async () => {
     await createTables();
     
     // Create default admin user if not exists
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@wannav.com';
+    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    
-    const existingAdmin = await User.findByEmail(adminEmail);
+    const adminEmail    = `${adminUsername}@wannav.local`;
+
+    const existingAdmin = await User.findByUsername(adminUsername);
     if (!existingAdmin) {
-      await User.create(adminEmail, adminPassword, '管理者', '管理者');
-      console.log(`✅ Admin user created: ${adminEmail}`);
+      await User.create(adminUsername, adminPassword, '管理者', '管理者');
+      console.log(`✅ Admin user created: username=${adminUsername}`);
     }
     
     // Start cron jobs
     scheduleInactiveUserReminders();
+    scheduleNotionSync();
     
     console.log('✅ App initialized successfully');
   } catch (error) {

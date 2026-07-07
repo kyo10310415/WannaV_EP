@@ -21,7 +21,7 @@
                 対象ユーザー：<strong id="reset-modal-username" style="color: var(--primary-blue-light);"></strong>
             </p>
             <div class="form-group">
-                <label class="form-label">新しいパスワード（6文字以上）</label>
+                <label class="form-label">新しいパスワード（4文字以上）</label>
                 <input type="password" class="form-input" id="reset-new-password" placeholder="新しいパスワード">
             </div>
             <div class="form-group">
@@ -34,6 +34,7 @@
             </div>
         </div>
     </div>
+
     <div class="header">
         <div class="header-content">
             <h1 class="logo">✨ WannaV エントリープラン</h1>
@@ -45,33 +46,33 @@
     </div>
 
     <div class="container">
-        <div class="nav">
+        <div class="nav" id="admin-nav">
             <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
             <a href="/admin/accounts" class="nav-link active">👥 アカウント管理</a>
             <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
             <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
+            <a href="/students" class="nav-link">🎓 生徒一覧</a>
         </div>
 
         <div id="alert-container"></div>
 
         <!-- アカウント追加 -->
         <div class="card">
-            <h2 style="margin-bottom: 30px;">➕ 新規アカウント作成</h2>
+            <h2 style="margin-bottom: 8px;">➕ 新規アカウント作成</h2>
+            <p style="color: var(--gray-text); font-size: 13px; margin-bottom: 24px;">
+                初期パスワードは <code style="background:rgba(74,144,217,0.15); padding:2px 8px; border-radius:6px; color:var(--accent-cyan);">1111</code> で固定されます。初回ログイン時にパスワード変更が必須となります。
+            </p>
             <form id="create-user-form">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
-                    <div class="form-group">
-                        <label class="form-label">名前</label>
-                        <input type="text" class="form-input" id="new-name" required>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">ユーザー名（ログインID）</label>
+                        <input type="text" class="form-input" id="new-username" placeholder="例：tanaka_hanako" required autocomplete="off">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">メールアドレス</label>
-                        <input type="email" class="form-input" id="new-email" required>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">名前（表示名）</label>
+                        <input type="text" class="form-input" id="new-name" placeholder="例：田中 花子" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">パスワード</label>
-                        <input type="password" class="form-input" id="new-password" required minlength="6">
-                    </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin:0;">
                         <label class="form-label">権限</label>
                         <select class="form-select" id="new-role" required>
                             <option value="生徒">生徒</option>
@@ -80,7 +81,7 @@
                         </select>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-success" style="margin-top: 20px;">
+                <button type="submit" class="btn btn-success" style="margin-top: 24px;">
                     ✅ アカウント作成
                 </button>
             </form>
@@ -118,8 +119,8 @@
             const newPw = document.getElementById('reset-new-password').value;
             const confirmPw = document.getElementById('reset-confirm-password').value;
 
-            if (!newPw || newPw.length < 6) {
-                showAlert('パスワードは6文字以上で入力してください', 'error');
+            if (!newPw || newPw.length < 4) {
+                showAlert('パスワードは4文字以上で入力してください', 'error');
                 return;
             }
             if (newPw !== confirmPw) {
@@ -209,28 +210,50 @@
                 return;
             }
 
-            let html = '<table class="table"><thead><tr><th>名前</th><th>メール</th><th>権限</th><th>登録日</th><th>操作</th></tr></thead><tbody>';
+            let html = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ユーザー名</th>
+                            <th>名前</th>
+                            <th>権限</th>
+                            <th>PW変更</th>
+                            <th>登録日</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
 
             users.forEach(user => {
                 const createdDate = new Date(user.created_at).toLocaleDateString('ja-JP');
+                const pwChanged = user.password_changed_at
+                    ? `<span style="color:#6AEBB7; font-size:12px;">✅ 変更済み</span>`
+                    : `<span style="color:#F7C55B; font-size:12px;">⚠️ 未変更</span>`;
+
                 html += `
                     <tr>
-                        <td>${user.name}</td>
-                        <td>${user.email}</td>
                         <td>
-                            <select onchange="updateRole(${user.id}, this.value)" style="padding: 8px; border-radius: 10px; background: rgba(15, 15, 30, 0.8); color: white; border: 2px solid rgba(255, 107, 157, 0.3);">
+                            <code style="background:rgba(74,144,217,0.12); padding:3px 8px; border-radius:6px; color:var(--primary-blue-light); font-size:13px;">
+                                ${user.username || user.email.split('@')[0]}
+                            </code>
+                        </td>
+                        <td style="font-weight:600;">${user.name}</td>
+                        <td>
+                            <select onchange="updateRole(${user.id}, this.value)" style="padding: 8px 12px; border-radius: 10px; background: rgba(15, 15, 30, 0.8); color: white; border: 2px solid rgba(74, 144, 217, 0.3); font-size:13px;">
                                 <option value="生徒" ${user.role === '生徒' ? 'selected' : ''}>生徒</option>
                                 <option value="クルー" ${user.role === 'クルー' ? 'selected' : ''}>クルー</option>
                                 <option value="管理者" ${user.role === '管理者' ? 'selected' : ''}>管理者</option>
                             </select>
                         </td>
-                        <td>${createdDate}</td>
-                        <td>
-                            <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 20px; font-size: 14px;">
-                                🗑️ 削除
-                            </button>
-                            <button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding: 8px 20px; font-size: 14px; margin-left: 8px;">
+                        <td>${pwChanged}</td>
+                        <td style="color:var(--gray-text); font-size:13px;">${createdDate}</td>
+                        <td style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
                                 🔑 PW変更
+                            </button>
+                            <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
+                                🗑️ 削除
                             </button>
                         </td>
                     </tr>
@@ -248,11 +271,15 @@
 
                 const token = localStorage.getItem('token');
                 const data = {
-                    name: document.getElementById('new-name').value,
-                    email: document.getElementById('new-email').value,
-                    password: document.getElementById('new-password').value,
+                    username: document.getElementById('new-username').value.trim(),
+                    name: document.getElementById('new-name').value.trim(),
                     role: document.getElementById('new-role').value
                 };
+
+                if (!data.username) {
+                    showAlert('ユーザー名を入力してください', 'error');
+                    return;
+                }
 
                 try {
                     const response = await fetch(`${API_URL}/admin/users`, {
@@ -269,7 +296,7 @@
                         throw new Error(error.error || 'アカウント作成に失敗しました');
                     }
 
-                    showAlert('アカウントを作成しました', 'success');
+                    showAlert(`アカウントを作成しました。初期パスワード: 1111`, 'success');
                     document.getElementById('create-user-form').reset();
                     loadUsers();
                 } catch (error) {
@@ -294,7 +321,6 @@
                 });
 
                 if (!response.ok) throw new Error('権限更新に失敗しました');
-
                 showAlert('権限を更新しました', 'success');
             } catch (error) {
                 console.error('権限更新エラー:', error);
@@ -316,7 +342,6 @@
                 });
 
                 if (!response.ok) throw new Error('削除に失敗しました');
-
                 showAlert('ユーザーを削除しました', 'success');
                 loadUsers();
             } catch (error) {

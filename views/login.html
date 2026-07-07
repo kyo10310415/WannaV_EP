@@ -5,56 +5,194 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ログイン - WannaV エントリープラン</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* 初回PW変更モーダル */
+        .pw-modal-overlay {
+            display: none;
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0,0,0,0.82);
+            backdrop-filter: blur(6px);
+            align-items: center; justify-content: center;
+        }
+        .pw-modal-overlay.open { display: flex; }
+        .pw-modal-box {
+            background: var(--card-bg);
+            border: 1px solid rgba(74,144,217,0.4);
+            border-radius: 20px;
+            padding: 44px 40px;
+            width: 100%; max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+        }
+        .pw-modal-title {
+            font-size: 22px; font-weight: 700;
+            color: var(--primary-blue-light);
+            margin-bottom: 6px;
+        }
+        .pw-modal-sub {
+            font-size: 13px; color: var(--gray-text);
+            margin-bottom: 28px; line-height: 1.6;
+        }
+        .pw-strength {
+            height: 4px; border-radius: 2px;
+            background: rgba(74,144,217,0.15);
+            margin-top: 6px; overflow: hidden;
+        }
+        .pw-strength-fill {
+            height: 100%; border-radius: 2px;
+            transition: width 0.3s, background 0.3s;
+            width: 0%;
+        }
+    </style>
 </head>
 <body>
     <div class="container" style="max-width: 500px; margin-top: 100px;">
         <div class="card" style="text-align: center;">
             <h1 class="logo" style="font-size: 36px; margin-bottom: 8px;">✨ WannaV</h1>
             <p style="color: var(--accent-cyan); font-size: 16px; font-weight: 600; margin-bottom: 32px; letter-spacing: 0.05em;">エントリープラン</p>
-            
+
             <div id="alert-container"></div>
-            
+
             <form id="login-form">
-                <div class="form-group">
-                    <label class="form-label" for="email">メールアドレス</label>
-                    <input 
-                        type="email" 
-                        id="email" 
-                        class="form-input" 
-                        placeholder="mail@example.com"
+                <div class="form-group" style="text-align:left;">
+                    <label class="form-label" for="email">ユーザー名</label>
+                    <input
+                        type="text"
+                        id="email"
+                        class="form-input"
+                        placeholder="ユーザー名を入力"
                         required
-                        autocomplete="email"
+                        autocomplete="username"
                     >
                 </div>
-                
-                <div class="form-group">
+                <div class="form-group" style="text-align:left;">
                     <label class="form-label" for="password">パスワード</label>
-                    <input 
-                        type="password" 
-                        id="password" 
-                        class="form-input" 
+                    <input
+                        type="password"
+                        id="password"
+                        class="form-input"
                         placeholder="パスワードを入力"
                         required
                         autocomplete="current-password"
                     >
                 </div>
-                
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 30px;">
                     🚀 ログイン
                 </button>
             </form>
-            
-            <div style="margin-top: 30px; padding: 20px; background: rgba(15, 15, 30, 0.6); border-radius: 15px;">
-                <p style="color: var(--gray-text); font-size: 14px; margin-bottom: 10px;">
-                    デフォルト管理者アカウント
-                </p>
-                <p style="color: var(--primary-pink); font-weight: bold;">
-                    admin@wannav.com / admin123
-                </p>
-            </div>
         </div>
     </div>
 
-    <script src="/js/auth.js"></script>
+    <!-- ===== 初回パスワード変更モーダル ===== -->
+    <div class="pw-modal-overlay" id="pw-modal">
+        <div class="pw-modal-box">
+            <div class="pw-modal-title">🔐 パスワードの変更</div>
+            <div class="pw-modal-sub">
+                初回ログインのため、パスワードを変更してください。<br>
+                4文字以上で設定してください。
+            </div>
+            <div class="form-group">
+                <label class="form-label">新しいパスワード</label>
+                <input type="password" class="form-input" id="new-password"
+                    placeholder="新しいパスワード" oninput="checkStrength(this.value)">
+                <div class="pw-strength">
+                    <div class="pw-strength-fill" id="pw-strength-fill"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">パスワード（確認）</label>
+                <input type="password" class="form-input" id="new-password-confirm"
+                    placeholder="もう一度入力">
+            </div>
+            <div id="pw-modal-alert" style="margin-bottom:12px;"></div>
+            <button onclick="submitPasswordChange()" class="btn btn-primary" style="width:100%; font-size:16px; padding:16px;">
+                ✅ 変更してログイン
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let pendingToken = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('login-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const username = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+
+                try {
+                    const res = await fetch(`${API_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: username, password })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) { showAlert(data.error || 'ログインに失敗しました', 'error'); return; }
+
+                    localStorage.setItem('token', data.token);
+
+                    if (data.needsPasswordChange) {
+                        // 初回ログイン → PW変更モーダルを表示
+                        pendingToken = data.token;
+                        document.getElementById('pw-modal').classList.add('open');
+                        document.getElementById('new-password').focus();
+                    } else {
+                        showAlert('ログイン成功！', 'success');
+                        setTimeout(() => window.location.href = '/dashboard', 800);
+                    }
+                } catch (err) {
+                    showAlert('ログインに失敗しました', 'error');
+                }
+            });
+        });
+
+        function checkStrength(val) {
+            const fill = document.getElementById('pw-strength-fill');
+            const len = val.length;
+            if (len === 0)      { fill.style.width = '0%';   fill.style.background = ''; }
+            else if (len < 4)   { fill.style.width = '25%';  fill.style.background = '#e74c3c'; }
+            else if (len < 6)   { fill.style.width = '50%';  fill.style.background = '#f39c12'; }
+            else if (len < 10)  { fill.style.width = '75%';  fill.style.background = '#34C8E8'; }
+            else                { fill.style.width = '100%'; fill.style.background = '#2ECC71'; }
+        }
+
+        async function submitPasswordChange() {
+            const np  = document.getElementById('new-password').value;
+            const npc = document.getElementById('new-password-confirm').value;
+            if (!np || np.length < 4) { showModalAlert('4文字以上で入力してください'); return; }
+            if (np !== npc)            { showModalAlert('パスワードが一致しません'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/auth/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${pendingToken}`
+                    },
+                    body: JSON.stringify({ newPassword: np })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+
+                document.getElementById('pw-modal').classList.remove('open');
+                showAlert('パスワードを変更しました！', 'success');
+                setTimeout(() => window.location.href = '/dashboard', 900);
+            } catch (err) {
+                showModalAlert(err.message || 'パスワード変更に失敗しました');
+            }
+        }
+
+        function showModalAlert(msg) {
+            document.getElementById('pw-modal-alert').innerHTML =
+                `<div class="alert alert-error" style="margin:0;">${msg}</div>`;
+        }
+
+        function showAlert(message, type) {
+            const el = document.getElementById('alert-container');
+            if (!el) return;
+            el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            setTimeout(() => el.innerHTML = '', 5000);
+        }
+    </script>
 </body>
 </html>
