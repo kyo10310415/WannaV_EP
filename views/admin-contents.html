@@ -90,10 +90,13 @@
                         <input type="file" class="form-input" id="lesson-video" accept="video/*">
                     </div>
                     <div id="video-url-input" style="display:none;">
-                        <label class="form-label">動画URL（YouTube・Vimeo・直接リンク等）</label>
-                        <input type="url" class="form-input" id="lesson-video-url" placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX">
+                        <label class="form-label">動画URL（YouTube・Vimeo・Googleドライブ等）</label>
+                        <input type="url" class="form-input" id="lesson-video-url" placeholder="https://drive.google.com/file/d/XXXXX/view?usp=sharing">
                         <p style="font-size:12px; color: var(--gray-text); margin-top: 6px;">
-                            ✅ YouTube / Vimeo / MP4直接リンク に対応しています
+                            ✅ YouTube / Vimeo / <strong style="color:var(--accent-cyan);">Google ドライブ</strong> / MP4直接リンク に対応
+                        </p>
+                        <p style="font-size:12px; color: var(--warning); margin-top: 4px;">
+                            ⚠️ Googleドライブを使用する場合は、ファイルの共有設定を「<strong>リンクを知っている全員が閲覧可</strong>」に変更してください
                         </p>
                     </div>
                 </div>
