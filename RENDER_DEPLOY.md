@@ -317,3 +317,80 @@ pg_dump $DATABASE_URL > backup.sql
 
 **作成日**: 2026-03-18
 **対象環境**: Render (PostgreSQL + Node.js)
+
+---
+
+## 💾 動画ファイルを永続化する（Render Disk 設定）
+
+> デプロイのたびに動画ファイルが消える問題を解消します。
+> Render Disk を使うと、アップロードしたMP4・サムネイルが永続的に保存されます。
+
+### ⚠️ なぜ動画が消えるのか
+
+Render の Web Service はデプロイのたびにコンテナを作り直します。
+`uploads/` フォルダはコンテナ内にあるため、**デプロイ＝動画が全消去**になります。
+
+### ✅ 解決策: Render Disk（月 $1〜）
+
+---
+
+### ステップ1: Web Service に Disk を追加
+
+1. Render Dashboard → 対象の **Web Service** を開く
+2. 左メニューの **「Disks」** をクリック
+3. **「Add Disk」** をクリック
+
+以下の設定を入力：
+
+| 項目 | 値 |
+|------|-----|
+| **Name** | `wannav-uploads` |
+| **Mount Path** | `/var/data/uploads` |
+| **Size** | `1 GB`（動画数に応じて増やす。後から変更可） |
+
+4. **「Save」** をクリック
+
+---
+
+### ステップ2: 環境変数 `UPLOAD_DIR` を追加
+
+1. Web Service の **「Environment」** タブを開く
+2. 以下の環境変数を追加：
+
+| Key | Value |
+|-----|-------|
+| `UPLOAD_DIR` | `/var/data/uploads` |
+
+3. **「Save Changes」** → 自動的に再デプロイされる
+
+---
+
+### ステップ3: 動作確認
+
+再デプロイ後、Render のログで以下が表示されれば成功：
+
+```
+📂 Upload directory: /var/data/uploads
+✅ Directory created: /var/data/uploads/thumbs   ← 初回のみ
+```
+
+---
+
+### 料金
+
+| プラン | 容量 | 月額 |
+|--------|------|------|
+| 1 GB | 動画約5〜10本 | $0.10 |
+| 10 GB | 動画約50〜100本 | $1.00 |
+| 100 GB | 動画大量 | $10.00 |
+
+> 📝 Render Disk は GB 単位で課金。1GB = $0.10/月（2024年時点）
+
+---
+
+### 注意事項
+
+- **Disk を追加するまでにアップロードした動画は消えています**（再アップロードが必要）
+- 同一リージョンの Web Service と Disk を同じリージョンに配置してください
+- Free プランの Web Service には Disk を追加できません（Starter $7/月 以上が必要）
+

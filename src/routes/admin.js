@@ -11,9 +11,12 @@ const db = require('../config/database');
 const { generateThumbnail } = require('../utils/thumbnail');
 
 // 動画アップロード設定
+// UPLOAD_DIR は server.js で global に設定される（Render Disk 対応）
+const getUploadDir = () => global.UPLOAD_DIR || require('path').join(__dirname, '../../uploads');
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, getUploadDir());
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -260,7 +263,7 @@ router.post('/lessons/:id/regenerate-thumbnail', auth, checkRole('管理者'), a
       return res.status(400).json({ error: 'MP4ファイルのレッスンのみ対象です' });
     }
 
-    const videoPath = require('path').join(__dirname, '../../uploads', lesson.video_filename);
+    const videoPath = require('path').join(getUploadDir(), lesson.video_filename);
     const fs = require('fs');
     if (!fs.existsSync(videoPath)) {
       return res.status(404).json({ error: '動画ファイルが見つかりません' });
@@ -290,7 +293,7 @@ router.post('/lessons/bulk-regenerate-thumbnails', auth, checkRole('管理者'),
       if (!lesson.video_filename || lesson.video_filename === 'external') continue;
       if (lesson.thumbnail_url) continue; // 既に生成済みはスキップ
 
-      const videoPath = path.join(__dirname, '../../uploads', lesson.video_filename);
+      const videoPath = path.join(getUploadDir(), lesson.video_filename);
       if (!fs.existsSync(videoPath)) continue;
 
       const thumbnailUrl = await generateThumbnail(videoPath, lesson.video_filename);

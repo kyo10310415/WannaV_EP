@@ -10,6 +10,18 @@ const User = require('./src/models/User');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ===== アップロードディレクトリ設定 =====
+// Render Disk を使う場合は環境変数 UPLOAD_DIR=/var/data/uploads を設定
+// ローカル開発時はデフォルトの ./uploads を使用
+const UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(__dirname, 'uploads');
+const THUMBS_DIR = path.join(UPLOAD_DIR, 'thumbs');
+
+// グローバルに公開（admin.js / thumbnail.js から参照）
+global.UPLOAD_DIR  = UPLOAD_DIR;
+global.THUMBS_DIR  = THUMBS_DIR;
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -17,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Static files
 app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(UPLOAD_DIR));
 
 // Routes
 app.use('/api/auth', require('./src/routes/auth'));
@@ -55,12 +67,14 @@ const initializeApp = async () => {
   try {
     console.log('🚀 Initializing WannaV エントリープラン...');
     
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-      console.log('✅ Uploads directory created');
-    }
+    // アップロードディレクトリ作成（Render Diskマウント後でも確実に存在させる）
+    [UPLOAD_DIR, THUMBS_DIR].forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`✅ Directory created: ${dir}`);
+      }
+    });
+    console.log(`📂 Upload directory: ${UPLOAD_DIR}`);
     
     // Create tables
     await createTables();
