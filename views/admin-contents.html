@@ -74,8 +74,28 @@
                     <textarea class="form-textarea" id="lesson-description" rows="3"></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">動画ファイル (MP4, MOV, AVI, MKV - 最大500MB)</label>
-                    <input type="file" class="form-input" id="lesson-video" accept="video/*" required>
+                    <label class="form-label">動画の入力方法を選択</label>
+                    <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
+                            <input type="radio" name="video-input-type" value="file" id="video-type-file" checked onchange="toggleVideoInput()" style="width:auto;min-height:auto;">
+                            📁 ファイルアップロード
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
+                            <input type="radio" name="video-input-type" value="url" id="video-type-url" onchange="toggleVideoInput()" style="width:auto;min-height:auto;">
+                            🔗 URL指定（YouTube等）
+                        </label>
+                    </div>
+                    <div id="video-file-input">
+                        <label class="form-label">動画ファイル (MP4, MOV, AVI, MKV - 最大500MB)</label>
+                        <input type="file" class="form-input" id="lesson-video" accept="video/*">
+                    </div>
+                    <div id="video-url-input" style="display:none;">
+                        <label class="form-label">動画URL（YouTube・Vimeo・直接リンク等）</label>
+                        <input type="url" class="form-input" id="lesson-video-url" placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX">
+                        <p style="font-size:12px; color: var(--gray-text); margin-top: 6px;">
+                            ✅ YouTube / Vimeo / MP4直接リンク に対応しています
+                        </p>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-success">✅ レッスン作成</button>
                 <div id="upload-progress" style="display: none; margin-top: 20px;">
@@ -122,6 +142,12 @@
         let courses = [];
         let lessons = [];
         let quizQuestions = [];
+
+        function toggleVideoInput() {
+            const isFile = document.getElementById('video-type-file').checked;
+            document.getElementById('video-file-input').style.display = isFile ? 'block' : 'none';
+            document.getElementById('video-url-input').style.display = isFile ? 'none' : 'block';
+        }
 
         async function checkAuth() {
             const token = localStorage.getItem('token');
@@ -256,16 +282,31 @@
                 e.preventDefault();
                 const token = localStorage.getItem('token');
 
+                const isFileMode = document.getElementById('video-type-file').checked;
+                const videoFile = document.getElementById('lesson-video').files[0];
+                const videoUrl = document.getElementById('lesson-video-url').value.trim();
+
+                // バリデーション
+                if (isFileMode && !videoFile) {
+                    showAlert('動画ファイルを選択してください', 'error');
+                    return;
+                }
+                if (!isFileMode && !videoUrl) {
+                    showAlert('動画URLを入力してください', 'error');
+                    return;
+                }
+
                 const formData = new FormData();
                 formData.append('courseId', document.getElementById('lesson-course').value);
                 formData.append('title', document.getElementById('lesson-title').value);
                 formData.append('description', document.getElementById('lesson-description').value);
                 formData.append('orderIndex', document.getElementById('lesson-order').value);
                 formData.append('duration', 0);
-                
-                const videoFile = document.getElementById('lesson-video').files[0];
-                if (videoFile) {
+
+                if (isFileMode && videoFile) {
                     formData.append('video', videoFile);
+                } else if (!isFileMode && videoUrl) {
+                    formData.append('externalVideoUrl', videoUrl);
                 }
 
                 try {
@@ -277,10 +318,15 @@
                         body: formData
                     });
 
-                    if (!response.ok) throw new Error('レッスン作成に失敗しました');
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'レッスン作成に失敗しました');
+                    }
 
                     showAlert('レッスンを作成しました', 'success');
                     document.getElementById('create-lesson-form').reset();
+                    document.getElementById('video-file-input').style.display = 'block';
+                    document.getElementById('video-url-input').style.display = 'none';
                     document.getElementById('upload-progress').style.display = 'none';
                     loadLessons();
                 } catch (error) {

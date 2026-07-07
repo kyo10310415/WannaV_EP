@@ -141,37 +141,33 @@
                 return;
             }
 
-            let html = '<div style="display: flex; flex-direction: column; gap: 20px;">';
+            let html = '<div class="lessons-grid">';
             
             lessons.forEach((lesson, index) => {
                 const isCompleted = lesson.completed;
                 const isLocked = index > 0 && !lessons[index - 1].completed;
                 const canAccess = index === 0 || lessons[index - 1].completed;
 
+                const icon = isCompleted ? '✅' : isLocked ? '🔒' : '🎬';
+                const cardClass = isCompleted ? 'lesson-card completed' : isLocked ? 'lesson-card locked' : 'lesson-card';
+
                 html += `
-                    <div class="card" style="opacity: ${isLocked ? 0.5 : 1}">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
-                            <div style="flex: 1; min-width: 250px;">
-                                <h3 style="color: var(--primary-pink); margin-bottom: 10px;">
-                                    ${isCompleted ? '✅' : isLocked ? '🔒' : '📹'} ${lesson.title}
-                                </h3>
-                                <p style="color: var(--gray-text);">${lesson.description || 'レッスンの説明'}</p>
-                                <p style="margin-top: 10px;">
-                                    <span style="color: var(--primary-blue);">📚 ${lesson.course_title || 'コース'}</span>
-                                </p>
-                                ${isCompleted ? '<p style="color: var(--success); margin-top: 10px; font-weight: bold;">🎉 完了済み！</p>' : ''}
-                            </div>
-                            <div>
-                                ${canAccess ? 
-                                    `<a href="/lesson/${lesson.id}" class="btn btn-primary" style="min-width: 150px;">
-                                        ${isCompleted ? '復習する' : 'レッスン開始'}
-                                    </a>` :
-                                    `<button class="btn btn-secondary" disabled style="min-width: 150px;">
-                                        🔒 ロック中
-                                    </button>`
-                                }
-                            </div>
+                    <div class="${cardClass}">
+                        <div class="lesson-card-icon">${icon}</div>
+                        <div>
+                            <div class="lesson-card-course">📚 ${lesson.course_title || 'コース'}</div>
+                            <div class="lesson-card-title">${lesson.title}</div>
                         </div>
+                        <div class="lesson-card-desc">${lesson.description || 'レッスンの説明'}</div>
+                        ${isCompleted ? '<div class="lesson-card-status">🎉 完了済み！</div>' : ''}
+                        ${canAccess ?
+                            `<a href="/lesson/${lesson.id}" class="lesson-card-btn lesson-card-btn-primary">
+                                ${isCompleted ? '🔄 復習する' : '▶️ レッスン開始'}
+                            </a>` :
+                            `<button class="lesson-card-btn lesson-card-btn-disabled" disabled>
+                                🔒 ロック中
+                            </button>`
+                        }
                     </div>
                 `;
             });

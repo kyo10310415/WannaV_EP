@@ -7,6 +7,33 @@
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+    <!-- パスワードリセットモーダル -->
+    <div id="password-reset-modal" style="
+        display: none; position: fixed; inset: 0; z-index: 1000;
+        background: rgba(7,16,24,0.85); backdrop-filter: blur(6px);
+        justify-content: center; align-items: center;">
+        <div style="
+            background: var(--card-bg); border-radius: 20px; padding: 40px;
+            width: 100%; max-width: 440px; border: 1px solid rgba(74,144,217,0.4);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);">
+            <h2 style="margin-bottom: 8px; padding-bottom: 10px;">🔑 パスワード変更</h2>
+            <p style="color: var(--gray-text); font-size: 14px; margin-bottom: 24px;">
+                対象ユーザー：<strong id="reset-modal-username" style="color: var(--primary-blue-light);"></strong>
+            </p>
+            <div class="form-group">
+                <label class="form-label">新しいパスワード（6文字以上）</label>
+                <input type="password" class="form-input" id="reset-new-password" placeholder="新しいパスワード">
+            </div>
+            <div class="form-group">
+                <label class="form-label">パスワード確認</label>
+                <input type="password" class="form-input" id="reset-confirm-password" placeholder="もう一度入力">
+            </div>
+            <div style="display: flex; gap: 16px; margin-top: 28px;">
+                <button onclick="submitPasswordReset()" class="btn btn-primary" style="flex: 1;">✅ 変更する</button>
+                <button onclick="closePasswordReset()" class="btn btn-secondary" style="flex: 1;">キャンセル</button>
+            </div>
+        </div>
+    </div>
     <div class="header">
         <div class="header-content">
             <h1 class="logo">✨ WannaV eラーニング</h1>
@@ -70,6 +97,59 @@
 
     <script>
         const API_URL = '/api';
+
+        // ===== パスワードリセットモーダル =====
+        let resetTargetId = null;
+
+        function openPasswordReset(userId, userName) {
+            resetTargetId = userId;
+            document.getElementById('reset-modal-username').textContent = userName;
+            document.getElementById('reset-new-password').value = '';
+            document.getElementById('reset-confirm-password').value = '';
+            document.getElementById('password-reset-modal').style.display = 'flex';
+        }
+
+        function closePasswordReset() {
+            document.getElementById('password-reset-modal').style.display = 'none';
+            resetTargetId = null;
+        }
+
+        async function submitPasswordReset() {
+            const newPw = document.getElementById('reset-new-password').value;
+            const confirmPw = document.getElementById('reset-confirm-password').value;
+
+            if (!newPw || newPw.length < 6) {
+                showAlert('パスワードは6文字以上で入力してください', 'error');
+                return;
+            }
+            if (newPw !== confirmPw) {
+                showAlert('パスワードが一致しません', 'error');
+                return;
+            }
+
+            const token = localStorage.getItem('token');
+            try {
+                const response = await fetch(`${API_URL}/admin/users/${resetTargetId}/password`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ newPassword: newPw })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'パスワードリセットに失敗しました');
+                }
+
+                closePasswordReset();
+                showAlert('パスワードをリセットしました ✅', 'success');
+            } catch (error) {
+                console.error('パスワードリセットエラー:', error);
+                showAlert(error.message, 'error');
+            }
+        }
 
         // 認証チェック
         async function checkAuth() {
@@ -148,6 +228,9 @@
                         <td>
                             <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 20px; font-size: 14px;">
                                 🗑️ 削除
+                            </button>
+                            <button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding: 8px 20px; font-size: 14px; margin-left: 8px;">
+                                🔑 PW変更
                             </button>
                         </td>
                     </tr>

@@ -51,6 +51,14 @@ class User {
     return await bcrypt.compare(password, hashedPassword);
   }
 
+  static async resetPassword(id, newPassword) {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      'UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, id]
+    );
+  }
+
   static async getUsersWithoutProgressForDays(days = 3) {
     const result = await db.query(`
       SELECT DISTINCT u.id, u.email, u.name, MAX(up.last_watched_at) as last_activity

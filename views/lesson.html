@@ -26,12 +26,9 @@
             <p id="lesson-description" style="color: var(--gray-text);"></p>
         </div>
 
-        <!-- 動画プレーヤー -->
+        <!-- 動画プレーヤー（JS で動的生成） -->
         <div class="video-container" id="video-container">
-            <video id="video-player" controls controlsList="nodownload">
-                <source src="" type="video/mp4">
-                お使いのブラウザは動画再生に対応していません。
-            </video>
+            <div class="loading" style="margin: 60px auto; display: block;"></div>
         </div>
 
         <!-- クイズセクション -->
@@ -120,31 +117,100 @@
             document.getElementById('lesson-description').textContent = 
                 currentLesson.description || 'レッスンの説明';
 
-            // 動画設定
-            const video = document.getElementById('video-player');
-            video.src = currentLesson.video_url;
+            const videoUrl = currentLesson.video_url;
+            const container = document.getElementById('video-container');
 
-            // 動画終了時にクイズ表示
-            video.addEventListener('ended', () => {
+            if (isYouTubeUrl(videoUrl)) {
+                // YouTube埋め込み
+                const embedUrl = getYouTubeEmbedUrl(videoUrl);
+                container.innerHTML = `
+                    <div class="video-iframe-wrapper">
+                        <iframe 
+                            src="${embedUrl}" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                `;
+                // YouTubeはended検知不可なので即クイズボタン表示
+                showQuizButton();
+            } else if (isVimeoUrl(videoUrl)) {
+                // Vimeo埋め込み
+                const embedUrl = getVimeoEmbedUrl(videoUrl);
+                container.innerHTML = `
+                    <div class="video-iframe-wrapper">
+                        <iframe 
+                            src="${embedUrl}" 
+                            allow="autoplay; fullscreen; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                `;
+                showQuizButton();
+            } else {
+                // 通常の動画ファイル（ローカル or 直接MP4リンク）
+                container.innerHTML = `
+                    <video id="video-player" controls controlsList="nodownload">
+                        <source src="${videoUrl}" type="video/mp4">
+                        お使いのブラウザは動画再生に対応していません。
+                    </video>
+                `;
+                const video = document.getElementById('video-player');
+                video.addEventListener('ended', () => {
+                    if (questions.length > 0) showQuiz();
+                    else {
+                        showAlert('このレッスンにはクイズがありません。ダッシュボードに戻ります。', 'success');
+                        setTimeout(() => window.location.href = '/dashboard', 2000);
+                    }
+                });
+                // 5秒後にスキップボタン
                 if (questions.length > 0) {
-                    showQuiz();
-                } else {
-                    showAlert('このレッスンにはクイズがありません。ダッシュボードに戻ります。', 'success');
-                    setTimeout(() => window.location.href = '/dashboard', 2000);
+                    setTimeout(() => showQuizButton(), 5000);
                 }
-            });
-
-            // クイズがある場合は手動でも表示可能
-            if (questions.length > 0) {
-                setTimeout(() => {
-                    const skipBtn = document.createElement('button');
-                    skipBtn.textContent = '📝 クイズへスキップ';
-                    skipBtn.className = 'btn btn-primary';
-                    skipBtn.style.marginTop = '20px';
-                    skipBtn.onclick = showQuiz;
-                    document.getElementById('video-container').after(skipBtn);
-                }, 5000);
             }
+        }
+
+        // YouTube URL判定
+        function isYouTubeUrl(url) {
+            return url && (url.includes('youtube.com') || url.includes('youtu.be'));
+        }
+
+        // Vimeo URL判定
+        function isVimeoUrl(url) {
+            return url && url.includes('vimeo.com');
+        }
+
+        // YouTube埋め込みURL生成
+        function getYouTubeEmbedUrl(url) {
+            let videoId = '';
+            if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1].split('?')[0];
+            } else if (url.includes('v=')) {
+                videoId = url.split('v=')[1].split('&')[0];
+            } else if (url.includes('/embed/')) {
+                return url; // すでにembed URL
+            }
+            return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`;
+        }
+
+        // Vimeo埋め込みURL生成
+        function getVimeoEmbedUrl(url) {
+            const match = url.match(/vimeo\.com\/(\d+)/);
+            if (match) return `https://player.vimeo.com/video/${match[1]}`;
+            return url;
+        }
+
+        // クイズへのボタンを表示
+        function showQuizButton() {
+            const existing = document.getElementById('quiz-skip-btn');
+            if (existing || questions.length === 0) return;
+            const btn = document.createElement('button');
+            btn.id = 'quiz-skip-btn';
+            btn.textContent = '📝 クイズに進む';
+            btn.className = 'btn btn-primary';
+            btn.style.cssText = 'margin-top: 20px; display: block; width: 100%;';
+            btn.onclick = showQuiz;
+            document.getElementById('video-container').after(btn);
         }
 
         // 視聴記録

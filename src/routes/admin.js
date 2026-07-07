@@ -49,6 +49,17 @@ router.get('/users', auth, checkRole('管理者', 'クルー'), async (req, res)
   }
 });
 
+// ★ 全ユーザーの進捗取得（/users/:id より前に定義する必要あり）
+router.get('/users/progress', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+  try {
+    const progress = await Progress.getAllUsersProgress();
+    res.json(progress);
+  } catch (error) {
+    console.error('Get all progress error:', error);
+    res.status(500).json({ error: '進捗の取得に失敗しました' });
+  }
+});
+
 // ユーザー作成
 router.post('/users', auth, checkRole('管理者'), async (req, res) => {
   try {
@@ -87,14 +98,18 @@ router.delete('/users/:id', auth, checkRole('管理者'), async (req, res) => {
   }
 });
 
-// 全ユーザーの進捗取得
-router.get('/users/progress', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+// パスワードリセット（管理者が直接変更）
+router.patch('/users/:id/password', auth, checkRole('管理者'), async (req, res) => {
   try {
-    const progress = await Progress.getAllUsersProgress();
-    res.json(progress);
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'パスワードは6文字以上で入力してください' });
+    }
+    await User.resetPassword(req.params.id, newPassword);
+    res.json({ success: true, message: 'パスワードをリセットしました' });
   } catch (error) {
-    console.error('Get all progress error:', error);
-    res.status(500).json({ error: '進捗の取得に失敗しました' });
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'パスワードのリセットに失敗しました' });
   }
 });
 
@@ -131,9 +146,24 @@ router.get('/courses', auth, checkRole('管理者', 'クルー'), async (req, re
 // レッスン作成
 router.post('/lessons', auth, checkRole('管理者'), upload.single('video'), async (req, res) => {
   try {
-    const { courseId, title, description, duration, orderIndex } = req.body;
-    const videoFilename = req.file ? req.file.filename : null;
-    const videoUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const { courseId, title, description, duration, orderIndex, externalVideoUrl } = req.body;
+
+    let videoFilename = null;
+    let videoUrl = null;
+
+    if (req.file) {
+      // ファイルアップロード優先
+      videoFilename = req.file.filename;
+      videoUrl = `/uploads/${req.file.filename}`;
+    } else if (externalVideoUrl && externalVideoUrl.trim()) {
+      // 外部URL（YouTube等）
+      videoFilename = 'external';
+      videoUrl = externalVideoUrl.trim();
+    }
+
+    if (!videoUrl) {
+      return res.status(400).json({ error: '動画ファイルまたは動画URLを指定してください' });
+    }
 
     const lesson = await Lesson.create(
       courseId,
@@ -166,15 +196,23 @@ router.get('/lessons', auth, checkRole('管理者', 'クルー'), async (req, re
 // レッスン更新
 router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'), async (req, res) => {
   try {
-    const { title, description, duration, orderIndex } = req.body;
+    const { title, description, duration, orderIndex, externalVideoUrl } = req.body;
     const lesson = await Lesson.findById(req.params.id);
     
     if (!lesson) {
       return res.status(404).json({ error: 'レッスンが見つかりません' });
     }
 
-    const videoFilename = req.file ? req.file.filename : lesson.video_filename;
-    const videoUrl = req.file ? `/uploads/${req.file.filename}` : lesson.video_url;
+    let videoFilename = lesson.video_filename;
+    let videoUrl = lesson.video_url;
+
+    if (req.file) {
+      videoFilename = req.file.filename;
+      videoUrl = `/uploads/${req.file.filename}`;
+    } else if (externalVideoUrl && externalVideoUrl.trim()) {
+      videoFilename = 'external';
+      videoUrl = externalVideoUrl.trim();
+    }
 
     const updated = await Lesson.update(req.params.id, {
       title,
