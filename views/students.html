@@ -199,14 +199,8 @@
     </div>
 
     <div class="container">
-        <!-- ナビゲーション（管理者/クルー向け） -->
-        <div class="nav" id="admin-nav" style="display:none;">
-            <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
-            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
-            <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
-            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
-            <a href="/students" class="nav-link active">🎓 生徒一覧</a>
-        </div>
+        <!-- ナビゲーション（権限に応じて動的生成） -->
+        <div class="nav" id="admin-nav" style="display:none;"></div>
 
         <div id="alert-container"></div>
 
@@ -326,7 +320,7 @@
                 document.getElementById('user-role').textContent = currentUser.role || '';
 
                 if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
-                    document.getElementById('admin-nav').style.display = 'flex';
+                    buildNav('admin-nav', currentUser.role, '/students');
                     loadStudents();
                 } else {
                     // 生徒はアクセス不可 → エラー表示してダッシュボードへ
@@ -696,6 +690,23 @@
         function logout() {
             localStorage.removeItem('token');
             window.location.href = '/';
+        }
+
+        // ===== ロールに応じたナビ生成 =====
+        function buildNav(elementId, role, activePath) {
+            const links = [
+                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー'] },
+                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者'] },
+                { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
+                { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
+                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー'] },
+            ];
+            const el = document.getElementById(elementId);
+            el.innerHTML = links
+                .filter(l => l.roles.includes(role))
+                .map(l => `<a href="${l.href}" class="nav-link${l.href === activePath ? ' active' : ''}">${l.label}</a>`)
+                .join('');
+            el.style.display = 'flex';
         }
 
         // 初期化

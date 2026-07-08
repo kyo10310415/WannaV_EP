@@ -99,13 +99,7 @@
     </div>
 
     <div class="container">
-        <div class="nav">
-            <a href="/dashboard" class="nav-link">📊 ダッシュボード</a>
-            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
-            <a href="/admin/contents" class="nav-link active">📹 コンテンツ管理</a>
-            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
-            <a href="/students" class="nav-link">🎓 生徒一覧</a>
-        </div>
+        <div class="nav" id="admin-nav"></div>
 
         <div id="alert-container"></div>
 
@@ -343,6 +337,7 @@
                     window.location.href = '/dashboard';
                     return;
                 }
+                buildNav('admin-nav', user.role, '/admin/contents');
                 loadCourses();
                 loadLessons();
             } catch {
@@ -758,6 +753,23 @@
             setTimeout(() => el.innerHTML = '', 5000);
         }
         function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+
+        // ===== ロールに応じたナビ生成 =====
+        function buildNav(elementId, role, activePath) {
+            const links = [
+                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー'] },
+                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者'] },
+                { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
+                { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
+                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー'] },
+            ];
+            const el = document.getElementById(elementId);
+            el.innerHTML = links
+                .filter(l => l.roles.includes(role))
+                .map(l => `<a href="${l.href}" class="nav-link${l.href === activePath ? ' active' : ''}">${l.label}</a>`)
+                .join('');
+            el.style.display = 'flex';
+        }
 
         checkAuth();
     </script>

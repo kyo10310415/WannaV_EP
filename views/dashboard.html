@@ -19,14 +19,8 @@
     </div>
 
     <div class="container">
-        <!-- 管理者メニュー -->
-        <div id="admin-menu" class="nav" style="display: none;">
-            <a href="/dashboard" class="nav-link active">📊 ダッシュボード</a>
-            <a href="/admin/accounts" class="nav-link">👥 アカウント管理</a>
-            <a href="/admin/contents" class="nav-link">📹 コンテンツ管理</a>
-            <a href="/admin/users" class="nav-link">📈 ユーザー進捗管理</a>
-            <a href="/students" class="nav-link">🎓 生徒一覧</a>
-        </div>
+        <!-- 管理者メニュー（権限に応じて動的生成） -->
+        <div id="admin-menu" class="nav" style="display: none;"></div>
 
         <!-- 進捗統計 -->
         <div class="dashboard-grid">
@@ -87,7 +81,7 @@
 
                 // 管理者メニュー表示
                 if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
-                    document.getElementById('admin-menu').style.display = 'flex';
+                    buildNav('admin-menu', currentUser.role, '/dashboard');
                 }
 
                 loadDashboard();
@@ -285,6 +279,24 @@
         function logout() {
             localStorage.removeItem('token');
             window.location.href = '/';
+        }
+
+        // ===== ロールに応じたナビ生成 =====
+        function buildNav(elementId, role, activePath) {
+            const isAdmin = role === '管理者';
+            const links = [
+                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー'] },
+                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者'] },
+                { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
+                { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
+                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー'] },
+            ];
+            const el = document.getElementById(elementId);
+            el.innerHTML = links
+                .filter(l => l.roles.includes(role))
+                .map(l => `<a href="${l.href}" class="nav-link${l.href === activePath ? ' active' : ''}">${l.label}</a>`)
+                .join('');
+            el.style.display = 'flex';
         }
 
         // 初期化
