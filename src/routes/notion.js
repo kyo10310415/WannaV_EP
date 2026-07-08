@@ -8,7 +8,7 @@ const { syncNotionStudents, fetchDatabaseProperties } = require('../utils/notion
  * GET /api/notion/students
  * エントリープランの生徒一覧を返す（DBキャッシュから）
  */
-router.get('/students', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.get('/students', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
     const students = await NotionStudent.getAll();
     const lastSynced = await NotionStudent.getLastSyncedAt();
@@ -23,7 +23,7 @@ router.get('/students', auth, checkRole('管理者', 'クルー'), async (req, r
  * POST /api/notion/sync
  * 手動で Notion から最新データを同期する（管理者のみ）
  */
-router.post('/sync', auth, checkRole('管理者'), async (req, res) => {
+router.post('/sync', auth, checkRole('管理者', 'セールス'), async (req, res) => {
   try {
     const result = await syncNotionStudents();
     res.json({

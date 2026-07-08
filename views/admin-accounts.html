@@ -50,8 +50,8 @@
 
         <div id="alert-container"></div>
 
-        <!-- アカウント追加 -->
-        <div class="card">
+        <!-- アカウント追加（管理者のみ表示） -->
+        <div class="card" id="create-user-card" style="display:none;">
             <h2 style="margin-bottom: 8px;">➕ 新規アカウント作成</h2>
             <p style="color: var(--gray-text); font-size: 13px; margin-bottom: 24px;">
                 初期パスワードは <code style="background:rgba(74,144,217,0.15); padding:2px 8px; border-radius:6px; color:var(--accent-cyan);">1111</code> で固定されます。初回ログイン時にパスワード変更が必須となります。
@@ -70,6 +70,7 @@
                         <label class="form-label">権限</label>
                         <select class="form-select" id="new-role" required>
                             <option value="生徒">生徒</option>
+                            <option value="セールス">セールス</option>
                             <option value="クルー">クルー</option>
                             <option value="管理者">管理者</option>
                         </select>
@@ -92,6 +93,7 @@
 
     <script>
         const API_URL = '/api';
+        let currentUser = null; // ログイン中ユーザーを保持
 
         // ===== パスワードリセットモーダル =====
         let resetTargetId = null;
@@ -162,15 +164,20 @@
                 if (!response.ok) throw new Error('認証失敗');
 
                 const user = await response.json();
+                currentUser = user;
                 document.getElementById('user-name').textContent = user.name;
 
-                if (user.role !== '管理者') {
-                    alert('管理者権限が必要です');
+                if (user.role !== '管理者' && user.role !== 'クルー' && user.role !== 'セールス') {
+                    alert('アクセス権限がありません');
                     window.location.href = '/dashboard';
                     return;
                 }
 
                 buildNav('admin-nav', user.role, '/admin/accounts');
+                // 管理者のみ新規作成フォームを表示
+                if (user.role === '管理者') {
+                    document.getElementById('create-user-card').style.display = 'block';
+                }
                 loadUsers();
             } catch (error) {
                 console.error('認証エラー:', error);
@@ -226,6 +233,31 @@
                     ? `<span style="color:#6AEBB7; font-size:12px;">✅ 変更済み</span>`
                     : `<span style="color:#F7C55B; font-size:12px;">⚠️ 未変更</span>`;
 
+                const isAdmin = currentUser && currentUser.role === '管理者';
+
+                // 権限セレクト（管理者のみ編集可）
+                const roleCell = isAdmin
+                    ? `<select onchange="updateRole(${user.id}, this.value)" style="padding: 8px 12px; border-radius: 10px; background: rgba(15, 15, 30, 0.8); color: white; border: 2px solid rgba(74, 144, 217, 0.3); font-size:13px;">
+                        <option value="生徒" ${user.role === '生徒' ? 'selected' : ''}>生徒</option>
+                        <option value="セールス" ${user.role === 'セールス' ? 'selected' : ''}>セールス</option>
+                        <option value="クルー" ${user.role === 'クルー' ? 'selected' : ''}>クルー</option>
+                        <option value="管理者" ${user.role === '管理者' ? 'selected' : ''}>管理者</option>
+                       </select>`
+                    : `<span style="padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700;
+                            background:rgba(74,144,217,0.12); border:1px solid rgba(74,144,217,0.3); color:var(--primary-blue-light);">
+                            ${user.role}
+                       </span>`;
+
+                // 操作ボタン（管理者のみ表示）
+                const actionCell = isAdmin
+                    ? `<button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
+                          🔑 PW変更
+                       </button>
+                       <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
+                          🗑️ 削除
+                       </button>`
+                    : '<span style="color:var(--gray-text); font-size:12px;">—</span>';
+
                 html += `
                     <tr>
                         <td>
@@ -234,23 +266,10 @@
                             </code>
                         </td>
                         <td style="font-weight:600;">${user.name}</td>
-                        <td>
-                            <select onchange="updateRole(${user.id}, this.value)" style="padding: 8px 12px; border-radius: 10px; background: rgba(15, 15, 30, 0.8); color: white; border: 2px solid rgba(74, 144, 217, 0.3); font-size:13px;">
-                                <option value="生徒" ${user.role === '生徒' ? 'selected' : ''}>生徒</option>
-                                <option value="クルー" ${user.role === 'クルー' ? 'selected' : ''}>クルー</option>
-                                <option value="管理者" ${user.role === '管理者' ? 'selected' : ''}>管理者</option>
-                            </select>
-                        </td>
+                        <td>${roleCell}</td>
                         <td>${pwChanged}</td>
                         <td style="color:var(--gray-text); font-size:13px;">${createdDate}</td>
-                        <td style="display:flex; gap:8px; flex-wrap:wrap;">
-                            <button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
-                                🔑 PW変更
-                            </button>
-                            <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
-                                🗑️ 削除
-                            </button>
-                        </td>
+                        <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}</td>
                     </tr>
                 `;
             });
@@ -365,11 +384,11 @@
         // ===== ロールに応じたナビ生成 =====
         function buildNav(elementId, role, activePath) {
             const links = [
-                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー'] },
-                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者'] },
+                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者', 'セールス'] },
                 { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
                 { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
-                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー'] },
+                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー', 'セールス'] },
             ];
             const el = document.getElementById(elementId);
             el.innerHTML = links

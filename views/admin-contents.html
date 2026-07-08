@@ -757,11 +757,11 @@
         // ===== ロールに応じたナビ生成 =====
         function buildNav(elementId, role, activePath) {
             const links = [
-                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー'] },
-                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者'] },
+                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者', 'セールス'] },
                 { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
                 { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
-                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー'] },
+                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー', 'セールス'] },
             ];
             const el = document.getElementById(elementId);
             el.innerHTML = links

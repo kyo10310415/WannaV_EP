@@ -43,7 +43,7 @@ const upload = multer({
 // ===== ユーザー管理 =====
 
 // 全ユーザー取得
-router.get('/users', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.get('/users', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
     const users = await User.getAll();
     res.json(users);
@@ -54,7 +54,7 @@ router.get('/users', auth, checkRole('管理者', 'クルー'), async (req, res)
 });
 
 // ★ 全ユーザーの進捗取得（/users/:id より前に定義する必要あり）
-router.get('/users/progress', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.get('/users/progress', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
     const progress = await Progress.getAllUsersProgress();
     res.json(progress);

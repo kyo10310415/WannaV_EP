@@ -319,13 +319,13 @@
                 document.getElementById('user-name').textContent = currentUser.name || '';
                 document.getElementById('user-role').textContent = currentUser.role || '';
 
-                if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
+                if (currentUser.role === '管理者' || currentUser.role === 'クルー' || currentUser.role === 'セールス') {
                     buildNav('admin-nav', currentUser.role, '/students');
                     loadStudents();
                 } else {
                     // 生徒はアクセス不可 → エラー表示してダッシュボードへ
                     document.getElementById('students-container').innerHTML =
-                        `<div class="empty-state"><div class="empty-icon">🔒</div><p>このページは管理者・クルーのみアクセスできます</p></div>`;
+                        `<div class="empty-state"><div class="empty-icon">🔒</div><p>このページは管理者・クルー・セールスのみアクセスできます</p></div>`;
                     updateLastSynced(null);
                     setTimeout(() => window.location.href = '/dashboard', 2500);
                 }
@@ -695,11 +695,11 @@
         // ===== ロールに応じたナビ生成 =====
         function buildNav(elementId, role, activePath) {
             const links = [
-                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー'] },
-                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者'] },
+                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者', 'セールス'] },
                 { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
                 { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
-                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー'] },
+                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー', 'セールス'] },
             ];
             const el = document.getElementById(elementId);
             el.innerHTML = links
