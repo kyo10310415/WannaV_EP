@@ -10,7 +10,7 @@ const createTables = async () => {
         password VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
         username VARCHAR(255) UNIQUE,
-        role VARCHAR(50) NOT NULL CHECK (role IN ('管理者', 'クルー', '生徒')),
+        role VARCHAR(50) NOT NULL CHECK (role IN ('管理者', 'クルー', 'セールス', '生徒')),
         password_changed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -102,6 +102,21 @@ const createTables = async () => {
         ) THEN
           ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
         END IF;
+      END $$
+    `);
+
+    // role の CHECK 制約にセールスを追加（マイグレーション）
+    // 既存の users_role_check を DROP して '管理者','クルー','セールス','生徒' で再作成
+    await db.query(`
+      DO $$ BEGIN
+        -- 古い制約が存在する場合は削除して再作成
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check'
+        ) THEN
+          ALTER TABLE users DROP CONSTRAINT users_role_check;
+        END IF;
+        ALTER TABLE users ADD CONSTRAINT users_role_check
+          CHECK (role IN ('管理者', 'クルー', 'セールス', '生徒'));
       END $$
     `);
 
