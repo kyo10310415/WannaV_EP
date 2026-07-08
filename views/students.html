@@ -271,12 +271,13 @@
                     oninput="filterStudents()"
                 >
                 <select id="status-filter" class="form-select"
-                    style="width:auto; min-width:140px; padding:10px 14px; font-size:13px;"
+                    style="width:auto; min-width:160px; padding:10px 14px; font-size:13px;"
                     onchange="filterStudents()">
                     <option value="">すべてのステータス</option>
-                    <option value="受講中">受講中</option>
-                    <option value="休会中">休会中</option>
-                    <option value="退会">退会</option>
+                    <option value="アクティブ" selected>アクティブ</option>
+                    <option value="レッスン準備中">レッスン準備中</option>
+                    <option value="正規退会">正規退会</option>
+                    <option value="無断キャンセル">無断キャンセル</option>
                 </select>
             </div>
 
@@ -361,7 +362,7 @@
                 const data = await res.json();
                 allStudents = data.students || [];
                 updateLastSynced(data.lastSynced);
-                renderStudents(allStudents);
+                filterStudents(); // デフォルト「アクティブ」で絞り込んで描画
             } catch (err) {
                 console.error('生徒データ取得エラー:', err);
                 container.innerHTML = `
@@ -544,9 +545,10 @@
         // ===== ステータスに応じた CSS クラス =====
         function getStatusClass(status) {
             if (!status) return 'status-default';
-            if (status.includes('受講') || status.includes('在籍') || status.includes('Active')) return 'status-active';
-            if (status.includes('休') || status.includes('Pause')) return 'status-pause';
-            if (status.includes('退') || status.includes('Stop') || status.includes('卒業')) return 'status-stop';
+            if (status === 'アクティブ')      return 'status-active';
+            if (status === 'レッスン準備中')   return 'status-pause';
+            if (status === '正規退会')        return 'status-stop';
+            if (status === '無断キャンセル')   return 'status-stop';
             return 'status-default';
         }
 
