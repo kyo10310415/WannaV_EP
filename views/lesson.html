@@ -90,7 +90,20 @@
         let selectedAnswers = {};
         let progressSaveTimer = null;
         let lastSavedPercent = 0;
+        let currentWatchPercent = 0; // 現在の視聴率（ページ離脱時に使用）
         const lessonId = window.location.pathname.split('/').pop();
+
+        // ページ離脱時に現在の視聴率を同期保存（navigator.sendBeacon 使用）
+        window.addEventListener('beforeunload', () => {
+            if (currentWatchPercent > lastSavedPercent && currentLesson && !currentLesson.completed) {
+                const token = localStorage.getItem('token');
+                const payload = JSON.stringify({ percent: currentWatchPercent });
+                navigator.sendBeacon(
+                    `${API_URL}/lessons/${lessonId}/watch-progress`,
+                    new Blob([payload], { type: 'application/json' })
+                );
+            }
+        });
 
         // ページ読み込み
         async function loadLesson() {
@@ -218,18 +231,23 @@
 
             progressSection.style.display = 'block';
 
-            // 既存の視聴率を復元（再ロード時）
+            // 既存の視聴率を復元（ページ読み込み直後に即反映してリセットを防ぐ）
             const savedPercent = currentLesson.watch_percent || 0;
+            currentWatchPercent = savedPercent;
+            lastSavedPercent = savedPercent;
             if (savedPercent > 0) {
                 updateWatchBar(savedPercent);
-                lastSavedPercent = savedPercent;
             }
 
             // timeupdate: 1秒ごとに視聴率を計算・表示
             video.addEventListener('timeupdate', () => {
                 if (!video.duration || video.duration === 0) return;
                 const percent = Math.round((video.currentTime / video.duration) * 100);
-                updateWatchBar(percent);
+                // 常に最大値のみ更新（巻き戻しで下がらないようにする）
+                if (percent > currentWatchPercent) {
+                    currentWatchPercent = percent;
+                    updateWatchBar(percent);
+                }
 
                 // 5%刻みでAPIに保存
                 if (percent - lastSavedPercent >= 5) {
@@ -240,6 +258,7 @@
 
             // ended: 100%視聴完了
             video.addEventListener('ended', () => {
+                currentWatchPercent = 100;
                 updateWatchBar(100);
                 saveWatchPercent(100, true); // auto_complete フラグ
             });

@@ -20,11 +20,13 @@ router.get('/', auth, async (req, res) => {
 router.get('/:id', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
-    
-    // アクセス権限チェック
-    const canAccess = await Progress.canAccessLesson(req.user.id, lessonId);
-    if (!canAccess) {
-      return res.status(403).json({ error: '前のレッスンを完了してください' });
+
+    // 管理者は全レッスンに無条件アクセス可。それ以外はアンロック判定
+    if (req.user.role !== '管理者') {
+      const canAccess = await Progress.canAccessLesson(req.user.id, lessonId);
+      if (!canAccess) {
+        return res.status(403).json({ error: '前のレッスンを完了してください' });
+      }
     }
 
     const lesson = await Lesson.findById(lessonId);

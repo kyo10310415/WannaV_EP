@@ -119,7 +119,7 @@
                 });
                 const lessons = await lessonsRes.json();
 
-                renderLessons(lessons);
+                renderLessons(lessons, currentUser.role);
             } catch (error) {
                 console.error('データ読み込みエラー:', error);
                 document.getElementById('lessons-container').innerHTML = 
@@ -128,8 +128,9 @@
         }
 
         // レッスン描画
-        function renderLessons(lessons) {
+        function renderLessons(lessons, userRole) {
             const container = document.getElementById('lessons-container');
+            const isAdmin = userRole === '管理者';
             
             if (lessons.length === 0) {
                 container.innerHTML = '<p style="color: var(--gray-text);">レッスンがまだありません</p>';
@@ -140,8 +141,9 @@
             
             lessons.forEach((lesson, index) => {
                 const isCompleted = lesson.completed;
-                const isLocked = index > 0 && !lessons[index - 1].completed;
-                const canAccess = index === 0 || lessons[index - 1].completed;
+                // 管理者は全レッスンをロックなしで開放
+                const isLocked = isAdmin ? false : (index > 0 && !lessons[index - 1].completed);
+                const canAccess = isAdmin ? true : (index === 0 || lessons[index - 1].completed);
 
                 // サムネイル生成
                 const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url);
@@ -158,6 +160,37 @@
 
                 const linkStart = canAccess ? `<a href="/lesson/${lesson.id}" class="lesson-card-link">` : `<div class="lesson-card-link no-pointer">`;
                 const linkEnd   = canAccess ? `</a>` : `</div>`;
+
+                const wp = lesson.watch_percent || 0;
+                // 視聴進捗バー: 完了・未完了・未視聴・ロック中すべて表示
+                // ロック中は表示しない、完了はグリーン100%、それ以外は実際の進捗
+                let watchBarHtml = '';
+                if (!isLocked) {
+                    if (isCompleted) {
+                        watchBarHtml = `
+                            <div class="lesson-watch-bar-wrap">
+                                <div class="lesson-watch-bar-header">
+                                    <span>視聴進捗</span><span class="lesson-watch-bar-pct done">100%</span>
+                                </div>
+                                <div class="lesson-watch-bar-bg">
+                                    <div class="lesson-watch-bar-fill done" style="width:100%;"></div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const pctColor = wp >= 95 ? 'near' : wp >= 50 ? 'mid' : 'low';
+                        watchBarHtml = `
+                            <div class="lesson-watch-bar-wrap">
+                                <div class="lesson-watch-bar-header">
+                                    <span>視聴進捗</span><span class="lesson-watch-bar-pct ${pctColor}">${wp}%</span>
+                                </div>
+                                <div class="lesson-watch-bar-bg">
+                                    <div class="lesson-watch-bar-fill ${pctColor}" style="width:${wp}%;"></div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
 
                 html += `
                     ${linkStart}
@@ -181,37 +214,7 @@
                                 ${isCompleted ? '<span class="lesson-tag-done">✅ 学習済み</span>' : ''}
                                 ${isLocked ? '<span class="lesson-tag-locked">🔒 ロック中</span>' : ''}
                             </div>
-                            ${(function() {
-                                const wp = lesson.watch_percent || 0;
-                                if (isCompleted) {
-                                    // 完了済み: グリーンの100%バーを表示
-                                    return `
-                                        <div class="lesson-watch-bar-wrap">
-                                            <div class="lesson-watch-bar-header">
-                                                <span>視聴進捗</span><span class="lesson-watch-bar-pct done">100%</span>
-                                            </div>
-                                            <div class="lesson-watch-bar-bg">
-                                                <div class="lesson-watch-bar-fill done" style="width:100%;"></div>
-                                            </div>
-                                        </div>
-                                    `;
-                                } else if (!isLocked && wp > 0) {
-                                    // 未完了 & 視聴中: 進捗バー表示
-                                    const pctColor = wp >= 95 ? 'near' : wp >= 50 ? 'mid' : 'low';
-                                    return `
-                                        <div class="lesson-watch-bar-wrap">
-                                            <div class="lesson-watch-bar-header">
-                                                <span>視聴進捗</span><span class="lesson-watch-bar-pct ${pctColor}">${wp}%</span>
-                                            </div>
-                                            <div class="lesson-watch-bar-bg">
-                                                <div class="lesson-watch-bar-fill ${pctColor}" style="width:${wp}%;"></div>
-                                            </div>
-                                        </div>
-                                    `;
-                                } else {
-                                    return ''; // 未視聴・ロック中はバー非表示
-                                }
-                            })()}
+                            ${watchBarHtml}
                         </div>
                     </div>
                     ${linkEnd}
