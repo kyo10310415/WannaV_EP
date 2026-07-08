@@ -140,6 +140,21 @@ async function fetchEntryPlanStudents() {
 
     for (const page of data.results || []) {
       const parsed = parsePage(page);
+
+      // ---- デバッグログ（1件目のみ）----
+      if (students.length === 0) {
+        const props = page.properties || {};
+        const titleEntry = Object.entries(props).find(([, v]) => v.type === 'title');
+        console.log('🔍 [DEBUG] 1件目のページID:', page.id);
+        console.log('🔍 [DEBUG] type:title プロパティ:', titleEntry
+          ? `name="${titleEntry[0]}" value="${titleEntry[1].title?.map(t=>t.plain_text).join('')}"`
+          : '見つからない');
+        console.log('🔍 [DEBUG] 全プロパティ名:', Object.keys(props).join(', '));
+        console.log('🔍 [DEBUG] studentName取得結果:', parsed.studentName);
+        console.log('🔍 [DEBUG] contractPlan取得結果:', parsed.contractPlan);
+      }
+      // ------------------------------------
+
       // フィルタが効いているが念のため再チェック
       if (parsed.contractPlan === ENTRY_PLAN_NAME) {
         students.push(parsed);
