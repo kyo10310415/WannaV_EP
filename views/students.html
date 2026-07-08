@@ -682,6 +682,9 @@
         document.getElementById('debug-modal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('debug-modal')) closeDebugModal();
         });
+
+        // ===== アラート =====
+        function showAlert(message, type) {
             const el = document.getElementById('alert-container');
             el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
             setTimeout(() => el.innerHTML = '', 6000);
