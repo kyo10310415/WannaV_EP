@@ -214,12 +214,13 @@
         <div id="debug-modal" style="
             display:none; position:fixed; inset:0; z-index:2000;
             background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);
-            align-items:center; justify-content:center; padding:20px;">
+            padding:20px; overflow-y:auto;">
             <div style="
                 background:var(--card-bg); border:1px solid rgba(74,144,217,0.4);
                 border-radius:20px; padding:32px; width:100%; max-width:720px;
                 max-height:85vh; overflow-y:auto;
-                box-shadow:0 20px 60px rgba(0,0,0,0.7);">
+                box-shadow:0 20px 60px rgba(0,0,0,0.7);
+                margin: 40px auto;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                     <h2 style="margin:0; padding:0; font-size:18px;">🔍 Notion プロパティ名確認</h2>
                     <button onclick="closeDebugModal()" style="
@@ -300,25 +301,45 @@
                 const res = await fetch(`${API_URL}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (!res.ok) throw new Error('認証失敗');
 
-                currentUser = await res.json();
-                document.getElementById('user-name').textContent = currentUser.name;
-                document.getElementById('user-role').textContent = currentUser.role;
-
-                if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
-                    document.getElementById('admin-nav').style.display = 'flex';
-                } else {
-                    // 生徒はアクセス不可
-                    showAlert('このページは管理者・クルーのみアクセスできます', 'error');
-                    setTimeout(() => window.location.href = '/dashboard', 2000);
+                // 401/403 はログイン画面へ
+                if (res.status === 401 || res.status === 403) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/';
                     return;
                 }
 
-                loadStudents();
+                if (!res.ok) {
+                    // その他エラーは画面に表示してハングさせない
+                    const errData = await res.json().catch(() => ({}));
+                    document.getElementById('students-container').innerHTML =
+                        `<div class="empty-state"><div class="empty-icon">⚠️</div><p>認証エラー: ${errData.error || res.status}</p></div>`;
+                    updateLastSynced(null);
+                    return;
+                }
+
+                currentUser = await res.json();
+
+                // needsPasswordChange チェック：初回PW未変更でも students は管理者なので通す
+                document.getElementById('user-name').textContent = currentUser.name || '';
+                document.getElementById('user-role').textContent = currentUser.role || '';
+
+                if (currentUser.role === '管理者' || currentUser.role === 'クルー') {
+                    document.getElementById('admin-nav').style.display = 'flex';
+                    loadStudents();
+                } else {
+                    // 生徒はアクセス不可 → エラー表示してダッシュボードへ
+                    document.getElementById('students-container').innerHTML =
+                        `<div class="empty-state"><div class="empty-icon">🔒</div><p>このページは管理者・クルーのみアクセスできます</p></div>`;
+                    updateLastSynced(null);
+                    setTimeout(() => window.location.href = '/dashboard', 2500);
+                }
             } catch (err) {
-                localStorage.removeItem('token');
-                window.location.href = '/';
+                console.error('checkAuth error:', err);
+                // ネットワークエラー等 → ログイン画面ではなくエラー表示（ループ防止）
+                document.getElementById('students-container').innerHTML =
+                    `<div class="empty-state"><div class="empty-icon">📡</div><p>サーバーへの接続に失敗しました</p><small>${err.message}</small></div>`;
+                updateLastSynced(null);
             }
         }
 
@@ -332,14 +353,14 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
-                if (!res.ok) throw new Error('データ取得失敗');
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || `HTTP ${res.status}`);
+                }
 
                 const data = await res.json();
                 allStudents = data.students || [];
-
-                // 最終同期日時
                 updateLastSynced(data.lastSynced);
-
                 renderStudents(allStudents);
             } catch (err) {
                 console.error('生徒データ取得エラー:', err);
@@ -347,7 +368,12 @@
                     <div class="empty-state">
                         <div class="empty-icon">📭</div>
                         <p>データの読み込みに失敗しました</p>
-                        <small>「今すぐ同期」ボタンで Notion から取得してください</small>
+                        <small>${err.message}</small>
+                        <br><br>
+                        <button onclick="syncNotion()" class="btn btn-primary"
+                            style="font-size:14px; padding:12px 24px; min-height:auto; min-width:auto;">
+                            🔄 今すぐ Notion から同期する
+                        </button>
                     </div>
                 `;
             }
@@ -541,7 +567,7 @@
             const modal = document.getElementById('debug-modal');
             const content = document.getElementById('debug-content');
 
-            modal.style.display = 'flex';
+            modal.style.display = 'block';
             content.innerHTML = '<div class="loading" style="margin:30px auto;"></div>';
 
             try {
@@ -653,9 +679,8 @@
         }
 
         // モーダル外クリックで閉じる
-        document.addEventListener('click', (e) => {
-            const modal = document.getElementById('debug-modal');
-            if (e.target === modal) closeDebugModal();
+        document.getElementById('debug-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('debug-modal')) closeDebugModal();
         });
             const el = document.getElementById('alert-container');
             el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
