@@ -55,6 +55,10 @@ app.get('/admin/accounts', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-accounts.html'));
 });
 
+app.get('/admin/students-accounts', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-students-accounts.html'));
+});
+
 app.get('/admin/contents', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-contents.html'));
 });

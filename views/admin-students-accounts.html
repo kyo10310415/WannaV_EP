@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理者用アカウント管理 - WannaV エントリープラン</title>
+    <title>生徒用アカウント管理 - WannaV エントリープラン</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <!-- パスワードリセットモーダル -->
+    <!-- パスワードリセットモーダル（管理者のみ表示） -->
     <div id="password-reset-modal" style="
         display: none; position: fixed; inset: 0; z-index: 1000;
         background: rgba(7,16,24,0.85); backdrop-filter: blur(6px);
@@ -50,10 +50,11 @@
 
         <div id="alert-container"></div>
 
-        <!-- アカウント追加（管理者のみ表示） -->
-        <div class="card" id="create-user-card" style="display:none;">
-            <h2 style="margin-bottom: 8px;">➕ 新規アカウント作成</h2>
+        <!-- アカウント追加 -->
+        <div class="card">
+            <h2 style="margin-bottom: 8px;">➕ 生徒アカウント作成</h2>
             <p style="color: var(--gray-text); font-size: 13px; margin-bottom: 24px;">
+                権限は <code style="background:rgba(74,144,217,0.15); padding:2px 8px; border-radius:6px; color:var(--accent-cyan);">生徒</code> 固定です。
                 初期パスワードは <code style="background:rgba(74,144,217,0.15); padding:2px 8px; border-radius:6px; color:var(--accent-cyan);">1111</code> で固定されます。初回ログイン時にパスワード変更が必須となります。
             </p>
             <form id="create-user-form">
@@ -66,25 +67,16 @@
                         <label class="form-label">名前（表示名）</label>
                         <input type="text" class="form-input" id="new-name" placeholder="例：田中 花子" required>
                     </div>
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label">権限</label>
-                        <select class="form-select" id="new-role" required>
-                            <option value="生徒">生徒</option>
-                            <option value="セールス">セールス</option>
-                            <option value="クルー">クルー</option>
-                            <option value="管理者">管理者</option>
-                        </select>
-                    </div>
                 </div>
                 <button type="submit" class="btn btn-success" style="margin-top: 24px;">
-                    ✅ アカウント作成
+                    ✅ 生徒アカウント作成
                 </button>
             </form>
         </div>
 
-        <!-- アカウント一覧 -->
+        <!-- 生徒アカウント一覧 -->
         <div class="card">
-            <h2 style="margin-bottom: 30px;">📋 アカウント一覧</h2>
+            <h2 style="margin-bottom: 30px;">📋 生徒アカウント一覧</h2>
             <div id="users-container">
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
@@ -93,9 +85,9 @@
 
     <script>
         const API_URL = '/api';
-        let currentUser = null; // ログイン中ユーザーを保持
+        let currentUser = null;
 
-        // ===== パスワードリセットモーダル =====
+        // ===== パスワードリセットモーダル（管理者のみ） =====
         let resetTargetId = null;
 
         function openPasswordReset(userId, userName) {
@@ -114,103 +106,77 @@
         async function submitPasswordReset() {
             const newPw = document.getElementById('reset-new-password').value;
             const confirmPw = document.getElementById('reset-confirm-password').value;
-
-            if (!newPw || newPw.length < 4) {
-                showAlert('パスワードは4文字以上で入力してください', 'error');
-                return;
-            }
-            if (newPw !== confirmPw) {
-                showAlert('パスワードが一致しません', 'error');
-                return;
-            }
-
+            if (!newPw || newPw.length < 4) { showAlert('パスワードは4文字以上で入力してください', 'error'); return; }
+            if (newPw !== confirmPw) { showAlert('パスワードが一致しません', 'error'); return; }
             const token = localStorage.getItem('token');
             try {
-                const response = await fetch(`${API_URL}/admin/users/${resetTargetId}/password`, {
+                const res = await fetch(`${API_URL}/admin/users/${resetTargetId}/password`, {
                     method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ newPassword: newPw })
                 });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || 'パスワードリセットに失敗しました');
-                }
-
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'PW変更失敗'); }
                 closePasswordReset();
                 showAlert('パスワードをリセットしました ✅', 'success');
-            } catch (error) {
-                console.error('パスワードリセットエラー:', error);
-                showAlert(error.message, 'error');
-            }
+            } catch (err) { showAlert(err.message, 'error'); }
         }
 
-        // 認証チェック
+        // ===== 認証チェック =====
         async function checkAuth() {
             const token = localStorage.getItem('token');
-            if (!token) {
-                window.location.href = '/';
-                return;
-            }
-
+            if (!token) { window.location.href = '/'; return; }
             try {
-                const response = await fetch(`${API_URL}/auth/me`, {
+                const res = await fetch(`${API_URL}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
-                if (!response.ok) throw new Error('認証失敗');
-
-                const user = await response.json();
+                if (!res.ok) throw new Error('認証失敗');
+                const user = await res.json();
                 currentUser = user;
                 document.getElementById('user-name').textContent = user.name;
 
-                if (user.role !== '管理者') {
-                    alert('管理者権限が必要です');
+                // 管理者・セールスのみアクセス可
+                if (user.role !== '管理者' && user.role !== 'セールス') {
+                    alert('アクセス権限がありません');
                     window.location.href = '/dashboard';
                     return;
                 }
 
-                buildNav('admin-nav', user.role, '/admin/accounts');
-                // 管理者のみ新規作成フォームを表示
-                if (user.role === '管理者') {
-                    document.getElementById('create-user-card').style.display = 'block';
-                }
-                loadUsers();
-            } catch (error) {
-                console.error('認証エラー:', error);
+                buildNav('admin-nav', user.role, '/admin/students-accounts');
+                loadStudentUsers();
+            } catch (err) {
+                console.error('認証エラー:', err);
                 localStorage.removeItem('token');
                 window.location.href = '/';
             }
         }
 
-        // ユーザー一覧読み込み
-        async function loadUsers() {
+        // ===== 生徒ユーザー一覧読み込み =====
+        async function loadStudentUsers() {
             const token = localStorage.getItem('token');
-
             try {
-                const response = await fetch(`${API_URL}/admin/users`, {
+                const res = await fetch(`${API_URL}/admin/users`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
-                const users = await response.json();
-                renderUsers(users);
-            } catch (error) {
-                console.error('ユーザー読み込みエラー:', error);
+                const users = await res.json();
+                // 生徒のみ表示
+                renderUsers(users.filter(u => u.role === '生徒'));
+            } catch (err) {
+                console.error('ユーザー読み込みエラー:', err);
                 showAlert('ユーザーの読み込みに失敗しました', 'error');
             }
         }
 
-        // ユーザー描画
+        // ===== 生徒テーブル描画 =====
         function renderUsers(users) {
             const container = document.getElementById('users-container');
+            document.getElementById('student-count') && (document.getElementById('student-count').textContent = `${users.length} 名`);
 
             if (users.length === 0) {
-                container.innerHTML = '<p style="color: var(--gray-text);">ユーザーがいません</p>';
+                container.innerHTML = '<p style="color: var(--gray-text);">生徒アカウントがまだありません</p>';
                 return;
             }
+
+            const isAdmin = currentUser && currentUser.role === '管理者';
 
             let html = `
                 <table class="table">
@@ -218,7 +184,6 @@
                         <tr>
                             <th>ユーザー名</th>
                             <th>名前</th>
-                            <th>権限</th>
                             <th>PW変更</th>
                             <th>登録日</th>
                             <th>操作</th>
@@ -233,27 +198,12 @@
                     ? `<span style="color:#6AEBB7; font-size:12px;">✅ 変更済み</span>`
                     : `<span style="color:#F7C55B; font-size:12px;">⚠️ 未変更</span>`;
 
-                const isAdmin = currentUser && currentUser.role === '管理者';
-
-                // 権限セレクト（管理者のみ編集可）
-                const roleCell = isAdmin
-                    ? `<select onchange="updateRole(${user.id}, this.value)" style="padding: 8px 12px; border-radius: 10px; background: rgba(15, 15, 30, 0.8); color: white; border: 2px solid rgba(74, 144, 217, 0.3); font-size:13px;">
-                        <option value="生徒" ${user.role === '生徒' ? 'selected' : ''}>生徒</option>
-                        <option value="セールス" ${user.role === 'セールス' ? 'selected' : ''}>セールス</option>
-                        <option value="クルー" ${user.role === 'クルー' ? 'selected' : ''}>クルー</option>
-                        <option value="管理者" ${user.role === '管理者' ? 'selected' : ''}>管理者</option>
-                       </select>`
-                    : `<span style="padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700;
-                            background:rgba(74,144,217,0.12); border:1px solid rgba(74,144,217,0.3); color:var(--primary-blue-light);">
-                            ${user.role}
-                       </span>`;
-
-                // 操作ボタン（管理者のみ表示）
+                // 管理者: PW変更・削除ボタン表示 / セールス: 削除ボタンなし・PW変更なし
                 const actionCell = isAdmin
-                    ? `<button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
+                    ? `<button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding:8px 16px; font-size:13px; min-width:auto; min-height:auto;">
                           🔑 PW変更
                        </button>
-                       <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding: 8px 16px; font-size: 13px; min-width:auto; min-height:auto;">
+                       <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding:8px 16px; font-size:13px; min-width:auto; min-height:auto;">
                           🗑️ 削除
                        </button>`
                     : '<span style="color:var(--gray-text); font-size:12px;">—</span>';
@@ -266,7 +216,6 @@
                             </code>
                         </td>
                         <td style="font-weight:600;">${user.name}</td>
-                        <td>${roleCell}</td>
                         <td>${pwChanged}</td>
                         <td style="color:var(--gray-text); font-size:13px;">${createdDate}</td>
                         <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}</td>
@@ -278,25 +227,19 @@
             container.innerHTML = html;
         }
 
-        // ユーザー作成
+        // ===== ユーザー作成 =====
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('create-user-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
-
                 const token = localStorage.getItem('token');
                 const data = {
                     username: document.getElementById('new-username').value.trim(),
-                    name: document.getElementById('new-name').value.trim(),
-                    role: document.getElementById('new-role').value
+                    name:     document.getElementById('new-name').value.trim(),
+                    role:     '生徒' // 固定
                 };
-
-                if (!data.username) {
-                    showAlert('ユーザー名を入力してください', 'error');
-                    return;
-                }
-
+                if (!data.username) { showAlert('ユーザー名を入力してください', 'error'); return; }
                 try {
-                    const response = await fetch(`${API_URL}/admin/users`, {
+                    const res = await fetch(`${API_URL}/admin/users`, {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -304,78 +247,41 @@
                         },
                         body: JSON.stringify(data)
                     });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'アカウント作成に失敗しました');
-                    }
-
-                    showAlert(`アカウントを作成しました。初期パスワード: 1111`, 'success');
-                    document.getElementById('create-user-form').reset();
-                    loadUsers();
-                } catch (error) {
-                    console.error('アカウント作成エラー:', error);
-                    showAlert(error.message, 'error');
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.error || 'アカウント作成に失敗しました');
+                    showAlert(`✅ 生徒アカウント「${result.name}」を作成しました（初期PW: 1111）`, 'success');
+                    document.getElementById('new-username').value = '';
+                    document.getElementById('new-name').value = '';
+                    loadStudentUsers();
+                } catch (err) {
+                    showAlert(err.message, 'error');
                 }
             });
         });
 
-        // 権限更新
-        async function updateRole(userId, newRole) {
-            const token = localStorage.getItem('token');
-
-            try {
-                const response = await fetch(`${API_URL}/admin/users/${userId}/role`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ role: newRole })
-                });
-
-                if (!response.ok) throw new Error('権限更新に失敗しました');
-                showAlert('権限を更新しました', 'success');
-            } catch (error) {
-                console.error('権限更新エラー:', error);
-                showAlert(error.message, 'error');
-                loadUsers();
-            }
-        }
-
-        // ユーザー削除
+        // ===== ユーザー削除（管理者のみ） =====
         async function deleteUser(userId, userName) {
-            if (!confirm(`${userName}を削除してもよろしいですか？`)) return;
-
+            if (!confirm(`「${userName}」を削除しますか？`)) return;
             const token = localStorage.getItem('token');
-
             try {
-                const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+                const res = await fetch(`${API_URL}/admin/users/${userId}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
-                if (!response.ok) throw new Error('削除に失敗しました');
-                showAlert('ユーザーを削除しました', 'success');
-                loadUsers();
-            } catch (error) {
-                console.error('削除エラー:', error);
-                showAlert(error.message, 'error');
-            }
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error || '削除失敗'); }
+                showAlert('削除しました', 'success');
+                loadStudentUsers();
+            } catch (err) { showAlert(err.message, 'error'); }
         }
 
-        // アラート表示
+        // ===== アラート =====
         function showAlert(message, type) {
-            const container = document.getElementById('alert-container');
-            container.innerHTML = `
-                <div class="alert alert-${type === 'error' ? 'error' : 'success'}">
-                    ${message}
-                </div>
-            `;
-            setTimeout(() => container.innerHTML = '', 5000);
+            const el = document.getElementById('alert-container');
+            el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            setTimeout(() => el.innerHTML = '', 6000);
         }
 
-        // ログアウト
+        // ===== ログアウト =====
         function logout() {
             localStorage.removeItem('token');
             window.location.href = '/';
@@ -384,12 +290,12 @@
         // ===== ロールに応じたナビ生成 =====
         function buildNav(elementId, role, activePath) {
             const links = [
-                { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/dashboard',                label: '📊 ダッシュボード',         roles: ['管理者', 'クルー', 'セールス'] },
                 { href: '/admin/accounts',           label: '👥 管理者用アカウント管理', roles: ['管理者'] },
                 { href: '/admin/students-accounts',  label: '🎓 生徒用アカウント管理',   roles: ['管理者', 'セールス'] },
-                { href: '/admin/contents',  label: '📹 コンテンツ管理',         roles: ['管理者'] },
-                { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
-                { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/admin/contents',           label: '📹 コンテンツ管理',         roles: ['管理者'] },
+                { href: '/admin/users',              label: '📈 ユーザー進捗管理',       roles: ['管理者', 'クルー'] },
+                { href: '/students',                 label: '📋 生徒一覧',               roles: ['管理者', 'クルー', 'セールス'] },
             ];
             const el = document.getElementById(elementId);
             el.innerHTML = links

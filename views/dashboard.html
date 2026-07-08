@@ -289,8 +289,9 @@
             const isAdmin = role === '管理者';
             const links = [
                 { href: '/dashboard',       label: '📊 ダッシュボード',     roles: ['管理者', 'クルー', 'セールス'] },
-                { href: '/admin/accounts',  label: '👥 アカウント管理',     roles: ['管理者', 'セールス'] },
-                { href: '/admin/contents',  label: '📹 コンテンツ管理',     roles: ['管理者'] },
+                { href: '/admin/accounts',           label: '👥 管理者用アカウント管理', roles: ['管理者'] },
+                { href: '/admin/students-accounts',  label: '🎓 生徒用アカウント管理',   roles: ['管理者', 'セールス'] },
+                { href: '/admin/contents',  label: '📹 コンテンツ管理',         roles: ['管理者'] },
                 { href: '/admin/users',     label: '📈 ユーザー進捗管理',   roles: ['管理者', 'クルー'] },
                 { href: '/students',        label: '🎓 生徒一覧',           roles: ['管理者', 'クルー', 'セールス'] },
             ];
