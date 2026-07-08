@@ -179,4 +179,49 @@ async function syncNotionStudents() {
   }
 }
 
-module.exports = { syncNotionStudents, fetchEntryPlanStudents };
+/**
+ * デバッグ用: Notion DB の全プロパティ名・型・サンプル値を取得
+ * 生徒一覧の1件目を取得して properties のキー名を返す
+ */
+async function fetchDatabaseProperties() {
+  const token = process.env.NOTION_TOKEN;
+  const dbId  = process.env.NOTION_DATABASE_ID;
+
+  if (!token || !dbId) {
+    throw new Error('NOTION_TOKEN または NOTION_DATABASE_ID が設定されていません');
+  }
+
+  const api = createNotionAxios(token);
+
+  // 1. DB のスキーマ取得（プロパティ名と型の一覧）
+  const dbRes = await api.get(`/databases/${dbId}`);
+  const dbProps = dbRes.data.properties || {};
+
+  const schema = Object.entries(dbProps).map(([name, prop]) => ({
+    name,
+    type: prop.type,
+    // select/multi_select の場合は選択肢も返す
+    options: prop.select?.options?.map(o => o.name)
+          || prop.multi_select?.options?.map(o => o.name)
+          || null,
+  }));
+
+  // 2. 1件だけサンプルページを取得してプロパティ値の実例を返す
+  const sampleRes = await api.post(`/databases/${dbId}/query`, { page_size: 1 });
+  const samplePage = sampleRes.data.results?.[0];
+  let sampleValues = null;
+
+  if (samplePage) {
+    sampleValues = {};
+    for (const [key, val] of Object.entries(samplePage.properties || {})) {
+      sampleValues[key] = {
+        type: val.type,
+        value: getTextValue(val),
+      };
+    }
+  }
+
+  return { schema, sampleValues, dbTitle: dbRes.data.title?.[0]?.plain_text || '' };
+}
+
+module.exports = { syncNotionStudents, fetchEntryPlanStudents, fetchDatabaseProperties };

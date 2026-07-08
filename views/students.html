@@ -210,6 +210,34 @@
 
         <div id="alert-container"></div>
 
+        <!-- ===== プロパティ確認モーダル ===== -->
+        <div id="debug-modal" style="
+            display:none; position:fixed; inset:0; z-index:2000;
+            background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);
+            align-items:center; justify-content:center; padding:20px;">
+            <div style="
+                background:var(--card-bg); border:1px solid rgba(74,144,217,0.4);
+                border-radius:20px; padding:32px; width:100%; max-width:720px;
+                max-height:85vh; overflow-y:auto;
+                box-shadow:0 20px 60px rgba(0,0,0,0.7);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2 style="margin:0; padding:0; font-size:18px;">🔍 Notion プロパティ名確認</h2>
+                    <button onclick="closeDebugModal()" style="
+                        background:none; border:none; color:var(--gray-text);
+                        font-size:24px; cursor:pointer; line-height:1;">✕</button>
+                </div>
+                <p style="color:var(--gray-text); font-size:13px; margin-bottom:16px;">
+                    下記が実際の Notion DB のプロパティ名です。<br>
+                    <code style="background:rgba(74,144,217,0.12); padding:2px 6px; border-radius:4px; color:var(--accent-cyan);">notionSync.js</code> の
+                    <code style="background:rgba(74,144,217,0.12); padding:2px 6px; border-radius:4px; color:var(--accent-cyan);">PROP</code>
+                    オブジェクトと一致しているか確認してください。
+                </p>
+                <div id="debug-content">
+                    <div class="loading" style="margin:30px auto;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- 生徒一覧カード -->
         <div class="card">
             <div class="students-header-row">
@@ -224,6 +252,10 @@
                     <button id="sync-btn" onclick="syncNotion()" class="btn btn-secondary"
                         style="padding:10px 20px; font-size:13px; min-height:auto; min-width:auto;">
                         🔄 今すぐ同期
+                    </button>
+                    <button onclick="showDebugProps()" class="btn btn-warning"
+                        style="padding:10px 16px; font-size:12px; min-height:auto; min-width:auto;">
+                        🔍 プロパティ確認
                     </button>
                 </div>
             </div>
@@ -503,8 +535,128 @@
                 .replace(/'/g, '&#039;');
         }
 
-        // ===== アラート =====
-        function showAlert(message, type) {
+        // ===== プロパティ確認デバッグ =====
+        async function showDebugProps() {
+            const token = localStorage.getItem('token');
+            const modal = document.getElementById('debug-modal');
+            const content = document.getElementById('debug-content');
+
+            modal.style.display = 'flex';
+            content.innerHTML = '<div class="loading" style="margin:30px auto;"></div>';
+
+            try {
+                // まず raw_data から確認（同期済みデータがある場合は高速）
+                const rawRes = await fetch(`${API_URL}/notion/debug-raw`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const rawData = await rawRes.json();
+
+                // 次に Notion API から直接スキーマ取得
+                const schemaRes = await fetch(`${API_URL}/notion/debug-props`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const schemaData = await schemaRes.json();
+
+                let html = '';
+
+                // ===== 現在の PROP 設定 =====
+                html += `
+                    <div style="background:rgba(7,16,24,0.6); border-radius:12px; padding:16px; margin-bottom:16px; border:1px solid rgba(74,144,217,0.2);">
+                        <p style="font-size:12px; font-weight:700; color:var(--accent-cyan); margin-bottom:10px;">📌 notionSync.js の現在の PROP 設定</p>
+                        <table style="width:100%; font-size:12px; border-collapse:collapse;">
+                            <tr><th style="text-align:left; padding:4px 8px; color:var(--gray-text);">フィールド</th><th style="text-align:left; padding:4px 8px; color:var(--gray-text);">現在の設定値</th></tr>
+                            <tr><td style="padding:4px 8px; color:var(--light-text);">生徒名</td><td style="padding:4px 8px; color:var(--accent-cyan); font-family:monospace;">生徒名</td></tr>
+                            <tr><td style="padding:4px 8px; color:var(--light-text);">本名ふりがな</td><td style="padding:4px 8px; color:var(--accent-cyan); font-family:monospace;">本名ふりがな</td></tr>
+                            <tr><td style="padding:4px 8px; color:var(--light-text);">学籍番号</td><td style="padding:4px 8px; color:var(--accent-cyan); font-family:monospace;">学籍番号</td></tr>
+                            <tr><td style="padding:4px 8px; color:var(--light-text);">レッスン開始月</td><td style="padding:4px 8px; color:var(--accent-cyan); font-family:monospace;">レッスン開始月</td></tr>
+                            <tr><td style="padding:4px 8px; color:var(--light-text);">ステータス</td><td style="padding:4px 8px; color:var(--accent-cyan); font-family:monospace;">ステータス</td></tr>
+                            <tr><td style="padding:4px 8px; color:var(--light-text);">契約プラン</td><td style="padding:4px 8px; color:var(--accent-cyan); font-family:monospace;">契約プラン</td></tr>
+                        </table>
+                    </div>
+                `;
+
+                // ===== Notion DB の実際のプロパティ =====
+                if (schemaData.schema) {
+                    html += `
+                        <p style="font-size:12px; font-weight:700; color:#6AEBB7; margin-bottom:8px;">
+                            ✅ Notion DB「${escHtml(schemaData.dbTitle || '')}」の実際のプロパティ一覧
+                        </p>
+                        <div style="overflow-x:auto; margin-bottom:16px;">
+                            <table style="width:100%; font-size:12px; border-collapse:collapse; min-width:400px;">
+                                <thead>
+                                    <tr style="background:rgba(74,144,217,0.15);">
+                                        <th style="text-align:left; padding:8px 10px; color:var(--gray-text);">プロパティ名</th>
+                                        <th style="text-align:left; padding:8px 10px; color:var(--gray-text);">型</th>
+                                        <th style="text-align:left; padding:8px 10px; color:var(--gray-text);">選択肢</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    for (const prop of schemaData.schema) {
+                        const isUsed = ['生徒名','本名ふりがな','学籍番号','レッスン開始月','ステータス','契約プラン'].includes(prop.name);
+                        html += `
+                            <tr style="${isUsed ? 'background:rgba(46,204,113,0.08);' : ''}">
+                                <td style="padding:7px 10px; font-family:monospace; font-weight:600; color:${isUsed ? '#6AEBB7' : 'var(--light-text)'};">
+                                    ${isUsed ? '✅ ' : ''}${escHtml(prop.name)}
+                                </td>
+                                <td style="padding:7px 10px; color:var(--accent-cyan); font-size:11px;">${prop.type}</td>
+                                <td style="padding:7px 10px; color:var(--gray-text); font-size:11px;">
+                                    ${prop.options ? prop.options.map(o => `<span style="background:rgba(74,144,217,0.12); padding:1px 6px; border-radius:10px; margin:1px;">${escHtml(o)}</span>`).join(' ') : '—'}
+                                </td>
+                            </tr>
+                        `;
+                    }
+                    html += '</tbody></table></div>';
+                } else if (schemaData.error) {
+                    html += `<div class="alert alert-error" style="margin:0 0 16px;">${escHtml(schemaData.error)}<br><small>${escHtml(schemaData.detail||'')}</small></div>`;
+                }
+
+                // ===== raw_data からのプロパティ（同期済みデータ） =====
+                if (rawData.properties) {
+                    html += `
+                        <p style="font-size:12px; font-weight:700; color:var(--primary-blue-light); margin-bottom:8px;">
+                            📦 DBキャッシュの raw_data から取得したプロパティ（サンプル1件目）
+                        </p>
+                        <div style="overflow-x:auto;">
+                            <table style="width:100%; font-size:12px; border-collapse:collapse; min-width:400px;">
+                                <thead>
+                                    <tr style="background:rgba(74,144,217,0.15);">
+                                        <th style="text-align:left; padding:8px 10px; color:var(--gray-text);">プロパティ名</th>
+                                        <th style="text-align:left; padding:8px 10px; color:var(--gray-text);">型</th>
+                                        <th style="text-align:left; padding:8px 10px; color:var(--gray-text);">値（プレビュー）</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    for (const prop of rawData.properties) {
+                        html += `
+                            <tr>
+                                <td style="padding:7px 10px; font-family:monospace; font-weight:600; color:var(--light-text);">${escHtml(prop.name)}</td>
+                                <td style="padding:7px 10px; color:var(--accent-cyan); font-size:11px;">${prop.type}</td>
+                                <td style="padding:7px 10px; color:var(--gray-text);">${escHtml(prop.preview)}</td>
+                            </tr>
+                        `;
+                    }
+                    html += '</tbody></table></div>';
+                } else if (rawData.message) {
+                    html += `<p style="color:var(--gray-text); font-size:13px; margin-top:12px;">📦 ${escHtml(rawData.message)}</p>`;
+                }
+
+                content.innerHTML = html;
+            } catch (err) {
+                content.innerHTML = `<div class="alert alert-error">プロパティ取得に失敗しました: ${err.message}</div>`;
+            }
+        }
+
+        function closeDebugModal() {
+            document.getElementById('debug-modal').style.display = 'none';
+        }
+
+        // モーダル外クリックで閉じる
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('debug-modal');
+            if (e.target === modal) closeDebugModal();
+        });
             const el = document.getElementById('alert-container');
             el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
             setTimeout(() => el.innerHTML = '', 6000);
