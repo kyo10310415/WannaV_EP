@@ -1,32 +1,45 @@
 /**
  * notionSync.js
- * Notion データベースからエントリープランの生徒情報を取得し、
- * PostgreSQL にキャッシュする同期ユーティリティ。
+ * Notion REST API v1 を axios で直接呼び出す実装。
+ * @notionhq/client のバージョン差異（v2 vs v5）に依存しないため安定。
  *
  * 使用環境変数:
  *   NOTION_TOKEN        - Notion Integration Token (secret_xxxx)
  *   NOTION_DATABASE_ID  - 対象 Notion データベースの ID
  */
 
-const { Client } = require('@notionhq/client');
+const axios = require('axios');
 const NotionStudent = require('../models/NotionStudent');
 
-// ===== Notion プロパティ名の定義（実際の DB に合わせて調整） =====
-// Notion DB のプロパティ名が日本語の場合はそのまま記述
+const NOTION_API_BASE = 'https://api.notion.com/v1';
+const NOTION_VERSION  = '2022-06-28';
+
+// ===== Notion プロパティ名の定義（実際の DB に合わせて変更可） =====
 const PROP = {
-  STUDENT_NAME:    '生徒名',
-  NAME_FURIGANA:   '本名ふりがな',
-  STUDENT_NUMBER:  '学籍番号',
-  LESSON_START:    'レッスン開始月',
-  STATUS:          'ステータス',
-  CONTRACT_PLAN:   '契約プラン',
+  STUDENT_NAME:   '生徒名',
+  NAME_FURIGANA:  '本名ふりがな',
+  STUDENT_NUMBER: '学籍番号',
+  LESSON_START:   'レッスン開始月',
+  STATUS:         'ステータス',
+  CONTRACT_PLAN:  '契約プラン',
 };
 
 const ENTRY_PLAN_NAME = 'エントリープラン';
 
-/**
- * Notion プロパティ値をテキストに変換するヘルパー
- */
+// ===== axios インスタンスを token 付きで生成 =====
+function createNotionAxios(token) {
+  return axios.create({
+    baseURL: NOTION_API_BASE,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Notion-Version': NOTION_VERSION,
+      'Content-Type': 'application/json',
+    },
+    timeout: 30000,
+  });
+}
+
+// ===== プロパティ値をテキストに変換 =====
 function getTextValue(prop) {
   if (!prop) return null;
   switch (prop.type) {
@@ -59,24 +72,22 @@ function getTextValue(prop) {
   }
 }
 
-/**
- * Notion ページを内部形式に変換
- */
+// ===== Notion ページを内部形式に変換 =====
 function parsePage(page) {
   const props = page.properties || {};
 
-  const studentName   = getTextValue(props[PROP.STUDENT_NAME]);
-  const nameFurigana  = getTextValue(props[PROP.NAME_FURIGANA]);
-  const studentNumber = getTextValue(props[PROP.STUDENT_NUMBER]);
+  const studentName      = getTextValue(props[PROP.STUDENT_NAME]);
+  const nameFurigana     = getTextValue(props[PROP.NAME_FURIGANA]);
+  const studentNumber    = getTextValue(props[PROP.STUDENT_NUMBER]);
   const lessonStartMonth = getTextValue(props[PROP.LESSON_START]);
-  const status        = getTextValue(props[PROP.STATUS]);
-  const contractPlan  = getTextValue(props[PROP.CONTRACT_PLAN]);
+  const status           = getTextValue(props[PROP.STATUS]);
+  const contractPlan     = getTextValue(props[PROP.CONTRACT_PLAN]);
 
-  // Notion ページ自体の URL（www.notion.so/page_id 形式）
+  // Notion ページ URL
   const notionUrl = page.url || `https://www.notion.so/${page.id.replace(/-/g, '')}`;
 
   return {
-    notionPageId:   page.id,
+    notionPageId: page.id,
     studentName,
     nameFurigana,
     studentNumber,
@@ -84,50 +95,53 @@ function parsePage(page) {
     lessonStartMonth,
     status,
     contractPlan,
-    rawData: page
+    rawData: page,
   };
 }
 
 /**
- * Notion DB を全件取得（ページネーション対応）
- * エントリープランのみフィルタして返す
+ * Notion DB をページネーション対応で全件取得（エントリープランのみフィルタ）
  */
 async function fetchEntryPlanStudents() {
-  const token    = process.env.NOTION_TOKEN;
-  const dbId     = process.env.NOTION_DATABASE_ID;
+  const token = process.env.NOTION_TOKEN;
+  const dbId  = process.env.NOTION_DATABASE_ID;
 
   if (!token || !dbId) {
     throw new Error('NOTION_TOKEN または NOTION_DATABASE_ID が設定されていません');
   }
 
-  const notion = new Client({ auth: token });
+  const api = createNotionAxios(token);
   const students = [];
-  let cursor = undefined;
+  let startCursor = undefined;
+  let hasMore = true;
 
-  // Notion API でエントリープランをフィルタ（select型の場合）
+  // select型の契約プランフィルタ
   const filter = {
     property: PROP.CONTRACT_PLAN,
-    select: { equals: ENTRY_PLAN_NAME }
+    select: { equals: ENTRY_PLAN_NAME },
   };
 
-  do {
-    const response = await notion.databases.query({
-      database_id: dbId,
+  while (hasMore) {
+    const body = {
       filter,
-      start_cursor: cursor,
-      page_size: 100
-    });
+      page_size: 100,
+    };
+    if (startCursor) body.start_cursor = startCursor;
 
-    for (const page of response.results) {
+    const res = await api.post(`/databases/${dbId}/query`, body);
+    const data = res.data;
+
+    for (const page of data.results || []) {
       const parsed = parsePage(page);
-      // フィルタが効いているはずだが念のため再チェック
+      // フィルタが効いているが念のため再チェック
       if (parsed.contractPlan === ENTRY_PLAN_NAME) {
         students.push(parsed);
       }
     }
 
-    cursor = response.has_more ? response.next_cursor : undefined;
-  } while (cursor);
+    hasMore = data.has_more === true;
+    startCursor = data.next_cursor || undefined;
+  }
 
   return students;
 }
@@ -146,7 +160,7 @@ async function syncNotionStudents() {
     console.log(`📋 Notion から ${students.length} 件取得（エントリープランのみ）`);
 
     if (students.length === 0) {
-      console.log('⚠️ 取得データが 0 件です。Notion DB の設定を確認してください。');
+      console.log('⚠️ 取得データが 0 件です（エントリープランに該当するデータがないか、プロパティ名を確認してください）');
       return { synced: 0, timestamp: new Date() };
     }
 
@@ -156,6 +170,11 @@ async function syncNotionStudents() {
     return { synced: upserted, timestamp: new Date() };
   } catch (error) {
     console.error('❌ Notion 同期エラー:', error.message);
+    // axios のエラーレスポンスがあれば詳細を出力
+    if (error.response) {
+      console.error('  Notion API status:', error.response.status);
+      console.error('  Notion API body:', JSON.stringify(error.response.data));
+    }
     throw error;
   }
 }
