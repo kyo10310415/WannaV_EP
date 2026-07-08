@@ -76,7 +76,14 @@ function getTextValue(prop) {
 function parsePage(page) {
   const props = page.properties || {};
 
-  const studentName      = getTextValue(props[PROP.STUDENT_NAME]);
+  // ページタイトルは type: "title" プロパティとして存在する。
+  // プロパティ名はDB依存（「名前」「Name」「生徒名」など）のため、
+  // PROP.STUDENT_NAME での名前一致より type: "title" の自動検出を優先する。
+  const titleProp   = Object.values(props).find(p => p.type === 'title');
+  const studentName = titleProp
+    ? getTextValue(titleProp)
+    : getTextValue(props[PROP.STUDENT_NAME]); // フォールバック
+
   const nameFurigana     = getTextValue(props[PROP.NAME_FURIGANA]);
   const studentNumber    = getTextValue(props[PROP.STUDENT_NUMBER]);
   const lessonStartMonth = getTextValue(props[PROP.LESSON_START]);
