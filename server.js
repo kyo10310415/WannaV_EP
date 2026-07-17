@@ -92,6 +92,10 @@ app.get('/admin/logs', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-logs.html'));
 });
 
+app.get('/admin/schedule', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-schedule.html'));
+});
+
 // Initialize database and create admin user
 const initializeApp = async () => {
   try {

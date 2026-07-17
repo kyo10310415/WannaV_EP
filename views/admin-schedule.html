@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>受講スケジュール管理 - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* ── ステータスバッジ ── */
+        .sched-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+            white-space: nowrap;
+        }
+        .s-pending     { background: rgba(52,152,219,0.15);  color:#3498DB; border:1px solid rgba(52,152,219,0.3); }
+        .s-in_progress { background: rgba(243,156,18,0.15);  color:#F39C12; border:1px solid rgba(243,156,18,0.3); }
+        .s-completed   { background: rgba(46,204,113,0.15);  color:#2ECC71; border:1px solid rgba(46,204,113,0.3); }
+        .s-skipped     { background: rgba(149,165,166,0.15); color:#95A5A6; border:1px solid rgba(149,165,166,0.3); }
+        .s-rescheduled { background: rgba(155,89,182,0.15);  color:#9B59B6; border:1px solid rgba(155,89,182,0.3); }
+        .overdue-row   { border-left: 3px solid #E74C3C !important; }
+        .overdue-label { color:#E74C3C; font-size:11px; font-weight:700; }
+
+        /* ── テーブル ── */
+        .table-wrap { overflow-x: auto; border-radius: 14px; }
+        .sched-table { width:100%; border-collapse:separate; border-spacing:0 4px; min-width:900px; }
+        .sched-table th {
+            background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue));
+            padding:10px 12px; text-align:left; font-size:12px; font-weight:700; color:#fff;
+            white-space:nowrap;
+        }
+        .sched-table th:first-child { border-radius:8px 0 0 8px; }
+        .sched-table th:last-child  { border-radius:0 8px 8px 0; }
+        .sched-table td {
+            background: rgba(23,42,63,0.8); padding:10px 12px;
+            font-size:13px; border-top:1px solid rgba(74,144,217,0.1);
+            vertical-align:middle;
+        }
+        .sched-table tr.data-row td:first-child { border-radius:8px 0 0 8px; }
+        .sched-table tr.data-row td:last-child  { border-radius:0 8px 8px 0; }
+        .sched-table tr.data-row:hover td { background:rgba(74,144,217,0.1); }
+
+        /* ── タブ ── */
+        .tab-bar { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+        .tab-btn {
+            padding:8px 18px; border-radius:20px; border:1px solid rgba(74,144,217,0.3);
+            background:rgba(23,42,63,0.8); color:var(--gray-text); font-size:13px;
+            font-weight:600; cursor:pointer; transition:all 0.2s;
+        }
+        .tab-btn.active, .tab-btn:hover {
+            background:linear-gradient(45deg,var(--primary-blue-dark),var(--primary-blue));
+            color:#fff; border-color:transparent;
+        }
+
+        /* ── 概況カード ── */
+        .overview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-bottom:20px; }
+        .ov-card {
+            background:rgba(23,42,63,0.8); border:1px solid rgba(74,144,217,0.15);
+            border-radius:12px; padding:14px 16px; cursor:pointer; transition:all 0.2s;
+        }
+        .ov-card:hover { border-color:rgba(74,144,217,0.5); background:rgba(74,144,217,0.1); }
+        .ov-card.selected { border-color:#4A90D9; background:rgba(74,144,217,0.15); }
+        .ov-name  { font-weight:700; font-size:14px; margin-bottom:8px; }
+        .ov-stats { display:flex; gap:10px; flex-wrap:wrap; }
+        .ov-stat  { font-size:11px; }
+        .ov-stat span { font-weight:700; font-size:15px; display:block; }
+        .ov-stat .ov-overdue { color:#E74C3C; }
+        .ov-stat .ov-done    { color:#2ECC71; }
+        .ov-stat .ov-pending { color:#F39C12; }
+
+        /* ── モーダル ── */
+        .modal-overlay {
+            display:none; position:fixed; inset:0;
+            background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;
+        }
+        .modal-overlay.open { display:flex; }
+        .modal-box {
+            background:var(--card-bg); border:1px solid rgba(74,144,217,0.3);
+            border-radius:16px; padding:28px 32px; width:min(560px,96vw); max-height:90vh;
+            overflow-y:auto; position:relative;
+        }
+        .modal-title { font-size:18px; font-weight:700; margin-bottom:20px; color:var(--light-text); }
+        .modal-close {
+            position:absolute; top:14px; right:16px;
+            background:none; border:none; color:var(--gray-text); font-size:22px; cursor:pointer;
+        }
+        .form-row { margin-bottom:14px; }
+        .form-row label { display:block; font-size:12px; font-weight:600; margin-bottom:5px; color:var(--gray-text); }
+        .form-row select, .form-row input, .form-row textarea {
+            width:100%; padding:9px 12px; background:rgba(23,42,63,0.9);
+            border:1px solid rgba(74,144,217,0.3); border-radius:8px; color:var(--light-text);
+            font-size:13px; box-sizing:border-box;
+        }
+        .form-row textarea { min-height:70px; resize:vertical; }
+        .form-2col { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+        /* ── テンプレートカード ── */
+        .tmpl-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+        .tmpl-card {
+            background:rgba(23,42,63,0.8); border:1px solid rgba(74,144,217,0.15);
+            border-radius:12px; padding:16px;
+        }
+        .tmpl-name { font-weight:700; font-size:15px; margin-bottom:6px; }
+        .tmpl-meta { font-size:12px; color:var(--gray-text); margin-bottom:12px; }
+        .tmpl-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+        .btn-xs {
+            padding:4px 12px; font-size:12px; border-radius:8px; border:none; cursor:pointer;
+            font-weight:600; transition:all 0.2s;
+        }
+        .btn-blue   { background:rgba(52,152,219,0.2);  color:#3498DB; border:1px solid rgba(52,152,219,0.3); }
+        .btn-green  { background:rgba(46,204,113,0.2);  color:#2ECC71; border:1px solid rgba(46,204,113,0.3); }
+        .btn-orange { background:rgba(243,156,18,0.2);  color:#F39C12; border:1px solid rgba(243,156,18,0.3); }
+        .btn-red    { background:rgba(231,76,60,0.2);   color:#E74C3C; border:1px solid rgba(231,76,60,0.3); }
+        .btn-xs:hover { filter:brightness(1.2); }
+
+        /* ── 進捗バー ── */
+        .mini-bar { background:rgba(74,144,217,0.1); border-radius:4px; height:6px; overflow:hidden; min-width:80px; }
+        .mini-fill { height:100%; border-radius:4px; background:linear-gradient(90deg,var(--primary-blue-dark),var(--primary-blue)); transition:width 0.4s; }
+
+        /* ── アラート ── */
+        #alert-container { position:fixed; top:20px; right:20px; z-index:9999; min-width:280px; }
+        .alert { padding:12px 18px; border-radius:10px; font-weight:600; font-size:14px; margin-bottom:8px; }
+        .alert-success { background:rgba(46,204,113,0.2); border:1px solid rgba(46,204,113,0.4); color:#2ECC71; }
+        .alert-error   { background:rgba(231,76,60,0.2);  border:1px solid rgba(231,76,60,0.4);  color:#E74C3C; }
+
+        /* ── フィルタ ── */
+        .filter-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+        .filter-bar select, .filter-bar input {
+            padding:7px 12px; background:rgba(23,42,63,0.8); border:1px solid rgba(74,144,217,0.3);
+            border-radius:8px; color:var(--light-text); font-size:13px;
+        }
+    </style>
+</head>
+<body>
+<div class="header">
+    <div class="header-content">
+        <h1 class="logo">✨ WannaV エントリープラン</h1>
+        <div class="user-info">
+            <span class="user-name" id="user-name"></span>
+            <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="nav" id="admin-nav"></div>
+    <div id="alert-container"></div>
+
+    <h2 style="margin-bottom:6px;">📅 受講スケジュール管理</h2>
+    <p style="color:var(--gray-text);font-size:13px;margin-bottom:20px;">
+        生徒ごとの受講予定を管理・設定します。テンプレートから一括生成も可能です。
+    </p>
+
+    <!-- タブ切り替え -->
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('overview')">👥 生徒別概況</button>
+        <button class="tab-btn" onclick="switchTab('detail')">📋 スケジュール詳細</button>
+        <button class="tab-btn" onclick="switchTab('templates')">📐 テンプレート管理</button>
+    </div>
+
+    <!-- ========== タブ: 生徒別概況 ========== -->
+    <div id="tab-overview">
+        <div class="card" style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+                <span style="font-weight:700;font-size:15px;">担当生徒のスケジュール進捗</span>
+                <button class="btn btn-primary" style="font-size:13px;padding:8px 16px;" onclick="loadOverview()">🔄 更新</button>
+            </div>
+            <div id="overview-grid" class="overview-grid">
+                <div style="color:var(--gray-text);font-size:13px;">読み込み中...</div>
+            </div>
+        </div>
+        <div id="overview-hint" style="color:var(--gray-text);font-size:13px;text-align:center;padding:10px;">
+            ↑ 生徒カードをクリックするとスケジュール詳細タブに移動します
+        </div>
+    </div>
+
+    <!-- ========== タブ: スケジュール詳細 ========== -->
+    <div id="tab-detail" style="display:none;">
+        <div class="card" style="margin-bottom:16px;">
+            <!-- 生徒選択 + フィルタ -->
+            <div class="filter-bar">
+                <select id="sel-student" onchange="onStudentChange()" style="min-width:180px;">
+                    <option value="">生徒を選択...</option>
+                </select>
+                <select id="fil-status" onchange="loadSchedule()">
+                    <option value="">全ステータス</option>
+                    <option value="pending">未着手</option>
+                    <option value="in_progress">進行中</option>
+                    <option value="completed">完了</option>
+                    <option value="skipped">スキップ</option>
+                    <option value="rescheduled">再調整</option>
+                </select>
+                <input type="date" id="fil-from" onchange="loadSchedule()" placeholder="開始日" title="開始日">
+                <input type="date" id="fil-to" onchange="loadSchedule()" placeholder="終了日" title="終了日">
+                <button class="btn btn-secondary" style="font-size:13px;padding:7px 14px;" onclick="clearFilters()">クリア</button>
+            </div>
+
+            <!-- 操作ボタン -->
+            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;" id="action-btns" style="display:none;">
+                <button class="btn btn-primary" style="font-size:13px;padding:8px 16px;" onclick="openAddModal()">＋ スケジュール追加</button>
+                <button class="btn btn-secondary" style="font-size:13px;padding:8px 16px;" onclick="openTemplateApplyModal()">📐 テンプレートから一括生成</button>
+                <button class="btn btn-secondary" style="font-size:13px;padding:8px 16px;" onclick="loadSchedule()">🔄 更新</button>
+            </div>
+
+            <!-- テーブル -->
+            <div class="table-wrap">
+                <table class="sched-table">
+                    <thead>
+                        <tr>
+                            <th>予定日</th>
+                            <th>レッスン名</th>
+                            <th>コース</th>
+                            <th>期限</th>
+                            <th>視聴率</th>
+                            <th>ステータス</th>
+                            <th>優先度</th>
+                            <th>チューターメモ</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sched-tbody">
+                        <tr><td colspan="9" style="text-align:center;color:var(--gray-text);padding:24px;">生徒を選択してください</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== タブ: テンプレート管理 ========== -->
+    <div id="tab-templates" style="display:none;">
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <span style="font-weight:700;font-size:15px;">スケジュールテンプレート一覧</span>
+                <button class="btn btn-primary" style="font-size:13px;padding:8px 16px;" onclick="openNewTemplateModal()">＋ テンプレート作成</button>
+            </div>
+            <p style="color:var(--gray-text);font-size:12px;margin-bottom:16px;">
+                テンプレートは「レッスンID + 開始日からの日数(dayOffset)」の組み合わせで、生徒に一括スケジュールを生成できます。
+            </p>
+            <div id="tmpl-grid" class="tmpl-grid">
+                <div style="color:var(--gray-text);font-size:13px;">読み込み中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== モーダル: スケジュール追加/編集 ========== -->
+<div class="modal-overlay" id="modal-sched">
+    <div class="modal-box">
+        <button class="modal-close" onclick="closeModal('modal-sched')">✕</button>
+        <div class="modal-title" id="modal-sched-title">📅 スケジュール追加</div>
+        <input type="hidden" id="edit-sched-id">
+        <div class="form-row">
+            <label>レッスン</label>
+            <select id="sched-lesson-id">
+                <option value="">レッスンを選択...</option>
+            </select>
+        </div>
+        <div class="form-2col">
+            <div class="form-row">
+                <label>予定日 <span style="color:#E74C3C;">*</span></label>
+                <input type="date" id="sched-date">
+            </div>
+            <div class="form-row">
+                <label>期限日</label>
+                <input type="date" id="sched-due">
+            </div>
+        </div>
+        <div class="form-2col">
+            <div class="form-row">
+                <label>ステータス</label>
+                <select id="sched-status">
+                    <option value="pending">未着手</option>
+                    <option value="in_progress">進行中</option>
+                    <option value="completed">完了</option>
+                    <option value="skipped">スキップ</option>
+                    <option value="rescheduled">再調整</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>優先度</label>
+                <select id="sched-priority">
+                    <option value="0">低 (0)</option>
+                    <option value="1">通常 (1)</option>
+                    <option value="2">高 (2)</option>
+                    <option value="3">最高 (3)</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>チューターメモ</label>
+            <textarea id="sched-note" placeholder="生徒へのコメント、注意事項など"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn btn-secondary" onclick="closeModal('modal-sched')">キャンセル</button>
+            <button class="btn btn-primary" onclick="saveSched()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== モーダル: テンプレート適用 ========== -->
+<div class="modal-overlay" id="modal-apply-tmpl">
+    <div class="modal-box">
+        <button class="modal-close" onclick="closeModal('modal-apply-tmpl')">✕</button>
+        <div class="modal-title">📐 テンプレートから一括生成</div>
+        <div class="form-row">
+            <label>テンプレート <span style="color:#E74C3C;">*</span></label>
+            <select id="apply-tmpl-id">
+                <option value="">テンプレートを選択...</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label>開始日 <span style="color:#E74C3C;">*</span>（この日を基準にdayOffsetを計算）</label>
+            <input type="date" id="apply-start-date">
+        </div>
+        <p style="color:var(--gray-text);font-size:12px;margin-bottom:12px;">
+            ⚠️ テンプレート内の各レッスンに設定された日数(dayOffset)を開始日に加算してスケジュールを生成します。
+            同一レッスン・同一日付が既に存在する場合は上書きされます。
+        </p>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn btn-secondary" onclick="closeModal('modal-apply-tmpl')">キャンセル</button>
+            <button class="btn btn-primary" onclick="applyTemplate()">生成する</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== モーダル: テンプレート作成/編集 ========== -->
+<div class="modal-overlay" id="modal-tmpl">
+    <div class="modal-box" style="max-width:680px;">
+        <button class="modal-close" onclick="closeModal('modal-tmpl')">✕</button>
+        <div class="modal-title" id="modal-tmpl-title">📐 テンプレート作成</div>
+        <input type="hidden" id="edit-tmpl-id">
+        <div class="form-2col">
+            <div class="form-row">
+                <label>テンプレート名 <span style="color:#E74C3C;">*</span></label>
+                <input type="text" id="tmpl-name" placeholder="例: スタンダードプラン 3ヶ月">
+            </div>
+            <div class="form-row">
+                <label>対象プラン</label>
+                <input type="text" id="tmpl-plan" placeholder="例: スタンダード">
+            </div>
+        </div>
+        <div class="form-row">
+            <label>説明</label>
+            <input type="text" id="tmpl-desc" placeholder="テンプレートの説明">
+        </div>
+
+        <div style="margin-top:16px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <span style="font-weight:700;font-size:14px;">📋 レッスン一覧（dayOffset順）</span>
+                <button class="btn-xs btn-green" onclick="addTmplItem()">＋ 行を追加</button>
+            </div>
+            <div style="font-size:11px;color:var(--gray-text);margin-bottom:8px;">
+                dayOffset: 開始日から何日後に予定するか（0=開始日当日）
+            </div>
+            <div id="tmpl-items">
+                <!-- 動的に追加 -->
+            </div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+            <button class="btn btn-secondary" onclick="closeModal('modal-tmpl')">キャンセル</button>
+            <button class="btn btn-primary" onclick="saveTmpl()">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = '/api';
+    const TOKEN = localStorage.getItem('token');
+    let myRole = '';
+    let myId = null;
+    let currentStudentId = null;
+    let allStudents = [];
+    let allLessons = [];
+    let allTemplates = [];
+
+    // ── 初期化 ──────────────────────────────────────────
+    async function init() {
+        if (!TOKEN) { window.location.href = '/'; return; }
+        const me = await fetchJSON('/api/auth/me');
+        if (!me) return;
+        myRole = me.role;
+        myId = me.id;
+        document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+        buildNav('admin-nav', me.role, '/admin/schedule');
+        await Promise.all([loadStudents(), loadLessons(), loadTemplates()]);
+        loadOverview();
+    }
+
+    // ── データ取得 ──────────────────────────────────────
+    async function loadStudents() {
+        const data = await fetchJSON('/api/students?limit=200');
+        if (!data) return;
+        allStudents = data.students || data || [];
+        const sel = document.getElementById('sel-student');
+        sel.innerHTML = '<option value="">生徒を選択...</option>' +
+            allStudents.map(s => `<option value="${s.user_id || s.id}">${s.username || s.name}</option>`).join('');
+        // テンプレート適用モーダル用選択肢は共有
+    }
+
+    async function loadLessons() {
+        const data = await fetchJSON('/api/lessons');
+        if (!data) return;
+        allLessons = Array.isArray(data) ? data : (data.lessons || []);
+        const sel = document.getElementById('sched-lesson-id');
+        sel.innerHTML = '<option value="">レッスンを選択...</option>' +
+            allLessons.map(l => `<option value="${l.id}">[${l.course_title||''}] ${l.title}</option>`).join('');
+    }
+
+    async function loadTemplates() {
+        const data = await fetchJSON('/api/students/schedule-templates');
+        allTemplates = data || [];
+        renderTemplates();
+        // テンプレート適用用select更新
+        const sel = document.getElementById('apply-tmpl-id');
+        sel.innerHTML = '<option value="">テンプレートを選択...</option>' +
+            allTemplates.map(t => `<option value="${t.id}">${t.name}（${t.item_count||0}レッスン）</option>`).join('');
+    }
+
+    async function loadOverview() {
+        const grid = document.getElementById('overview-grid');
+        grid.innerHTML = '<div style="color:var(--gray-text);font-size:13px;">読み込み中...</div>';
+        const data = await fetchJSON('/api/students/schedule/overview');
+        if (!data || !data.length) {
+            grid.innerHTML = '<div style="color:var(--gray-text);font-size:13px;">担当生徒のスケジュールデータがありません</div>';
+            return;
+        }
+        grid.innerHTML = data.map(s => {
+            const total    = Number(s.total_schedules) || 0;
+            const done     = Number(s.completed)       || 0;
+            const pending  = Number(s.pending)         || 0;
+            const overdue  = Number(s.overdue)         || 0;
+            const pct      = total > 0 ? Math.round(done/total*100) : 0;
+            const nextDate = s.next_lesson_date
+                ? new Date(s.next_lesson_date).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'})
+                : '—';
+            return `
+            <div class="ov-card${overdue>0?' overdue-card':''}"
+                 onclick="goToDetail(${s.user_id},'${s.student_username||s.student_name}')">
+                <div class="ov-name">${escHtml(s.student_name||s.student_username)}</div>
+                <div class="mini-bar" style="margin-bottom:8px;">
+                    <div class="mini-fill" style="width:${pct}%;"></div>
+                </div>
+                <div style="font-size:11px;color:var(--gray-text);margin-bottom:8px;">完了率 ${pct}%（${done}/${total}）</div>
+                <div class="ov-stats">
+                    <div class="ov-stat"><span class="ov-done">${done}</span>完了</div>
+                    <div class="ov-stat"><span class="ov-pending">${pending}</span>予定</div>
+                    <div class="ov-stat"><span class="${overdue>0?'ov-overdue':''}">${overdue}</span>遅延</div>
+                    <div class="ov-stat" style="margin-left:auto;"><span style="font-size:12px;font-weight:600;">${nextDate}</span>次回</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function loadSchedule() {
+        const uid = document.getElementById('sel-student').value;
+        if (!uid) {
+            document.getElementById('sched-tbody').innerHTML =
+                '<tr><td colspan="9" style="text-align:center;color:var(--gray-text);padding:24px;">生徒を選択してください</td></tr>';
+            return;
+        }
+        const status = document.getElementById('fil-status').value;
+        const from   = document.getElementById('fil-from').value;
+        const to     = document.getElementById('fil-to').value;
+        const params = new URLSearchParams();
+        if (status) params.set('status', status);
+        if (from)   params.set('from', from);
+        if (to)     params.set('to', to);
+
+        const data = await fetchJSON(`/api/students/${uid}/schedule?${params}`);
+        renderSchedTable(data || []);
+    }
+
+    function renderSchedTable(rows) {
+        const tbody = document.getElementById('sched-tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray-text);padding:24px;">スケジュールがありません</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(r => {
+            const schedDate  = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'}) : '—';
+            const dueDate    = r.due_date ? new Date(r.due_date).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'}) : '—';
+            const watchPct   = Math.round(Number(r.watch_percent)||0);
+            const overdue    = r.is_overdue;
+            const prioLabels = ['低','普','高','最高'];
+            const prioColors = ['var(--gray-text)','#3498DB','#F39C12','#E74C3C'];
+            const prio = Number(r.priority)||0;
+
+            return `
+            <tr class="data-row${overdue?' overdue-row':''}">
+                <td>
+                    <div style="font-weight:700;">${schedDate}</div>
+                    ${overdue ? '<div class="overdue-label">⚠ 遅延</div>' : ''}
+                </td>
+                <td>
+                    <div style="font-weight:600;">${escHtml(r.lesson_title||'')}</div>
+                    ${r.lesson_completed ? '<div style="color:#2ECC71;font-size:11px;">✅ 視聴済み</div>' : ''}
+                </td>
+                <td style="color:var(--gray-text);font-size:12px;">${escHtml(r.course_title||'')}</td>
+                <td style="font-size:12px;">${dueDate}</td>
+                <td>
+                    <div class="mini-bar">
+                        <div class="mini-fill" style="width:${watchPct}%;"></div>
+                    </div>
+                    <div style="font-size:11px;text-align:right;margin-top:2px;">${watchPct}%</div>
+                </td>
+                <td><span class="sched-badge s-${r.status}">${statusLabel(r.status)}</span></td>
+                <td><span style="color:${prioColors[prio]};font-size:12px;font-weight:700;">${prioLabels[prio]||'—'}</span></td>
+                <td style="font-size:12px;max-width:160px;white-space:normal;">${escHtml(r.tutor_note||'—')}</td>
+                <td>
+                    <div style="display:flex;gap:5px;">
+                        <button class="btn-xs btn-orange" onclick='openEditSchedModal(${JSON.stringify(r)})'>編集</button>
+                        <button class="btn-xs btn-red" onclick="deleteSched(${r.id})">削除</button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function statusLabel(s) {
+        return {pending:'未着手',in_progress:'進行中',completed:'完了',skipped:'スキップ',rescheduled:'再調整'}[s] || s;
+    }
+
+    function renderTemplates() {
+        const grid = document.getElementById('tmpl-grid');
+        if (!allTemplates.length) {
+            grid.innerHTML = '<div style="color:var(--gray-text);font-size:13px;">テンプレートがありません。「＋ テンプレート作成」から追加してください。</div>';
+            return;
+        }
+        grid.innerHTML = allTemplates.map(t => `
+            <div class="tmpl-card">
+                <div class="tmpl-name">${escHtml(t.name)}</div>
+                <div class="tmpl-meta">
+                    ${t.contract_plan ? '📋 ' + escHtml(t.contract_plan) + ' &nbsp;' : ''}
+                    📚 ${t.item_count||0} レッスン
+                    ${t.created_by_name ? ' &nbsp;👤 ' + escHtml(t.created_by_name) : ''}
+                </div>
+                ${t.description ? `<div style="font-size:12px;color:var(--gray-text);margin-bottom:10px;">${escHtml(t.description)}</div>` : ''}
+                <div class="tmpl-actions">
+                    <button class="btn-xs btn-blue" onclick='openEditTmplModal(${JSON.stringify(t)})'>編集</button>
+                    <button class="btn-xs btn-red" onclick="deleteTmpl(${t.id})">削除</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ── タブ切り替え ──────────────────────────────────────
+    function switchTab(name) {
+        ['overview','detail','templates'].forEach(t => {
+            document.getElementById('tab-'+t).style.display = t===name ? '' : 'none';
+        });
+        document.querySelectorAll('.tab-btn').forEach((b,i) => {
+            b.classList.toggle('active', ['overview','detail','templates'][i] === name);
+        });
+        if (name==='templates') loadTemplates();
+    }
+
+    function goToDetail(uid, name) {
+        switchTab('detail');
+        currentStudentId = uid;
+        const sel = document.getElementById('sel-student');
+        sel.value = uid;
+        document.getElementById('action-btns').style.display = 'flex';
+        loadSchedule();
+    }
+
+    function onStudentChange() {
+        const uid = document.getElementById('sel-student').value;
+        currentStudentId = uid || null;
+        document.getElementById('action-btns').style.display = uid ? 'flex' : 'none';
+        if (uid) loadSchedule();
+        else {
+            document.getElementById('sched-tbody').innerHTML =
+                '<tr><td colspan="9" style="text-align:center;color:var(--gray-text);padding:24px;">生徒を選択してください</td></tr>';
+        }
+    }
+
+    function clearFilters() {
+        document.getElementById('fil-status').value = '';
+        document.getElementById('fil-from').value = '';
+        document.getElementById('fil-to').value = '';
+        loadSchedule();
+    }
+
+    // ── スケジュール操作 ──────────────────────────────────
+    function openAddModal() {
+        if (!currentStudentId) { showAlert('生徒を選択してください','error'); return; }
+        document.getElementById('modal-sched-title').textContent = '📅 スケジュール追加';
+        document.getElementById('edit-sched-id').value = '';
+        document.getElementById('sched-lesson-id').value = '';
+        document.getElementById('sched-date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('sched-due').value = '';
+        document.getElementById('sched-status').value = 'pending';
+        document.getElementById('sched-priority').value = '1';
+        document.getElementById('sched-note').value = '';
+        openModal('modal-sched');
+    }
+
+    function openEditSchedModal(r) {
+        document.getElementById('modal-sched-title').textContent = '📅 スケジュール編集';
+        document.getElementById('edit-sched-id').value = r.id;
+        document.getElementById('sched-lesson-id').value = r.lesson_id;
+        document.getElementById('sched-date').value = r.scheduled_date ? r.scheduled_date.split('T')[0] : '';
+        document.getElementById('sched-due').value = r.due_date ? r.due_date.split('T')[0] : '';
+        document.getElementById('sched-status').value = r.status;
+        document.getElementById('sched-priority').value = String(r.priority||0);
+        document.getElementById('sched-note').value = r.tutor_note || '';
+        openModal('modal-sched');
+    }
+
+    async function saveSched() {
+        const id      = document.getElementById('edit-sched-id').value;
+        const lessonId = document.getElementById('sched-lesson-id').value;
+        const date    = document.getElementById('sched-date').value;
+        if (!date) { showAlert('予定日を入力してください','error'); return; }
+
+        const body = {
+            scheduledDate: date,
+            dueDate:       document.getElementById('sched-due').value || null,
+            status:        document.getElementById('sched-status').value,
+            priority:      Number(document.getElementById('sched-priority').value),
+            tutorNote:     document.getElementById('sched-note').value || null,
+        };
+
+        let ok;
+        if (id) {
+            ok = await fetchJSON(`/api/students/schedule/${id}`, { method:'PATCH', body: JSON.stringify(body) });
+        } else {
+            if (!lessonId) { showAlert('レッスンを選択してください','error'); return; }
+            ok = await fetchJSON(`/api/students/${currentStudentId}/schedule`, {
+                method:'POST',
+                body: JSON.stringify({ lessonId: Number(lessonId), ...body })
+            });
+        }
+        if (ok) {
+            showAlert(id ? 'スケジュールを更新しました' : 'スケジュールを追加しました','success');
+            closeModal('modal-sched');
+            loadSchedule();
+            loadOverview();
+        }
+    }
+
+    async function deleteSched(id) {
+        if (!confirm('このスケジュールを削除しますか？')) return;
+        const ok = await fetchJSON(`/api/students/schedule/${id}`, { method:'DELETE' });
+        if (ok !== null) {
+            showAlert('削除しました','success');
+            loadSchedule();
+            loadOverview();
+        }
+    }
+
+    // ── テンプレート適用 ──────────────────────────────────
+    function openTemplateApplyModal() {
+        if (!currentStudentId) { showAlert('生徒を選択してください','error'); return; }
+        document.getElementById('apply-tmpl-id').value = '';
+        document.getElementById('apply-start-date').value = new Date().toISOString().split('T')[0];
+        openModal('modal-apply-tmpl');
+    }
+
+    async function applyTemplate() {
+        const tmplId    = document.getElementById('apply-tmpl-id').value;
+        const startDate = document.getElementById('apply-start-date').value;
+        if (!tmplId)    { showAlert('テンプレートを選択してください','error'); return; }
+        if (!startDate) { showAlert('開始日を選択してください','error'); return; }
+
+        const result = await fetchJSON(`/api/students/${currentStudentId}/schedule/from-template`, {
+            method:'POST', body: JSON.stringify({ templateId: Number(tmplId), startDate })
+        });
+        if (result) {
+            showAlert(`${result.created?.length||0} 件のスケジュールを生成しました`,'success');
+            closeModal('modal-apply-tmpl');
+            loadSchedule();
+            loadOverview();
+        }
+    }
+
+    // ── テンプレート管理 ──────────────────────────────────
+    let tmplItems = [];
+
+    function openNewTemplateModal() {
+        document.getElementById('modal-tmpl-title').textContent = '📐 テンプレート作成';
+        document.getElementById('edit-tmpl-id').value = '';
+        document.getElementById('tmpl-name').value = '';
+        document.getElementById('tmpl-plan').value = '';
+        document.getElementById('tmpl-desc').value = '';
+        tmplItems = [];
+        renderTmplItems();
+        openModal('modal-tmpl');
+    }
+
+    function openEditTmplModal(t) {
+        document.getElementById('modal-tmpl-title').textContent = '📐 テンプレート編集';
+        document.getElementById('edit-tmpl-id').value = t.id;
+        document.getElementById('tmpl-name').value = t.name || '';
+        document.getElementById('tmpl-plan').value = t.contract_plan || '';
+        document.getElementById('tmpl-desc').value = t.description || '';
+        tmplItems = Array.isArray(t.items) ? t.items.map(i => ({...i})) : [];
+        renderTmplItems();
+        openModal('modal-tmpl');
+    }
+
+    function addTmplItem() {
+        tmplItems.push({ lessonId: '', dayOffset: tmplItems.length * 3, dueOffset: 7, priority: 1, note: '' });
+        renderTmplItems();
+    }
+
+    function removeTmplItem(idx) {
+        tmplItems.splice(idx, 1);
+        renderTmplItems();
+    }
+
+    function renderTmplItems() {
+        const container = document.getElementById('tmpl-items');
+        if (!tmplItems.length) {
+            container.innerHTML = '<div style="color:var(--gray-text);font-size:12px;padding:10px;">行を追加してレッスンを設定してください</div>';
+            return;
+        }
+        container.innerHTML = tmplItems.map((item, idx) => `
+            <div style="display:grid;grid-template-columns:auto 80px 70px 70px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;background:rgba(74,144,217,0.05);border-radius:8px;padding:8px;">
+                <select onchange="tmplItems[${idx}].lessonId=Number(this.value)" style="padding:5px 8px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;min-width:160px;">
+                    <option value="">レッスン選択</option>
+                    ${allLessons.map(l => `<option value="${l.id}" ${String(l.id)===String(item.lessonId)?'selected':''}>${escHtml(l.title)}</option>`).join('')}
+                </select>
+                <div>
+                    <div style="font-size:10px;color:var(--gray-text);margin-bottom:2px;">day+</div>
+                    <input type="number" min="0" value="${item.dayOffset||0}" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].dayOffset=Number(this.value)">
+                </div>
+                <div>
+                    <div style="font-size:10px;color:var(--gray-text);margin-bottom:2px;">期限+</div>
+                    <input type="number" min="0" value="${item.dueOffset||7}" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].dueOffset=Number(this.value)">
+                </div>
+                <div>
+                    <div style="font-size:10px;color:var(--gray-text);margin-bottom:2px;">優先</div>
+                    <select onchange="tmplItems[${idx}].priority=Number(this.value)" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;">
+                        <option value="0" ${item.priority===0?'selected':''}>低</option>
+                        <option value="1" ${(item.priority||1)===1?'selected':''}>普</option>
+                        <option value="2" ${item.priority===2?'selected':''}>高</option>
+                        <option value="3" ${item.priority===3?'selected':''}>最高</option>
+                    </select>
+                </div>
+                <input type="text" placeholder="メモ" value="${escHtml(item.note||'')}" style="padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].note=this.value">
+                <button class="btn-xs btn-red" onclick="removeTmplItem(${idx})">✕</button>
+            </div>
+        `).join('');
+    }
+
+    async function saveTmpl() {
+        const id   = document.getElementById('edit-tmpl-id').value;
+        const name = document.getElementById('tmpl-name').value.trim();
+        if (!name) { showAlert('テンプレート名を入力してください','error'); return; }
+        if (tmplItems.some(i => !i.lessonId)) { showAlert('全ての行にレッスンを選択してください','error'); return; }
+
+        const body = {
+            name,
+            contractPlan: document.getElementById('tmpl-plan').value || null,
+            description:  document.getElementById('tmpl-desc').value || null,
+            items: tmplItems,
+        };
+
+        let ok;
+        if (id) {
+            ok = await fetchJSON(`/api/students/schedule-templates/${id}`, { method:'PATCH', body: JSON.stringify(body) });
+        } else {
+            ok = await fetchJSON('/api/students/schedule-templates', { method:'POST', body: JSON.stringify(body) });
+        }
+        if (ok) {
+            showAlert(id ? 'テンプレートを更新しました' : 'テンプレートを作成しました','success');
+            closeModal('modal-tmpl');
+            await loadTemplates();
+        }
+    }
+
+    async function deleteTmpl(id) {
+        if (!confirm('このテンプレートを削除しますか？')) return;
+        const ok = await fetchJSON(`/api/students/schedule-templates/${id}`, { method:'DELETE' });
+        if (ok !== null) {
+            showAlert('削除しました','success');
+            await loadTemplates();
+        }
+    }
+
+    // ── ユーティリティ ────────────────────────────────────
+    async function fetchJSON(url, opts = {}) {
+        try {
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                ...opts
+            });
+            if (res.status === 204 || res.headers.get('content-length') === '0') return {};
+            const data = await res.json();
+            if (!res.ok) {
+                showAlert(data.error || data.message || 'エラーが発生しました','error');
+                return null;
+            }
+            return data;
+        } catch(e) {
+            showAlert('通信エラー: ' + e.message,'error');
+            return null;
+        }
+    }
+
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    function showAlert(msg, type) {
+        const c = document.getElementById('alert-container');
+        const div = document.createElement('div');
+        div.className = `alert alert-${type==='success'?'success':'error'}`;
+        div.textContent = msg;
+        c.appendChild(div);
+        setTimeout(() => div.remove(), 3500);
+    }
+    function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+
+    // ── buildNav（全ページ共通） ──────────────────────────
+    function buildNav(elementId, role, activePath) {
+        const links = [
+            { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
+            { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
+            { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },
+            { href:'/admin/extensions',         label:'📅 延長審査',             roles:['管理者','クルー'] },
+            { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
+            { href:'/admin/schedule',           label:'🗓 受講スケジュール',      roles:['管理者','クルー'] },
+            { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },
+            { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント作成', roles:['管理者','セールス'] },
+            { href:'/admin/contents',           label:'📹 コンテンツ管理',       roles:['管理者'] },
+            { href:'/admin/users',              label:'📈 ユーザー進捗管理',     roles:['管理者','クルー'] },
+            { href:'/admin/logs',               label:'📜 操作ログ',             roles:['管理者'] },
+        ];
+        const el = document.getElementById(elementId);
+        el.innerHTML = links
+            .filter(l => l.roles.includes(role))
+            .map(l => `<a href="${l.href}" class="nav-link${l.href === activePath ? ' active' : ''}">${l.label}</a>`)
+            .join('');
+        el.style.display = 'flex';
+    }
+
+    init();
+</script>
+</body>
+</html>
