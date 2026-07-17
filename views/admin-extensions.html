@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>延長審査管理 - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .review-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+        }
+        .review-active  { background: rgba(243,156,18,0.15);  color: #F39C12; border: 1px solid rgba(243,156,18,0.3); }
+        .review-approved { background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); }
+        .review-rejected { background: rgba(231,76,60,0.15);  color: #E74C3C; border: 1px solid rgba(231,76,60,0.3); }
+        .review-none     { background: rgba(148,184,212,0.1); color: #94B8D4; border: 1px solid rgba(148,184,212,0.2); }
+        .review-hold     { background: rgba(123,104,238,0.15);color: #7B68EE; border: 1px solid rgba(123,104,238,0.3); }
+
+        .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid rgba(74,144,217,0.2); }
+        .tab-btn {
+            padding: 10px 20px; border: none; background: transparent;
+            color: var(--gray-text); cursor: pointer; border-radius: 8px 8px 0 0;
+            font-size: 14px; font-weight: 600; transition: all 0.2s;
+        }
+        .tab-btn.active { background: rgba(74,144,217,0.15); color: var(--primary-blue-light); border-bottom: 2px solid var(--primary-blue); }
+        .tab-btn:hover:not(.active) { background: rgba(74,144,217,0.08); }
+
+        .table-wrap { overflow-x: auto; border-radius: 14px; }
+        .ext-table { width: 100%; border-collapse: separate; border-spacing: 0 5px; min-width: 900px; }
+        .ext-table th {
+            background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue));
+            padding: 11px 12px; text-align: left; font-size: 12px; font-weight: 700; color: white; white-space: nowrap;
+        }
+        .ext-table th:first-child { border-radius: 10px 0 0 10px; }
+        .ext-table th:last-child  { border-radius: 0 10px 10px 0; }
+        .ext-table td {
+            background: rgba(23,42,63,0.75); padding: 11px 12px; font-size: 13px;
+            border-top: 1px solid rgba(74,144,217,0.1); border-bottom: 1px solid rgba(74,144,217,0.1);
+            vertical-align: middle;
+        }
+        .ext-table tr:hover td { background: rgba(74,144,217,0.12); }
+        .ext-table td:first-child { border-radius: 10px 0 0 10px; border-left: 1px solid rgba(74,144,217,0.1); }
+        .ext-table td:last-child  { border-radius: 0 10px 10px 0; border-right: 1px solid rgba(74,144,217,0.1); }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(7,16,24,0.85); backdrop-filter: blur(6px); justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: var(--card-bg); border-radius: 20px; padding: 32px; width: 100%; max-width: 580px; border: 1px solid rgba(74,144,217,0.4); box-shadow: 0 20px 60px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(74,144,217,0.2); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        .expiring-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 18px; background: rgba(23,42,63,0.7); border-radius: 12px;
+            border: 1px solid rgba(74,144,217,0.15); margin-bottom: 8px;
+        }
+        .expiring-item:hover { border-color: rgba(74,144,217,0.4); }
+        .days-tag {
+            padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700;
+        }
+        .days-urgent  { background: rgba(231,76,60,0.2);   color: #E74C3C; }
+        .days-warning { background: rgba(243,156,18,0.2);  color: #F39C12; }
+        .days-ok      { background: rgba(52,200,232,0.15); color: #34C8E8; }
+
+        .action-btn { padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+        .action-btn:hover { transform: translateY(-1px); }
+        .btn-start   { background: rgba(243,156,18,0.2); color: #F39C12; }
+        .btn-result  { background: rgba(46,204,113,0.15); color: #2ECC71; }
+        .btn-detail  { background: rgba(74,144,217,0.2); color: var(--primary-blue-light); }
+    </style>
+</head>
+<body>
+    <!-- 審査開始モーダル -->
+    <div id="start-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">📋 延長審査を開始</div>
+            <input type="hidden" id="start-modal-uid">
+            <p style="color:var(--gray-text);font-size:13px;margin-bottom:20px">
+                生徒: <strong id="start-modal-name" style="color:var(--primary-blue-light)"></strong>
+            </p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">現在の契約終了日</label>
+                    <input type="date" id="start-contract-end" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">開始トリガー</label>
+                    <select id="start-trigger" class="form-input">
+                        <option value="manual">手動</option>
+                        <option value="auto">自動（期限近接）</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:10px">
+                <label class="form-label">メモ（任意）</label>
+                <textarea id="start-notes" class="form-input" rows="3" placeholder="審査開始の背景・メモを入力"></textarea>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:24px">
+                <button onclick="submitStartReview()" class="btn btn-primary" style="flex:1">🚀 審査開始</button>
+                <button onclick="document.getElementById('start-modal').classList.remove('open')" class="btn btn-secondary" style="flex:1">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 審査結果記録モーダル -->
+    <div id="result-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">✅ 審査結果を記録</div>
+            <input type="hidden" id="result-modal-rid">
+            <p style="color:var(--gray-text);font-size:13px;margin-bottom:20px">
+                生徒: <strong id="result-modal-name" style="color:var(--primary-blue-light)"></strong>
+            </p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">審査ステータス</label>
+                    <select id="result-review-status" class="form-input" onchange="toggleNewEndDate()">
+                        <option value="延長決定">延長決定</option>
+                        <option value="延長なし">延長なし</option>
+                        <option value="保留">保留</option>
+                        <option value="審査中">審査中（継続）</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">審査結果</label>
+                    <select id="result-result" class="form-input">
+                        <option value="承認">承認（延長する）</option>
+                        <option value="否認">否認（延長しない）</option>
+                        <option value="保留">保留</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" id="new-end-date-wrap" style="margin-top:10px">
+                <label class="form-label">新しい契約終了日（延長後）</label>
+                <input type="date" id="result-new-end-date" class="form-input">
+            </div>
+            <div class="form-group" style="margin-top:10px">
+                <label class="form-label">理由・コメント</label>
+                <textarea id="result-reason" class="form-input" rows="3" placeholder="延長の理由、判断根拠など"></textarea>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:24px">
+                <button onclick="submitResult()" class="btn btn-primary" style="flex:1">💾 記録する</button>
+                <button onclick="document.getElementById('result-modal').classList.remove('open')" class="btn btn-secondary" style="flex:1">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav" id="admin-nav"></div>
+        <div id="alert-container"></div>
+
+        <h2 style="margin-bottom:20px">📅 延長審査管理</h2>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('active', this)">🔍 審査中</button>
+            <button class="tab-btn" onclick="switchTab('expiring', this)">⚠️ 期限接近</button>
+            <button class="tab-btn" onclick="switchTab('all', this)">📋 全履歴</button>
+        </div>
+
+        <!-- 審査中タブ -->
+        <div id="tab-active">
+            <div class="card">
+                <h3 style="margin-bottom:16px">現在審査中・保留の案件</h3>
+                <div class="table-wrap">
+                    <table class="ext-table" id="active-table">
+                        <thead><tr>
+                            <th>生徒名</th><th>担当Tutor</th><th>現在の契約終了日</th>
+                            <th>審査開始日</th><th>ステータス</th><th>担当審査者</th><th>操作</th>
+                        </tr></thead>
+                        <tbody id="active-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="active-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">審査中の案件はありません</div>
+            </div>
+        </div>
+
+        <!-- 期限接近タブ -->
+        <div id="tab-expiring" style="display:none">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+                    <h3>契約終了が近い生徒（30日以内）</h3>
+                    <select id="expiring-days-filter" class="filter-select" onchange="loadExpiring()" style="padding:8px 14px;border-radius:20px;background:rgba(7,16,24,0.7);border:1px solid rgba(74,144,217,0.3);color:var(--light-text)">
+                        <option value="14">14日以内</option>
+                        <option value="30" selected>30日以内</option>
+                        <option value="60">60日以内</option>
+                    </select>
+                </div>
+                <div id="expiring-list"></div>
+                <div id="expiring-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">対象者なし</div>
+            </div>
+        </div>
+
+        <!-- 全履歴タブ -->
+        <div id="tab-all" style="display:none">
+            <div class="card">
+                <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                    <select id="all-status-filter" class="filter-select" onchange="loadAll()" style="padding:8px 14px;border-radius:20px;background:rgba(7,16,24,0.7);border:1px solid rgba(74,144,217,0.3);color:var(--light-text)">
+                        <option value="">すべてのステータス</option>
+                        <option value="審査中">審査中</option>
+                        <option value="延長決定">延長決定</option>
+                        <option value="延長なし">延長なし</option>
+                        <option value="保留">保留</option>
+                    </select>
+                </div>
+                <div class="table-wrap">
+                    <table class="ext-table" id="all-table">
+                        <thead><tr>
+                            <th>生徒名</th><th>担当Tutor</th><th>契約終了日</th>
+                            <th>ステータス</th><th>結果</th><th>新終了日</th>
+                            <th>審査開始</th><th>審査終了</th><th>操作</th>
+                        </tr></thead>
+                        <tbody id="all-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="all-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">履歴なし</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = localStorage.getItem('token');
+        let currentStartUid = null;
+        let currentResultRid = null;
+
+        async function init() {
+            if (!TOKEN) { window.location.href = '/'; return; }
+            const me = await fetchJSON('/api/auth/me');
+            if (!me) return;
+            document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+            buildNav(me.role);
+            await loadActive();
+        }
+
+        async function fetchJSON(url, opts = {}) {
+            try {
+                const res = await fetch(url, {
+                    headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...opts.headers },
+                    ...opts
+                });
+                if (res.status === 401) { window.location.href = '/'; return null; }
+                return await res.json();
+            } catch(e) { console.error(e); return null; }
+        }
+
+        function switchTab(tab, btn) {
+            ['active','expiring','all'].forEach(t => {
+                document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
+            });
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (tab === 'expiring') loadExpiring();
+            if (tab === 'all') loadAll();
+        }
+
+        async function loadActive() {
+            const data = await fetchJSON('/api/students/extensions/active');
+            if (!data || !Array.isArray(data)) return;
+            const tbody = document.getElementById('active-tbody');
+            const empty = document.getElementById('active-empty');
+            if (!data.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            tbody.innerHTML = data.map(r => `<tr>
+                <td><div style="font-weight:600">${escHtml(r.student_name||'')}</div><div style="font-size:11px;color:var(--gray-text)">@${escHtml(r.student_username||'')}</div></td>
+                <td>${escHtml(r.tutor_name||'未設定')}</td>
+                <td style="${isUrgent(r.current_contract_end_date)?'color:#E74C3C;font-weight:600':''}">${formatDate(r.current_contract_end_date)}</td>
+                <td>${formatDate(r.review_start_date)}</td>
+                <td><span class="review-badge review-active">${r.review_status}</span></td>
+                <td>${escHtml(r.reviewer_name||'未設定')}</td>
+                <td>
+                    <div style="display:flex;gap:6px">
+                        <button onclick="openResultModal(${r.id},'${escHtml(r.student_name||'')}')" class="action-btn btn-result">結果を記録</button>
+                    </div>
+                </td>
+            </tr>`).join('');
+        }
+
+        async function loadExpiring() {
+            const days = document.getElementById('expiring-days-filter').value;
+            const data = await fetchJSON(`/api/students/meta/expiring?days=${days}`);
+            const list = document.getElementById('expiring-list');
+            const empty = document.getElementById('expiring-empty');
+            if (!data || !data.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            list.innerHTML = data.map(s => {
+                const d = s.days_remaining;
+                const dClass = d <= 7 ? 'days-urgent' : d <= 14 ? 'days-warning' : 'days-ok';
+                const reviewed = s.already_under_review;
+                return `<div class="expiring-item">
+                    <div>
+                        <div style="font-weight:600">${escHtml(s.student_name||'')}</div>
+                        <div style="font-size:12px;color:var(--gray-text)">担当: ${escHtml(s.tutor_name||'未設定')} / 終了日: ${formatDate(s.contract_end_date)}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px">
+                        <span class="days-tag ${dClass}">残${d}日</span>
+                        ${reviewed
+                            ? '<span style="font-size:12px;color:var(--gray-text)">⏳ 審査中</span>'
+                            : `<button onclick="openStartModal(${s.user_id},'${escHtml(s.student_name||'')}','${toDateInput(s.contract_end_date)}')" class="action-btn btn-start">審査開始</button>`
+                        }
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function loadAll() {
+            const status = document.getElementById('all-status-filter').value;
+            const url = `/api/students/extensions/list${status ? '?status=' + encodeURIComponent(status) : ''}`;
+            const data = await fetchJSON(url);
+            if (!data || !Array.isArray(data)) return;
+            const tbody = document.getElementById('all-tbody');
+            const empty = document.getElementById('all-empty');
+            if (!data.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            tbody.innerHTML = data.map(r => `<tr>
+                <td><div style="font-weight:600">${escHtml(r.student_name||'')}</div></td>
+                <td>${escHtml(r.tutor_name||'未設定')}</td>
+                <td>${formatDate(r.current_contract_end_date)}</td>
+                <td><span class="review-badge ${getReviewBadge(r.review_status)}">${r.review_status}</span></td>
+                <td>${r.result ? `<span class="review-badge ${r.result==='承認'?'review-approved':'review-rejected'}">${r.result}</span>` : '-'}</td>
+                <td>${formatDate(r.new_contract_end_date)}</td>
+                <td style="font-size:12px">${formatDate(r.review_start_date)}</td>
+                <td style="font-size:12px">${formatDate(r.review_end_date)}</td>
+                <td>
+                    ${['審査中','保留'].includes(r.review_status)
+                        ? `<button onclick="openResultModal(${r.id},'${escHtml(r.student_name||'')}')" class="action-btn btn-result">結果記録</button>`
+                        : '-'}
+                </td>
+            </tr>`).join('');
+        }
+
+        function openStartModal(uid, name, contractEnd) {
+            currentStartUid = uid;
+            document.getElementById('start-modal-name').textContent = name;
+            document.getElementById('start-contract-end').value = contractEnd || '';
+            document.getElementById('start-notes').value = '';
+            document.getElementById('start-modal').classList.add('open');
+        }
+        async function submitStartReview() {
+            const res = await fetchJSON(`/api/students/${currentStartUid}/extensions`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    triggerType: document.getElementById('start-trigger').value,
+                    currentContractEndDate: document.getElementById('start-contract-end').value || null,
+                    notes: document.getElementById('start-notes').value
+                })
+            });
+            if (res && !res.error) {
+                showAlert('延長審査を開始しました', 'success');
+                document.getElementById('start-modal').classList.remove('open');
+                await loadActive();
+                await loadExpiring();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        function openResultModal(rid, name) {
+            currentResultRid = rid;
+            document.getElementById('result-modal-name').textContent = name;
+            document.getElementById('result-modal-rid').value = rid;
+            document.getElementById('result-reason').value = '';
+            document.getElementById('result-new-end-date').value = '';
+            toggleNewEndDate();
+            document.getElementById('result-modal').classList.add('open');
+        }
+        function toggleNewEndDate() {
+            const status = document.getElementById('result-review-status').value;
+            document.getElementById('new-end-date-wrap').style.display =
+                status === '延長決定' ? '' : 'none';
+        }
+        async function submitResult() {
+            const rid = document.getElementById('result-modal-rid').value;
+            const res = await fetchJSON(`/api/students/extensions/${rid}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    reviewStatus: document.getElementById('result-review-status').value,
+                    result: document.getElementById('result-result').value,
+                    resultReason: document.getElementById('result-reason').value,
+                    newContractEndDate: document.getElementById('result-new-end-date').value || null
+                })
+            });
+            if (res && !res.error) {
+                showAlert('審査結果を記録しました', 'success');
+                document.getElementById('result-modal').classList.remove('open');
+                await loadActive();
+                if (document.getElementById('all-status-filter')) await loadAll();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        function getReviewBadge(status) {
+            if (status === '審査中') return 'review-active';
+            if (status === '延長決定') return 'review-approved';
+            if (status === '延長なし') return 'review-rejected';
+            if (status === '保留') return 'review-hold';
+            return 'review-none';
+        }
+        function isUrgent(d) { return d && (new Date(d) - new Date()) < 14*86400000; }
+        function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit'}); }
+        function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
+        function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function showAlert(msg, type) {
+            const c = document.getElementById('alert-container');
+            c.innerHTML = `<div class="alert ${type==='success'?'alert-success':'alert-error'}">${msg}</div>`;
+            setTimeout(() => c.innerHTML = '', 3000);
+        }
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+        function buildNav(role) {
+            const nav = document.getElementById('admin-nav');
+            const links = [
+                { href:'/dashboard', label:'📊 ダッシュボード' },
+                { href:'/admin/student-management', label:'👥 生徒管理' },
+                { href:'/admin/handovers', label:'📋 引き継ぎ' },
+                { href:'/admin/extensions', label:'📅 延長審査', active:true },
+                { href:'/admin/surveys', label:'⭐ 満足度' },
+            ];
+            if (role === '管理者') {
+                links.push({ href:'/admin/accounts', label:'⚙️ アカウント管理' });
+                links.push({ href:'/admin/contents', label:'📚 コンテンツ管理' });
+                links.push({ href:'/admin/logs', label:'📜 操作ログ' });
+            }
+            nav.innerHTML = links.map(l =>
+                `<a href="${l.href}" class="nav-item${l.active ? ' active' : ''}">${l.label}</a>`
+            ).join('');
+        }
+        init();
+    </script>
+</body>
+</html>

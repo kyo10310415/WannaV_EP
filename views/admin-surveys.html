@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>満足度管理 - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .stars-input { display: flex; gap: 6px; flex-direction: row-reverse; justify-content: flex-end; }
+        .stars-input input[type=radio] { display: none; }
+        .stars-input label { font-size: 28px; color: rgba(243,156,18,0.3); cursor: pointer; transition: color 0.15s; }
+        .stars-input input:checked ~ label,
+        .stars-input label:hover,
+        .stars-input label:hover ~ label { color: #F39C12; }
+
+        .score-display { display: flex; align-items: center; gap: 6px; }
+        .score-stars { color: #F39C12; font-size: 16px; }
+        .score-num { font-size: 12px; color: var(--gray-text); }
+
+        .stat-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .stat-bar-label { width: 20px; text-align: right; font-size: 13px; color: var(--gray-text); }
+        .stat-bar-wrap { flex: 1; background: rgba(74,144,217,0.1); border-radius: 8px; height: 12px; }
+        .stat-bar-fill { background: linear-gradient(90deg, #F39C12, #FFD700); border-radius: 8px; height: 100%; transition: width 0.4s; }
+        .stat-bar-count { width: 30px; font-size: 12px; color: var(--gray-text); }
+
+        .table-wrap { overflow-x: auto; border-radius: 14px; }
+        .survey-table { width: 100%; border-collapse: separate; border-spacing: 0 5px; min-width: 900px; }
+        .survey-table th { background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue)); padding: 11px 12px; text-align: left; font-size: 12px; font-weight: 700; color: white; white-space: nowrap; }
+        .survey-table th:first-child { border-radius: 10px 0 0 10px; }
+        .survey-table th:last-child  { border-radius: 0 10px 10px 0; }
+        .survey-table td { background: rgba(23,42,63,0.75); padding: 11px 12px; font-size: 13px; border-top: 1px solid rgba(74,144,217,0.1); border-bottom: 1px solid rgba(74,144,217,0.1); vertical-align: middle; }
+        .survey-table tr:hover td { background: rgba(74,144,217,0.12); }
+        .survey-table td:first-child { border-radius: 10px 0 0 10px; border-left: 1px solid rgba(74,144,217,0.1); }
+        .survey-table td:last-child  { border-radius: 0 10px 10px 0; border-right: 1px solid rgba(74,144,217,0.1); }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(7,16,24,0.85); backdrop-filter: blur(6px); justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: var(--card-bg); border-radius: 20px; padding: 32px; width: 100%; max-width: 580px; border: 1px solid rgba(74,144,217,0.4); box-shadow: 0 20px 60px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(74,144,217,0.2); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .stat-card { background: rgba(23,42,63,0.8); border-radius: 12px; padding: 16px; text-align: center; border: 1px solid rgba(74,144,217,0.2); }
+        .stat-card .num { font-size: 28px; font-weight: 800; }
+        .stat-card .label { font-size: 12px; color: var(--gray-text); margin-top: 4px; }
+
+        .action-btn { padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+        .action-btn:hover { transform: translateY(-1px); }
+        .btn-add  { background: rgba(46,204,113,0.15); color: #2ECC71; }
+        .btn-del  { background: rgba(231,76,60,0.15);  color: #E74C3C; }
+    </style>
+</head>
+<body>
+    <!-- アンケート登録モーダル -->
+    <div id="survey-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">⭐ 満足度アンケート登録</div>
+            <div class="form-group">
+                <label class="form-label">生徒</label>
+                <select id="survey-student" class="form-input">
+                    <option value="">生徒を選択</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top:14px">
+                <label class="form-label">アンケート日</label>
+                <input type="date" id="survey-date" class="form-input">
+            </div>
+            <div class="form-group" style="margin-top:14px">
+                <label class="form-label">総合満足度（1〜5）</label>
+                <div class="stars-input" id="overall-stars">
+                    <input type="radio" id="o5" name="overall" value="5"><label for="o5">★</label>
+                    <input type="radio" id="o4" name="overall" value="4"><label for="o4">★</label>
+                    <input type="radio" id="o3" name="overall" value="3"><label for="o3">★</label>
+                    <input type="radio" id="o2" name="overall" value="2"><label for="o2">★</label>
+                    <input type="radio" id="o1" name="overall" value="1"><label for="o1">★</label>
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:14px">
+                <div class="form-group">
+                    <label class="form-label">レッスン満足度</label>
+                    <div class="stars-input">
+                        <input type="radio" id="l5" name="lesson" value="5"><label for="l5">★</label>
+                        <input type="radio" id="l4" name="lesson" value="4"><label for="l4">★</label>
+                        <input type="radio" id="l3" name="lesson" value="3"><label for="l3">★</label>
+                        <input type="radio" id="l2" name="lesson" value="2"><label for="l2">★</label>
+                        <input type="radio" id="l1" name="lesson" value="1"><label for="l1">★</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">サポート満足度</label>
+                    <div class="stars-input">
+                        <input type="radio" id="s5" name="support" value="5"><label for="s5">★</label>
+                        <input type="radio" id="s4" name="support" value="4"><label for="s4">★</label>
+                        <input type="radio" id="s3" name="support" value="3"><label for="s3">★</label>
+                        <input type="radio" id="s2" name="support" value="2"><label for="s2">★</label>
+                        <input type="radio" id="s1" name="support" value="1"><label for="s1">★</label>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:14px">
+                <label class="form-label">よかった点</label>
+                <textarea id="survey-good" class="form-input" rows="2" placeholder="よかった点"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">改善してほしい点</label>
+                <textarea id="survey-improve" class="form-input" rows="2" placeholder="改善してほしい点"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">自由コメント</label>
+                <textarea id="survey-comment" class="form-input" rows="2" placeholder="自由コメント"></textarea>
+            </div>
+            <div class="form-group" style="margin-top:10px">
+                <label class="form-label">継続・延長の意向</label>
+                <select id="survey-extension" class="form-input">
+                    <option value="">未記入</option>
+                    <option value="true">継続希望</option>
+                    <option value="false">継続しない</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:24px">
+                <button onclick="submitSurvey()" class="btn btn-primary" style="flex:1">💾 登録</button>
+                <button onclick="closeSurveyModal()" class="btn btn-secondary" style="flex:1">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav" id="admin-nav"></div>
+        <div id="alert-container"></div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+            <h2>⭐ 満足度管理</h2>
+            <button onclick="openSurveyModal()" class="btn btn-primary">＋ アンケート登録</button>
+        </div>
+
+        <!-- 統計 -->
+        <div class="stat-cards" id="stat-cards">
+            <div class="stat-card">
+                <div class="num" id="stat-total" style="color:var(--primary-blue-light)">-</div>
+                <div class="label">総回答数</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" id="stat-avg" style="color:#F39C12">-</div>
+                <div class="label">平均満足度</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" id="stat-avg-lesson" style="color:#34C8E8">-</div>
+                <div class="label">平均レッスン</div>
+            </div>
+            <div class="stat-card">
+                <div class="num" id="stat-avg-support" style="color:#2ECC71">-</div>
+                <div class="label">平均サポート</div>
+            </div>
+        </div>
+
+        <!-- 分布グラフ -->
+        <div class="card" style="margin-bottom:20px">
+            <h3 style="margin-bottom:16px">総合満足度 分布</h3>
+            <div id="score-dist"></div>
+        </div>
+
+        <!-- 一覧 -->
+        <div class="card">
+            <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                <input type="text" id="search-input" class="form-input" placeholder="🔍 生徒名で検索" oninput="applyFilter()" style="max-width:240px">
+                <select id="score-filter" class="form-input" onchange="applyFilter()" style="max-width:160px">
+                    <option value="">全スコア</option>
+                    <option value="5">★5のみ</option>
+                    <option value="4">★4のみ</option>
+                    <option value="3">★3のみ</option>
+                    <option value="2">★2のみ</option>
+                    <option value="1">★1のみ</option>
+                    <option value="low">★1〜2（要フォロー）</option>
+                </select>
+            </div>
+            <div class="table-wrap">
+                <table class="survey-table">
+                    <thead><tr>
+                        <th>日付</th><th>生徒名</th><th>担当Tutor</th>
+                        <th>総合</th><th>レッスン</th><th>サポート</th>
+                        <th>継続意向</th><th>よかった点</th><th>操作</th>
+                    </tr></thead>
+                    <tbody id="survey-tbody"></tbody>
+                </table>
+            </div>
+            <div id="survey-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">
+                アンケートデータがありません
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = localStorage.getItem('token');
+        let allSurveys = [];
+        let students = [];
+
+        async function init() {
+            if (!TOKEN) { window.location.href = '/'; return; }
+            const me = await fetchJSON('/api/auth/me');
+            if (!me) return;
+            document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+            buildNav(me.role);
+            await Promise.all([loadStudents(), loadStats(), loadSurveys()]);
+            // 今日の日付をデフォルト
+            document.getElementById('survey-date').value = new Date().toISOString().split('T')[0];
+        }
+
+        async function fetchJSON(url, opts = {}) {
+            try {
+                const res = await fetch(url, {
+                    headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...opts.headers }, ...opts
+                });
+                if (res.status === 401) { window.location.href = '/'; return null; }
+                return await res.json();
+            } catch(e) { console.error(e); return null; }
+        }
+
+        async function loadStudents() {
+            const data = await fetchJSON('/api/students');
+            if (!data) return;
+            students = Array.isArray(data) ? data : [];
+            const sel = document.getElementById('survey-student');
+            students.forEach(s => {
+                sel.innerHTML += `<option value="${s.user_id}">${escHtml(s.student_name||'')} (@${escHtml(s.student_username||'')})</option>`;
+            });
+        }
+
+        async function loadStats() {
+            const data = await fetchJSON('/api/students/surveys/stats');
+            if (!data) return;
+            document.getElementById('stat-total').textContent = data.total || 0;
+            document.getElementById('stat-avg').textContent = data.avg_overall ? Number(data.avg_overall).toFixed(1) : '-';
+            document.getElementById('stat-avg-lesson').textContent = data.avg_lesson ? Number(data.avg_lesson).toFixed(1) : '-';
+            document.getElementById('stat-avg-support').textContent = data.avg_support ? Number(data.avg_support).toFixed(1) : '-';
+
+            const total = parseInt(data.total) || 1;
+            const dist = document.getElementById('score-dist');
+            dist.innerHTML = [5,4,3,2,1].map(n => {
+                const cnt = parseInt(data[`score_${n}`]) || 0;
+                const pct = Math.round(cnt / total * 100);
+                return `<div class="stat-bar-row">
+                    <div class="stat-bar-label">★${n}</div>
+                    <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${pct}%"></div></div>
+                    <div class="stat-bar-count">${cnt}件</div>
+                    <div style="font-size:12px;color:var(--gray-text);width:36px">${pct}%</div>
+                </div>`;
+            }).join('');
+        }
+
+        async function loadSurveys() {
+            const data = await fetchJSON('/api/students/surveys/list?limit=200');
+            if (!data || !Array.isArray(data)) return;
+            allSurveys = data;
+            renderTable(allSurveys);
+        }
+
+        function applyFilter() {
+            const search = document.getElementById('search-input').value.toLowerCase();
+            const score = document.getElementById('score-filter').value;
+            const filtered = allSurveys.filter(s => {
+                if (search && !(s.student_name||'').toLowerCase().includes(search)) return false;
+                if (score === 'low' && s.overall_score > 2) return false;
+                if (score && score !== 'low' && String(s.overall_score) !== score) return false;
+                return true;
+            });
+            renderTable(filtered);
+        }
+
+        function renderTable(surveys) {
+            const tbody = document.getElementById('survey-tbody');
+            const empty = document.getElementById('survey-empty');
+            if (!surveys.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            tbody.innerHTML = surveys.map(s => `<tr>
+                <td style="white-space:nowrap">${formatDate(s.survey_date)}</td>
+                <td>
+                    <div style="font-weight:600">${escHtml(s.student_name||'')}</div>
+                    <div style="font-size:11px;color:var(--gray-text)">@${escHtml(s.student_username||'')}</div>
+                </td>
+                <td>${escHtml(s.tutor_name||'-')}</td>
+                <td>${renderStars(s.overall_score)}</td>
+                <td>${s.lesson_score ? renderStarsSmall(s.lesson_score) : '-'}</td>
+                <td>${s.support_score ? renderStarsSmall(s.support_score) : '-'}</td>
+                <td>${s.wants_extension === true ? '<span style="color:#2ECC71">✅ 継続</span>' : s.wants_extension === false ? '<span style="color:#E74C3C">❌ 退会</span>' : '-'}</td>
+                <td style="max-width:180px;font-size:12px;color:var(--gray-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.good_points||'-')}</td>
+                <td>
+                    <button onclick="deleteSurvey(${s.id})" class="action-btn btn-del">削除</button>
+                </td>
+            </tr>`).join('');
+        }
+
+        function renderStars(score) {
+            if (!score) return '-';
+            return `<div class="score-display"><span class="score-stars">${'★'.repeat(score)}${'☆'.repeat(5-score)}</span><span class="score-num">${score}/5</span></div>`;
+        }
+        function renderStarsSmall(score) {
+            if (!score) return '-';
+            return `<span style="color:#F39C12;font-size:13px">${'★'.repeat(score)}${'☆'.repeat(5-score)}</span>`;
+        }
+
+        function openSurveyModal() {
+            document.querySelectorAll('input[name=overall],input[name=lesson],input[name=support]').forEach(r => r.checked = false);
+            document.getElementById('survey-good').value = '';
+            document.getElementById('survey-improve').value = '';
+            document.getElementById('survey-comment').value = '';
+            document.getElementById('survey-extension').value = '';
+            document.getElementById('survey-modal').classList.add('open');
+        }
+        function closeSurveyModal() {
+            document.getElementById('survey-modal').classList.remove('open');
+        }
+        async function submitSurvey() {
+            const studentId = document.getElementById('survey-student').value;
+            if (!studentId) { showAlert('生徒を選択してください', 'error'); return; }
+            const overall = document.querySelector('input[name=overall]:checked')?.value;
+            if (!overall) { showAlert('総合満足度を選択してください', 'error'); return; }
+            const ext = document.getElementById('survey-extension').value;
+            const res = await fetchJSON(`/api/students/${studentId}/surveys`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    overallScore: parseInt(overall),
+                    lessonScore: parseInt(document.querySelector('input[name=lesson]:checked')?.value || 0) || null,
+                    supportScore: parseInt(document.querySelector('input[name=support]:checked')?.value || 0) || null,
+                    goodPoints: document.getElementById('survey-good').value,
+                    improvementPoints: document.getElementById('survey-improve').value,
+                    freeComment: document.getElementById('survey-comment').value,
+                    surveyDate: document.getElementById('survey-date').value,
+                    wantsExtension: ext === 'true' ? true : ext === 'false' ? false : null
+                })
+            });
+            if (res && !res.error) {
+                showAlert('アンケートを登録しました', 'success');
+                closeSurveyModal();
+                await Promise.all([loadStats(), loadSurveys()]);
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        async function deleteSurvey(id) {
+            if (!confirm('このアンケートを削除しますか？')) return;
+            const res = await fetchJSON(`/api/students/surveys/${id}`, { method: 'DELETE' });
+            if (res && res.success) {
+                showAlert('削除しました', 'success');
+                await Promise.all([loadStats(), loadSurveys()]);
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit'}); }
+        function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function showAlert(msg, type) {
+            const c = document.getElementById('alert-container');
+            c.innerHTML = `<div class="alert ${type==='success'?'alert-success':'alert-error'}">${msg}</div>`;
+            setTimeout(() => c.innerHTML = '', 3000);
+        }
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+        function buildNav(role) {
+            const nav = document.getElementById('admin-nav');
+            const links = [
+                { href:'/dashboard', label:'📊 ダッシュボード' },
+                { href:'/admin/student-management', label:'👥 生徒管理' },
+                { href:'/admin/handovers', label:'📋 引き継ぎ' },
+                { href:'/admin/extensions', label:'📅 延長審査' },
+                { href:'/admin/surveys', label:'⭐ 満足度', active:true },
+            ];
+            if (role === '管理者') {
+                links.push({ href:'/admin/accounts', label:'⚙️ アカウント管理' });
+                links.push({ href:'/admin/contents', label:'📚 コンテンツ管理' });
+                links.push({ href:'/admin/logs', label:'📜 操作ログ' });
+            }
+            nav.innerHTML = links.map(l =>
+                `<a href="${l.href}" class="nav-item${l.active ? ' active' : ''}">${l.label}</a>`
+            ).join('');
+        }
+        init();
+    </script>
+</body>
+</html>

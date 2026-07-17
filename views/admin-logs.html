@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>操作ログ - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .table-wrap { overflow-x: auto; border-radius: 14px; }
+        .log-table { width: 100%; border-collapse: separate; border-spacing: 0 4px; min-width: 900px; }
+        .log-table th { background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue)); padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 700; color: white; white-space: nowrap; }
+        .log-table th:first-child { border-radius: 8px 0 0 8px; }
+        .log-table th:last-child  { border-radius: 0 8px 8px 0; }
+        .log-table td { background: rgba(23,42,63,0.65); padding: 9px 12px; font-size: 12px; border-top: 1px solid rgba(74,144,217,0.08); border-bottom: 1px solid rgba(74,144,217,0.08); vertical-align: middle; }
+        .log-table tr:hover td { background: rgba(74,144,217,0.1); }
+        .log-table td:first-child { border-radius: 8px 0 0 8px; border-left: 1px solid rgba(74,144,217,0.08); }
+        .log-table td:last-child  { border-radius: 0 8px 8px 0; border-right: 1px solid rgba(74,144,217,0.08); }
+
+        .action-tag { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .tag-status  { background: rgba(243,156,18,0.15); color: #F39C12; }
+        .tag-profile { background: rgba(52,200,232,0.15); color: #34C8E8; }
+        .tag-handover { background: rgba(123,104,238,0.15); color: #7B68EE; }
+        .tag-extension { background: rgba(46,204,113,0.15); color: #2ECC71; }
+        .tag-survey  { background: rgba(255,107,157,0.15); color: #FF6B9D; }
+        .tag-other   { background: rgba(148,184,212,0.1); color: #94B8D4; }
+
+        .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+        .filter-input, .filter-select {
+            padding: 8px 14px; border-radius: 20px; background: rgba(7,16,24,0.7);
+            border: 1px solid rgba(74,144,217,0.3); color: var(--light-text); font-size: 13px;
+        }
+
+        .pagination { display: flex; gap: 8px; align-items: center; margin-top: 16px; justify-content: center; }
+        .page-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(74,144,217,0.3); background: transparent; color: var(--light-text); cursor: pointer; font-size: 13px; }
+        .page-btn:hover:not(:disabled) { background: rgba(74,144,217,0.15); }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .page-info { color: var(--gray-text); font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav" id="admin-nav"></div>
+        <div id="alert-container"></div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+            <h2>📜 操作ログ</h2>
+            <button onclick="loadLogs()" class="btn btn-secondary">🔄 更新</button>
+        </div>
+
+        <div class="card">
+            <div class="filter-bar">
+                <input type="text" id="filter-action" class="filter-input" placeholder="🔍 アクション名で絞り込み" style="min-width:200px">
+                <select id="filter-target" class="filter-select">
+                    <option value="">すべての対象</option>
+                    <option value="student">生徒</option>
+                    <option value="extension_review">延長審査</option>
+                </select>
+                <select id="filter-limit" class="filter-select" onchange="loadLogs()">
+                    <option value="50">50件</option>
+                    <option value="100" selected>100件</option>
+                    <option value="200">200件</option>
+                </select>
+                <button onclick="loadLogs()" class="btn btn-secondary" style="padding:8px 18px">検索</button>
+            </div>
+
+            <div class="table-wrap">
+                <table class="log-table">
+                    <thead><tr>
+                        <th>日時</th>
+                        <th>実行者</th>
+                        <th>権限</th>
+                        <th>アクション</th>
+                        <th>対象タイプ</th>
+                        <th>対象ID</th>
+                        <th>詳細</th>
+                        <th>IPアドレス</th>
+                    </tr></thead>
+                    <tbody id="log-tbody"></tbody>
+                </table>
+            </div>
+            <div id="log-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">ログがありません</div>
+
+            <div class="pagination">
+                <button id="prev-btn" class="page-btn" onclick="changePage(-1)" disabled>← 前</button>
+                <span id="page-info" class="page-info">-</span>
+                <button id="next-btn" class="page-btn" onclick="changePage(1)" disabled>次 →</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = localStorage.getItem('token');
+        let currentPage = 0;
+        let pageSize = 100;
+        let totalCount = 0;
+
+        async function init() {
+            if (!TOKEN) { window.location.href = '/'; return; }
+            const me = await fetchJSON('/api/auth/me');
+            if (!me) return;
+            if (me.role !== '管理者') { window.location.href = '/dashboard'; return; }
+            document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+            buildNav(me.role);
+            await loadLogs();
+        }
+
+        async function fetchJSON(url, opts = {}) {
+            try {
+                const res = await fetch(url, {
+                    headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...opts.headers }, ...opts
+                });
+                if (res.status === 401) { window.location.href = '/'; return null; }
+                return await res.json();
+            } catch(e) { console.error(e); return null; }
+        }
+
+        async function loadLogs() {
+            pageSize = parseInt(document.getElementById('filter-limit').value);
+            const action = document.getElementById('filter-action').value;
+            const targetType = document.getElementById('filter-target').value;
+            const offset = currentPage * pageSize;
+
+            let url = `/api/students/logs/list?limit=${pageSize}&offset=${offset}`;
+            if (action) url += `&action=${encodeURIComponent(action)}`;
+            if (targetType) url += `&targetType=${encodeURIComponent(targetType)}`;
+
+            const data = await fetchJSON(url);
+            if (!data || !Array.isArray(data)) return;
+
+            totalCount = data[0]?.total_count ? parseInt(data[0].total_count) : data.length;
+            renderTable(data);
+            updatePagination();
+        }
+
+        function renderTable(rows) {
+            const tbody = document.getElementById('log-tbody');
+            const empty = document.getElementById('log-empty');
+            if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            tbody.innerHTML = rows.map(log => `<tr>
+                <td style="white-space:nowrap;color:var(--gray-text)">${formatDatetime(log.created_at)}</td>
+                <td>
+                    <div style="font-weight:600">${escHtml(log.user_name||'システム')}</div>
+                    <div style="font-size:11px;color:var(--gray-text)">@${escHtml(log.username||'-')}</div>
+                </td>
+                <td><span style="font-size:11px;color:var(--gray-text)">${escHtml(log.user_role||'-')}</span></td>
+                <td><span class="action-tag ${getActionTag(log.action)}">${formatAction(log.action)}</span></td>
+                <td><span style="font-size:12px;color:var(--gray-text)">${escHtml(log.target_type||'-')}</span></td>
+                <td style="color:var(--gray-text)">${log.target_id||'-'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--gray-text)" title="${escHtml(JSON.stringify(log.detail||{}))}">${formatDetail(log.detail)}</td>
+                <td style="font-size:11px;color:var(--gray-text)">${escHtml(log.ip_address||'-')}</td>
+            </tr>`).join('');
+        }
+
+        function getActionTag(action) {
+            if (!action) return 'tag-other';
+            if (action.includes('status')) return 'tag-status';
+            if (action.includes('profile')) return 'tag-profile';
+            if (action.includes('handover')) return 'tag-handover';
+            if (action.includes('extension')) return 'tag-extension';
+            if (action.includes('survey')) return 'tag-survey';
+            return 'tag-other';
+        }
+        function formatAction(action) {
+            const map = {
+                'student_status_change': 'ステータス変更',
+                'student_profile_update': 'プロフィール更新',
+                'student_tutor_change': 'Tutor変更',
+                'extension_review_start': '延長審査開始',
+                'extension_review_update': '審査結果記録',
+                'survey_create': 'アンケート登録',
+                'handover_upsert': '引き継ぎ保存',
+                'handover_submit': '引き継ぎ提出',
+                'handover_confirm': '引き継ぎ確認',
+            };
+            return map[action] || action;
+        }
+        function formatDetail(detail) {
+            if (!detail) return '-';
+            if (detail.newStatus) return `→ ${detail.newStatus}`;
+            if (detail.overallScore) return `★${detail.overallScore}`;
+            return JSON.stringify(detail).slice(0, 50);
+        }
+        function updatePagination() {
+            const totalPages = Math.ceil(totalCount / pageSize);
+            document.getElementById('page-info').textContent = `${currentPage + 1} / ${totalPages || 1} ページ（計${totalCount}件）`;
+            document.getElementById('prev-btn').disabled = currentPage === 0;
+            document.getElementById('next-btn').disabled = (currentPage + 1) * pageSize >= totalCount;
+        }
+        function changePage(dir) {
+            currentPage = Math.max(0, currentPage + dir);
+            loadLogs();
+        }
+        function formatDatetime(d) { if (!d) return '-'; return new Date(d).toLocaleString('ja-JP', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+        function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+        function buildNav(role) {
+            const nav = document.getElementById('admin-nav');
+            const links = [
+                { href:'/dashboard', label:'📊 ダッシュボード' },
+                { href:'/admin/student-management', label:'👥 生徒管理' },
+                { href:'/admin/handovers', label:'📋 引き継ぎ' },
+                { href:'/admin/extensions', label:'📅 延長審査' },
+                { href:'/admin/surveys', label:'⭐ 満足度' },
+                { href:'/admin/accounts', label:'⚙️ アカウント管理' },
+                { href:'/admin/contents', label:'📚 コンテンツ管理' },
+                { href:'/admin/logs', label:'📜 操作ログ', active: true },
+            ];
+            nav.innerHTML = links.map(l =>
+                `<a href="${l.href}" class="nav-item${l.active ? ' active' : ''}">${l.label}</a>`
+            ).join('');
+        }
+        init();
+    </script>
+</body>
+</html>

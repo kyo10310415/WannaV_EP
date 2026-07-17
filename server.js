@@ -4,7 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { createTables } = require('./src/models/schema');
-const { scheduleInactiveUserReminders, scheduleNotionSync } = require('./src/utils/scheduler');
+const { startAllSchedulers } = require('./src/utils/scheduler');
 const User = require('./src/models/User');
 
 const app = express();
@@ -37,6 +37,7 @@ app.use('/api/lessons', require('./src/routes/lessons'));
 app.use('/api/progress', require('./src/routes/progress'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/notion', require('./src/routes/notion'));
+app.use('/api/students', require('./src/routes/students'));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
@@ -71,6 +72,26 @@ app.get('/students', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'students.html'));
 });
 
+app.get('/admin/student-management', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-student-management.html'));
+});
+
+app.get('/admin/extensions', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-extensions.html'));
+});
+
+app.get('/admin/surveys', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-surveys.html'));
+});
+
+app.get('/admin/handovers', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-handovers.html'));
+});
+
+app.get('/admin/logs', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-logs.html'));
+});
+
 // Initialize database and create admin user
 const initializeApp = async () => {
   try {
@@ -99,9 +120,8 @@ const initializeApp = async () => {
       console.log(`✅ Admin user created: username=${adminUsername}`);
     }
     
-    // Start cron jobs
-    scheduleInactiveUserReminders();
-    scheduleNotionSync();
+    // Start all cron jobs
+    startAllSchedulers();
     
     console.log('✅ App initialized successfully');
   } catch (error) {
