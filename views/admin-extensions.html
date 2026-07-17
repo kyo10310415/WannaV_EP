@@ -236,7 +236,7 @@
             const me = await fetchJSON('/api/auth/me');
             if (!me) return;
             document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
-            buildNav(me.role);
+            buildNav('admin-nav', me.role, '/admin/extensions');
             await loadActive();
         }
 
@@ -414,23 +414,25 @@
             setTimeout(() => c.innerHTML = '', 3000);
         }
         function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
-        function buildNav(role) {
-            const nav = document.getElementById('admin-nav');
+        function buildNav(elementId, role, activePath) {
             const links = [
-                { href:'/dashboard', label:'📊 ダッシュボード' },
-                { href:'/admin/student-management', label:'👥 生徒管理' },
-                { href:'/admin/handovers', label:'📋 引き継ぎ' },
-                { href:'/admin/extensions', label:'📅 延長審査', active:true },
-                { href:'/admin/surveys', label:'⭐ 満足度' },
+                { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
+                { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
+                { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },
+                { href:'/admin/extensions',         label:'📅 延長審査',             roles:['管理者','クルー'] },
+                { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
+                { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },
+                { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント作成', roles:['管理者','セールス'] },
+                { href:'/admin/contents',           label:'📹 コンテンツ管理',       roles:['管理者'] },
+                { href:'/admin/users',              label:'📈 ユーザー進捗管理',     roles:['管理者','クルー'] },
+                { href:'/admin/logs',               label:'📜 操作ログ',             roles:['管理者'] },
             ];
-            if (role === '管理者') {
-                links.push({ href:'/admin/accounts', label:'⚙️ アカウント管理' });
-                links.push({ href:'/admin/contents', label:'📚 コンテンツ管理' });
-                links.push({ href:'/admin/logs', label:'📜 操作ログ' });
-            }
-            nav.innerHTML = links.map(l =>
-                `<a href="${l.href}" class="nav-item${l.active ? ' active' : ''}">${l.label}</a>`
-            ).join('');
+            const el = document.getElementById(elementId);
+            el.innerHTML = links
+                .filter(l => l.roles.includes(role))
+                .map(l => `<a href="${l.href}" class="nav-link${l.href === activePath ? ' active' : ''}">${l.label}</a>`)
+                .join('');
+            el.style.display = 'flex';
         }
         init();
     </script>
