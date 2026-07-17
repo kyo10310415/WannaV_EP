@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>引き継ぎ管理 - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-draft     { background: rgba(148,184,212,0.1); color: #94B8D4; border: 1px solid rgba(148,184,212,0.2); }
+        .status-submitted { background: rgba(243,156,18,0.15); color: #F39C12; border: 1px solid rgba(243,156,18,0.3); }
+        .status-confirmed { background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); }
+
+        .table-wrap { overflow-x: auto; border-radius: 14px; }
+        .ho-table { width: 100%; border-collapse: separate; border-spacing: 0 5px; min-width: 950px; }
+        .ho-table th { background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue)); padding: 11px 12px; text-align: left; font-size: 12px; font-weight: 700; color: white; white-space: nowrap; }
+        .ho-table th:first-child { border-radius: 10px 0 0 10px; }
+        .ho-table th:last-child  { border-radius: 0 10px 10px 0; }
+        .ho-table td { background: rgba(23,42,63,0.75); padding: 11px 12px; font-size: 13px; border-top: 1px solid rgba(74,144,217,0.1); border-bottom: 1px solid rgba(74,144,217,0.1); vertical-align: middle; }
+        .ho-table tr:hover td { background: rgba(74,144,217,0.12); }
+        .ho-table td:first-child { border-radius: 10px 0 0 10px; border-left: 1px solid rgba(74,144,217,0.1); }
+        .ho-table td:last-child  { border-radius: 0 10px 10px 0; border-right: 1px solid rgba(74,144,217,0.1); }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(7,16,24,0.85); backdrop-filter: blur(6px); justify-content: center; align-items: flex-start; padding: 40px 0; overflow-y: auto; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: var(--card-bg); border-radius: 20px; padding: 32px; width: 100%; max-width: 680px; margin: auto; border: 1px solid rgba(74,144,217,0.4); box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(74,144,217,0.2); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        .section-label { font-size: 13px; font-weight: 700; color: var(--primary-blue-light); margin: 16px 0 10px; border-bottom: 1px solid rgba(74,144,217,0.15); padding-bottom: 6px; }
+
+        .action-btn { padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+        .action-btn:hover { transform: translateY(-1px); }
+        .btn-edit    { background: rgba(52,200,232,0.15); color: var(--accent-cyan); }
+        .btn-submit  { background: rgba(243,156,18,0.2);  color: #F39C12; }
+        .btn-confirm { background: rgba(46,204,113,0.15); color: #2ECC71; }
+        .btn-detail  { background: rgba(74,144,217,0.2);  color: var(--primary-blue-light); }
+
+        .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid rgba(74,144,217,0.2); }
+        .tab-btn { padding: 10px 20px; border: none; background: transparent; color: var(--gray-text); cursor: pointer; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+        .tab-btn.active { background: rgba(74,144,217,0.15); color: var(--primary-blue-light); border-bottom: 2px solid var(--primary-blue); }
+    </style>
+</head>
+<body>
+    <!-- 引き継ぎ情報 入力/閲覧モーダル -->
+    <div id="handover-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title" id="modal-title-text">📋 引き継ぎ情報</div>
+            <input type="hidden" id="ho-uid">
+            <input type="hidden" id="ho-mode"> <!-- edit / view -->
+
+            <div class="section-label">👤 基本情報</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">担当Tutor（クルー）</label>
+                    <select id="ho-tutor" class="form-input">
+                        <option value="">未設定</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">担当Sales</label>
+                    <input type="text" id="ho-sales-name" class="form-input" placeholder="担当sales名" readonly style="opacity:0.6">
+                </div>
+            </div>
+
+            <div class="section-label">📄 契約情報</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">契約プラン</label>
+                    <input type="text" id="ho-plan" class="form-input" placeholder="例: エントリープラン">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">初回面談予定日</label>
+                    <input type="date" id="ho-first-session" class="form-input">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">契約開始日</label>
+                    <input type="date" id="ho-contract-start" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">契約終了日</label>
+                    <input type="date" id="ho-contract-end" class="form-input">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">レッスン開始日</label>
+                <input type="date" id="ho-lesson-start" class="form-input" style="max-width:220px">
+            </div>
+
+            <div class="section-label">🎯 生徒情報</div>
+            <div class="form-group">
+                <label class="form-label">目標</label>
+                <textarea id="ho-goal" class="form-input" rows="3" placeholder="生徒の目標・やりたいこと"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">バックグラウンド・経歴</label>
+                <textarea id="ho-background" class="form-input" rows="2" placeholder="経歴・VTuberとしての経験など"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">特記事項（Tutor向けメモ）</label>
+                <textarea id="ho-notes" class="form-input" rows="2" placeholder="注意点・伝えたいことなど"></textarea>
+            </div>
+
+            <div style="display:flex;gap:12px;margin-top:24px" id="modal-action-btns">
+                <button onclick="saveHandover()" class="btn btn-primary" style="flex:1">💾 保存</button>
+                <button onclick="submitHandover()" class="btn" style="flex:1;background:rgba(243,156,18,0.2);color:#F39C12">📤 Tutorに提出</button>
+                <button onclick="closeHandoverModal()" class="btn btn-secondary">閉じる</button>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:24px" id="tutor-confirm-btns" style="display:none">
+                <button onclick="confirmHandover()" class="btn btn-primary" style="flex:1">✅ 引き継ぎ確認済み</button>
+                <button onclick="closeHandoverModal()" class="btn btn-secondary">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav" id="admin-nav"></div>
+        <div id="alert-container"></div>
+
+        <h2 style="margin-bottom:20px">📋 引き継ぎ情報管理</h2>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('all', this)">📋 全件</button>
+            <button class="tab-btn" onclick="switchTab('submitted', this)">📤 提出済み（未確認）</button>
+            <button class="tab-btn" onclick="switchTab('draft', this)">📝 下書き</button>
+            <button class="tab-btn" onclick="switchTab('confirmed', this)">✅ 確認済み</button>
+        </div>
+
+        <div class="card">
+            <div class="table-wrap">
+                <table class="ho-table">
+                    <thead><tr>
+                        <th>生徒名</th><th>ステータス</th><th>担当Sales</th>
+                        <th>担当Tutor</th><th>契約プラン</th><th>レッスン開始日</th>
+                        <th>初回面談日</th><th>更新日</th><th>操作</th>
+                    </tr></thead>
+                    <tbody id="ho-tbody"></tbody>
+                </table>
+            </div>
+            <div id="ho-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">
+                引き継ぎデータがありません
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = localStorage.getItem('token');
+        let currentTab = 'all';
+        let myRole = '';
+        let myId = null;
+        let tutors = [];
+        let currentHoUid = null;
+
+        async function init() {
+            if (!TOKEN) { window.location.href = '/'; return; }
+            const me = await fetchJSON('/api/auth/me');
+            if (!me) return;
+            myRole = me.role;
+            myId = me.id;
+            document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+            buildNav(me.role);
+            await loadTutors();
+            await loadHandovers();
+            // URLパラメータで直接特定生徒を開く
+            const params = new URLSearchParams(location.search);
+            const uid = params.get('uid');
+            if (uid) openHandoverModal(parseInt(uid));
+        }
+
+        async function fetchJSON(url, opts = {}) {
+            try {
+                const res = await fetch(url, {
+                    headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...opts.headers }, ...opts
+                });
+                if (res.status === 401) { window.location.href = '/'; return null; }
+                return await res.json();
+            } catch(e) { console.error(e); return null; }
+        }
+
+        async function loadTutors() {
+            const data = await fetchJSON('/api/students/meta/tutors');
+            if (!data) return;
+            tutors = data;
+            const sel = document.getElementById('ho-tutor');
+            data.forEach(t => {
+                sel.innerHTML += `<option value="${t.id}">${escHtml(t.name)}</option>`;
+            });
+        }
+
+        async function loadHandovers(tab) {
+            const t = tab || currentTab;
+            const statusParam = t === 'all' ? '' : `?status=${t}`;
+            const data = await fetchJSON(`/api/students/handovers/list${statusParam}`);
+            renderTable(Array.isArray(data) ? data : []);
+        }
+
+        function switchTab(tab, btn) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadHandovers(tab);
+        }
+
+        function renderTable(rows) {
+            const tbody = document.getElementById('ho-tbody');
+            const empty = document.getElementById('ho-empty');
+            if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+            empty.style.display = 'none';
+            tbody.innerHTML = rows.map(h => `<tr>
+                <td>
+                    <div style="font-weight:600">${escHtml(h.student_name||'')}</div>
+                    <div style="font-size:11px;color:var(--gray-text)">@${escHtml(h.student_username||'')}</div>
+                </td>
+                <td><span class="status-badge status-${h.status||'draft'}">${statusLabel(h.status)}</span></td>
+                <td>${escHtml(h.sales_name||'-')}</td>
+                <td>${escHtml(h.tutor_name||'未設定')}</td>
+                <td style="font-size:12px">${escHtml(h.contract_plan||'-')}</td>
+                <td style="font-size:12px">${formatDate(h.lesson_start_date)}</td>
+                <td style="font-size:12px">${formatDate(h.first_session_date)}</td>
+                <td style="font-size:12px;color:var(--gray-text)">${formatDate(h.updated_at)}</td>
+                <td>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <button onclick="openHandoverModal(${h.student_user_id})" class="action-btn btn-edit">編集</button>
+                        ${h.status === 'draft' && (myRole === '管理者' || myRole === 'セールス')
+                            ? `<button onclick="submitHandoverDirect(${h.student_user_id})" class="action-btn btn-submit">提出</button>` : ''}
+                        ${h.status === 'submitted' && (myRole === '管理者' || myRole === 'クルー')
+                            ? `<button onclick="confirmHandoverDirect(${h.student_user_id})" class="action-btn btn-confirm">確認</button>` : ''}
+                    </div>
+                </td>
+            </tr>`).join('');
+        }
+
+        async function openHandoverModal(uid) {
+            currentHoUid = uid;
+            const data = await fetchJSON(`/api/students/${uid}/handover`);
+            const profile = await fetchJSON(`/api/students/${uid}`);
+
+            document.getElementById('ho-uid').value = uid;
+            document.getElementById('ho-tutor').value = data?.tutor_user_id || '';
+            document.getElementById('ho-sales-name').value = data?.sales_name || '';
+            document.getElementById('ho-plan').value = data?.contract_plan || profile?.contract_plan || '';
+            document.getElementById('ho-first-session').value = toDateInput(data?.first_session_date);
+            document.getElementById('ho-contract-start').value = toDateInput(data?.contract_start_date || profile?.contract_start_date);
+            document.getElementById('ho-contract-end').value = toDateInput(data?.contract_end_date || profile?.contract_end_date);
+            document.getElementById('ho-lesson-start').value = toDateInput(data?.lesson_start_date || profile?.lesson_start_date);
+            document.getElementById('ho-goal').value = data?.student_goal || profile?.goal || '';
+            document.getElementById('ho-background').value = data?.student_background || '';
+            document.getElementById('ho-notes').value = data?.special_notes || profile?.notes || '';
+
+            const isSubmitted = data?.status === 'submitted';
+            const canConfirm = isSubmitted && (myRole === '管理者' || myRole === 'クルー');
+            document.getElementById('modal-action-btns').style.display = canConfirm ? 'none' : 'flex';
+            document.getElementById('tutor-confirm-btns').style.display = canConfirm ? 'flex' : 'none';
+
+            const titleText = profile?.student_name ? `📋 ${profile.student_name} の引き継ぎ情報` : '📋 引き継ぎ情報';
+            document.getElementById('modal-title-text').textContent = titleText;
+            document.getElementById('handover-modal').classList.add('open');
+        }
+
+        function closeHandoverModal() {
+            document.getElementById('handover-modal').classList.remove('open');
+        }
+
+        async function saveHandover() {
+            const uid = document.getElementById('ho-uid').value;
+            const res = await fetchJSON(`/api/students/${uid}/handover`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    tutorUserId: document.getElementById('ho-tutor').value || null,
+                    contractPlan: document.getElementById('ho-plan').value,
+                    firstSessionDate: document.getElementById('ho-first-session').value || null,
+                    contractStartDate: document.getElementById('ho-contract-start').value || null,
+                    contractEndDate: document.getElementById('ho-contract-end').value || null,
+                    lessonStartDate: document.getElementById('ho-lesson-start').value || null,
+                    studentGoal: document.getElementById('ho-goal').value,
+                    studentBackground: document.getElementById('ho-background').value,
+                    specialNotes: document.getElementById('ho-notes').value,
+                })
+            });
+            if (res && !res.error) {
+                showAlert('保存しました', 'success');
+                await loadHandovers();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        async function submitHandover() {
+            await saveHandover();
+            const uid = document.getElementById('ho-uid').value;
+            const res = await fetchJSON(`/api/students/${uid}/handover/submit`, { method: 'POST' });
+            if (res && !res.error) {
+                showAlert('Tutorに提出しました', 'success');
+                closeHandoverModal();
+                await loadHandovers();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        async function confirmHandover() {
+            const uid = document.getElementById('ho-uid').value;
+            const res = await fetchJSON(`/api/students/${uid}/handover/confirm`, { method: 'POST' });
+            if (res && !res.error) {
+                showAlert('引き継ぎを確認しました。ステータスがアクティブになりました', 'success');
+                closeHandoverModal();
+                await loadHandovers();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        async function submitHandoverDirect(uid) {
+            const res = await fetchJSON(`/api/students/${uid}/handover/submit`, { method: 'POST' });
+            if (res && !res.error) { showAlert('提出しました', 'success'); await loadHandovers(); }
+            else showAlert(res?.error || 'エラー', 'error');
+        }
+
+        async function confirmHandoverDirect(uid) {
+            const res = await fetchJSON(`/api/students/${uid}/handover/confirm`, { method: 'POST' });
+            if (res && !res.error) { showAlert('確認済みにしました', 'success'); await loadHandovers(); }
+            else showAlert(res?.error || 'エラー', 'error');
+        }
+
+        function statusLabel(s) {
+            if (s === 'draft') return '📝 下書き';
+            if (s === 'submitted') return '📤 提出済み';
+            if (s === 'confirmed') return '✅ 確認済み';
+            return s || '未作成';
+        }
+        function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit'}); }
+        function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
+        function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function showAlert(msg, type) {
+            const c = document.getElementById('alert-container');
+            c.innerHTML = `<div class="alert ${type==='success'?'alert-success':'alert-error'}">${msg}</div>`;
+            setTimeout(() => c.innerHTML = '', 3000);
+        }
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+        function buildNav(role) {
+            const nav = document.getElementById('admin-nav');
+            const links = [
+                { href:'/dashboard', label:'📊 ダッシュボード' },
+                { href:'/admin/student-management', label:'👥 生徒管理' },
+                { href:'/admin/handovers', label:'📋 引き継ぎ', active:true },
+                { href:'/admin/extensions', label:'📅 延長審査' },
+                { href:'/admin/surveys', label:'⭐ 満足度' },
+            ];
+            if (role === '管理者') {
+                links.push({ href:'/admin/accounts', label:'⚙️ アカウント管理' });
+                links.push({ href:'/admin/contents', label:'📚 コンテンツ管理' });
+                links.push({ href:'/admin/logs', label:'📜 操作ログ' });
+            }
+            nav.innerHTML = links.map(l =>
+                `<a href="${l.href}" class="nav-item${l.active ? ' active' : ''}">${l.label}</a>`
+            ).join('');
+        }
+        init();
+    </script>
+</body>
+</html>

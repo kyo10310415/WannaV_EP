@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生徒管理 - WannaV エントリープラン</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+        }
+        .status-active    { background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); }
+        .status-preparing { background: rgba(52,200,232,0.15); color: #34C8E8; border: 1px solid rgba(52,200,232,0.3); }
+        .status-hiatus    { background: rgba(243,156,18,0.15);  color: #F39C12; border: 1px solid rgba(243,156,18,0.3); }
+        .status-resigned  { background: rgba(148,184,212,0.15); color: #94B8D4; border: 1px solid rgba(148,184,212,0.3); }
+        .status-forced    { background: rgba(231,76,60,0.15);   color: #E74C3C; border: 1px solid rgba(231,76,60,0.3); }
+        .status-none      { background: rgba(148,184,212,0.1);  color: #94B8D4; border: 1px solid rgba(148,184,212,0.2); }
+
+        .stars { color: #F39C12; font-size: 14px; }
+        .follow-flag { color: #E74C3C; font-weight: bold; font-size: 12px; }
+        .review-flag { color: #F39C12; font-weight: bold; font-size: 12px; }
+
+        .table-wrap { overflow-x: auto; border-radius: 14px; }
+        .mgmt-table { width: 100%; border-collapse: separate; border-spacing: 0 5px; min-width: 1100px; }
+        .mgmt-table th {
+            background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue));
+            padding: 11px 12px; text-align: left; font-size: 12px; font-weight: 700;
+            color: white; white-space: nowrap;
+        }
+        .mgmt-table th:first-child { border-radius: 10px 0 0 10px; }
+        .mgmt-table th:last-child  { border-radius: 0 10px 10px 0; }
+        .mgmt-table td {
+            background: rgba(23,42,63,0.75); padding: 11px 12px; font-size: 13px;
+            border-top: 1px solid rgba(74,144,217,0.1); border-bottom: 1px solid rgba(74,144,217,0.1);
+            vertical-align: middle;
+        }
+        .mgmt-table tr:hover td { background: rgba(74,144,217,0.12); }
+        .mgmt-table td:first-child { border-radius: 10px 0 0 10px; border-left: 1px solid rgba(74,144,217,0.1); }
+        .mgmt-table td:last-child  { border-radius: 0 10px 10px 0; border-right: 1px solid rgba(74,144,217,0.1); }
+
+        .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
+        .filter-select, .filter-input {
+            padding: 8px 14px; border-radius: 20px; background: rgba(7,16,24,0.7);
+            border: 1px solid rgba(74,144,217,0.3); color: var(--light-text); font-size: 13px;
+        }
+        .filter-select:focus, .filter-input:focus { outline: none; border-color: var(--primary-blue); }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .stat-card {
+            background: rgba(23,42,63,0.8); border-radius: 12px; padding: 16px;
+            text-align: center; border: 1px solid rgba(74,144,217,0.2);
+        }
+        .stat-card .stat-num { font-size: 28px; font-weight: 800; color: var(--primary-blue-light); }
+        .stat-card .stat-label { font-size: 12px; color: var(--gray-text); margin-top: 4px; }
+
+        /* モーダル */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 1000;
+            background: rgba(7,16,24,0.85); backdrop-filter: blur(6px);
+            justify-content: center; align-items: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: var(--card-bg); border-radius: 20px; padding: 32px;
+            width: 100%; max-width: 560px; border: 1px solid rgba(74,144,217,0.4);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto;
+        }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(74,144,217,0.2); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        .progress-bar-wrap { background: rgba(74,144,217,0.1); border-radius: 10px; height: 6px; }
+        .progress-bar-fill { background: linear-gradient(90deg, var(--primary-blue), var(--accent-cyan)); border-radius: 10px; height: 100%; transition: width 0.3s; }
+
+        .action-btn {
+            padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer;
+            font-size: 12px; font-weight: 600; transition: all 0.2s;
+        }
+        .action-btn:hover { transform: translateY(-1px); }
+        .btn-info   { background: rgba(74,144,217,0.2); color: var(--primary-blue-light); }
+        .btn-edit   { background: rgba(52,200,232,0.15); color: var(--accent-cyan); }
+        .btn-status { background: rgba(243,156,18,0.15); color: #F39C12; }
+    </style>
+</head>
+<body>
+    <!-- ステータス変更モーダル -->
+    <div id="status-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">📋 ステータス変更</div>
+            <p style="color:var(--gray-text);font-size:13px;margin-bottom:20px;">
+                生徒: <strong id="status-modal-name" style="color:var(--primary-blue-light)"></strong>
+            </p>
+            <div class="form-group">
+                <label class="form-label">新しいステータス</label>
+                <select id="status-modal-select" class="form-input">
+                    <option value="アクティブ">✅ アクティブ</option>
+                    <option value="レッスン準備中">🔵 レッスン準備中</option>
+                    <option value="休会">⏸ 休会</option>
+                    <option value="退会">🔒 退会</option>
+                    <option value="強制退会">🚫 強制退会</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top:14px">
+                <label class="form-label">変更理由・メモ（任意）</label>
+                <textarea id="status-modal-note" class="form-input" rows="3" placeholder="理由・メモを入力"></textarea>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:24px">
+                <button onclick="submitStatusChange()" class="btn btn-primary" style="flex:1">✅ 変更する</button>
+                <button onclick="closeStatusModal()" class="btn btn-secondary" style="flex:1">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- プロフィール編集モーダル -->
+    <div id="profile-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width:680px">
+            <div class="modal-title">✏️ 生徒情報編集</div>
+            <input type="hidden" id="profile-modal-uid">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">契約プラン</label>
+                    <input type="text" id="profile-contract-plan" class="form-input" placeholder="例: エントリープラン">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">担当Tutor</label>
+                    <select id="profile-tutor" class="form-input">
+                        <option value="">未設定</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">契約開始日</label>
+                    <input type="date" id="profile-contract-start" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">契約終了日</label>
+                    <input type="date" id="profile-contract-end" class="form-input">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">レッスン開始日</label>
+                    <input type="date" id="profile-lesson-start" class="form-input">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:6px">
+                <label class="form-label">目標</label>
+                <textarea id="profile-goal" class="form-input" rows="2" placeholder="生徒の目標を入力"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">特記事項・メモ</label>
+                <textarea id="profile-notes" class="form-input" rows="2" placeholder="担当者向けメモ"></textarea>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:24px">
+                <button onclick="submitProfileEdit()" class="btn btn-primary" style="flex:1">💾 保存</button>
+                <button onclick="closeProfileModal()" class="btn btn-secondary" style="flex:1">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav" id="admin-nav"></div>
+        <div id="alert-container"></div>
+
+        <!-- 統計サマリー -->
+        <div class="stat-grid" id="stat-grid">
+            <div class="stat-card">
+                <div class="stat-num" id="stat-total">-</div>
+                <div class="stat-label">総生徒数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" style="color:#2ECC71" id="stat-active">-</div>
+                <div class="stat-label">アクティブ</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" style="color:#34C8E8" id="stat-preparing">-</div>
+                <div class="stat-label">レッスン準備中</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" style="color:#F39C12" id="stat-hiatus">-</div>
+                <div class="stat-label">休会</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" style="color:#E74C3C" id="stat-followup">-</div>
+                <div class="stat-label">フォロー対象</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" style="color:#F39C12" id="stat-expiring">-</div>
+                <div class="stat-label">契約期限30日以内</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+                <h2>👥 生徒管理一覧</h2>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button onclick="window.location='/admin/handovers'" class="btn btn-secondary">📋 引き継ぎ管理</button>
+                    <button onclick="window.location='/admin/extensions'" class="btn btn-secondary">📅 延長審査</button>
+                    <button onclick="window.location='/admin/surveys'" class="btn btn-secondary">⭐ 満足度</button>
+                </div>
+            </div>
+
+            <!-- フィルター -->
+            <div class="filter-bar">
+                <input type="text" id="search-input" class="filter-input" placeholder="🔍 名前・ユーザー名で検索" oninput="applyFilter()" style="min-width:200px">
+                <select id="filter-status" class="filter-select" onchange="applyFilter()">
+                    <option value="">すべてのステータス</option>
+                    <option value="アクティブ">✅ アクティブ</option>
+                    <option value="レッスン準備中">🔵 レッスン準備中</option>
+                    <option value="休会">⏸ 休会</option>
+                    <option value="退会">🔒 退会</option>
+                    <option value="強制退会">🚫 強制退会</option>
+                </select>
+                <select id="filter-tutor" class="filter-select" onchange="applyFilter()">
+                    <option value="">すべてのTutor</option>
+                </select>
+                <select id="filter-flag" class="filter-select" onchange="applyFilter()">
+                    <option value="">すべて</option>
+                    <option value="followup">フォロー対象のみ</option>
+                    <option value="review">審査中のみ</option>
+                </select>
+            </div>
+
+            <div class="table-wrap">
+                <table class="mgmt-table" id="students-table">
+                    <thead>
+                        <tr>
+                            <th>生徒名</th>
+                            <th>ステータス</th>
+                            <th>担当Tutor</th>
+                            <th>契約プラン</th>
+                            <th>契約終了日</th>
+                            <th>最終受講</th>
+                            <th>進捗</th>
+                            <th>満足度</th>
+                            <th>フラグ</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="students-tbody"></tbody>
+                </table>
+            </div>
+            <div id="students-empty" style="text-align:center;padding:40px;color:var(--gray-text);display:none">
+                生徒データがありません
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = localStorage.getItem('token');
+        let allStudents = [];
+        let tutors = [];
+        let currentEditUid = null;
+        let currentStatusUid = null;
+
+        async function init() {
+            if (!TOKEN) { window.location.href = '/'; return; }
+            const me = await fetchJSON('/api/auth/me');
+            if (!me) return;
+            document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+            buildNav(me.role);
+            await loadTutors();
+            await loadStudents();
+        }
+
+        async function fetchJSON(url, opts = {}) {
+            try {
+                const res = await fetch(url, {
+                    headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', ...opts.headers },
+                    ...opts
+                });
+                if (res.status === 401) { window.location.href = '/'; return null; }
+                return await res.json();
+            } catch(e) { console.error(e); return null; }
+        }
+
+        async function loadTutors() {
+            const data = await fetchJSON('/api/students/meta/tutors');
+            if (!data) return;
+            tutors = data;
+            const sel = document.getElementById('filter-tutor');
+            const profileSel = document.getElementById('profile-tutor');
+            data.forEach(t => {
+                sel.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+                profileSel.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+            });
+        }
+
+        async function loadStudents() {
+            const data = await fetchJSON('/api/students');
+            if (!data) return;
+            allStudents = Array.isArray(data) ? data : [];
+            updateStats();
+            renderTable(allStudents);
+        }
+
+        function updateStats() {
+            const counts = { active:0, preparing:0, hiatus:0 };
+            allStudents.forEach(s => {
+                if (s.status === 'アクティブ') counts.active++;
+                else if (s.status === 'レッスン準備中') counts.preparing++;
+                else if (s.status === '休会') counts.hiatus++;
+            });
+            document.getElementById('stat-total').textContent = allStudents.length;
+            document.getElementById('stat-active').textContent = counts.active;
+            document.getElementById('stat-preparing').textContent = counts.preparing;
+            document.getElementById('stat-hiatus').textContent = counts.hiatus;
+            // フォロー対象・期限近接は別途取得
+            fetchJSON('/api/students/meta/followup?days=7').then(d => {
+                if (d) document.getElementById('stat-followup').textContent = d.length;
+            });
+            fetchJSON('/api/students/meta/expiring?days=30').then(d => {
+                if (d) document.getElementById('stat-expiring').textContent = d.length;
+            });
+        }
+
+        function applyFilter() {
+            const search = document.getElementById('search-input').value.toLowerCase();
+            const status = document.getElementById('filter-status').value;
+            const tutorId = document.getElementById('filter-tutor').value;
+            const flag = document.getElementById('filter-flag').value;
+            const filtered = allStudents.filter(s => {
+                const name = (s.student_name || '').toLowerCase();
+                const user = (s.student_username || '').toLowerCase();
+                if (search && !name.includes(search) && !user.includes(search)) return false;
+                if (status && s.status !== status) return false;
+                if (tutorId && String(s.assigned_tutor_id) !== tutorId) return false;
+                if (flag === 'followup' && !s.inactive_flag) return false;
+                if (flag === 'review' && !s.under_review) return false;
+                return true;
+            });
+            renderTable(filtered);
+        }
+
+        function renderTable(students) {
+            const tbody = document.getElementById('students-tbody');
+            const empty = document.getElementById('students-empty');
+            if (!students.length) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            const now = new Date();
+            tbody.innerHTML = students.map(s => {
+                const statusClass = getStatusClass(s.status);
+                const statusLabel = s.status || '未設定';
+                const tutorName = s.tutor_name || '<span style="color:var(--gray-text)">未設定</span>';
+                const plan = s.contract_plan || '-';
+                const endDate = s.contract_end_date ? formatDate(s.contract_end_date) : '-';
+                const endDanger = s.contract_end_date && (new Date(s.contract_end_date) - now) < 30*86400000;
+                const lastActivity = s.last_activity ? timeAgo(s.last_activity) : '未受講';
+                const completedLessons = s.completed_lessons || 0;
+                const satisfaction = s.latest_satisfaction ? renderStars(s.latest_satisfaction) : '-';
+                const flags = [];
+                if (s.under_review) flags.push('<span class="review-flag">🔍 審査中</span>');
+                return `<tr>
+                    <td>
+                        <div style="font-weight:600">${escHtml(s.student_name || '')}</div>
+                        <div style="font-size:11px;color:var(--gray-text)">@${escHtml(s.student_username || '')}</div>
+                    </td>
+                    <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+                    <td>${tutorName}</td>
+                    <td style="font-size:12px">${escHtml(plan)}</td>
+                    <td style="${endDanger ? 'color:#E74C3C;font-weight:600' : ''}">${endDate}</td>
+                    <td style="font-size:12px;color:var(--gray-text)">${lastActivity}</td>
+                    <td>
+                        <div style="font-size:12px;margin-bottom:3px">${completedLessons}レッスン</div>
+                        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.min(completedLessons*10,100)}%"></div></div>
+                    </td>
+                    <td>${satisfaction}</td>
+                    <td>${flags.join(' ') || '-'}</td>
+                    <td>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <button onclick="openStatusModal(${s.user_id},'${escHtml(s.student_name || '')}','${s.status || ''}')" class="action-btn btn-status">ステータス</button>
+                            <button onclick="openProfileModal(${s.user_id})" class="action-btn btn-edit">編集</button>
+                            <button onclick="openHandover(${s.user_id})" class="action-btn btn-info">引継ぎ</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function getStatusClass(status) {
+            if (status === 'アクティブ') return 'status-active';
+            if (status === 'レッスン準備中') return 'status-preparing';
+            if (status === '休会') return 'status-hiatus';
+            if (status === '退会') return 'status-resigned';
+            if (status === '強制退会') return 'status-forced';
+            return 'status-none';
+        }
+
+        function renderStars(score) {
+            const full = Math.round(score);
+            return '<span class="stars">' + '★'.repeat(full) + '☆'.repeat(5-full) + '</span>';
+        }
+
+        // ---- ステータス変更モーダル ----
+        function openStatusModal(uid, name, currentStatus) {
+            currentStatusUid = uid;
+            document.getElementById('status-modal-name').textContent = name;
+            document.getElementById('status-modal-select').value = currentStatus || 'レッスン準備中';
+            document.getElementById('status-modal-note').value = '';
+            document.getElementById('status-modal').classList.add('open');
+        }
+        function closeStatusModal() {
+            document.getElementById('status-modal').classList.remove('open');
+        }
+        async function submitStatusChange() {
+            const status = document.getElementById('status-modal-select').value;
+            const note = document.getElementById('status-modal-note').value;
+            const res = await fetchJSON(`/api/students/${currentStatusUid}/status`, {
+                method: 'PATCH', body: JSON.stringify({ status, note })
+            });
+            if (res && !res.error) {
+                showAlert('ステータスを変更しました', 'success');
+                closeStatusModal();
+                await loadStudents();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        // ---- プロフィール編集モーダル ----
+        async function openProfileModal(uid) {
+            currentEditUid = uid;
+            document.getElementById('profile-modal-uid').value = uid;
+            const profile = await fetchJSON(`/api/students/${uid}`);
+            if (!profile) return;
+            document.getElementById('profile-contract-plan').value = profile.contract_plan || '';
+            document.getElementById('profile-tutor').value = profile.assigned_tutor_id || '';
+            document.getElementById('profile-contract-start').value = toDateInput(profile.contract_start_date);
+            document.getElementById('profile-contract-end').value = toDateInput(profile.contract_end_date);
+            document.getElementById('profile-lesson-start').value = toDateInput(profile.lesson_start_date);
+            document.getElementById('profile-goal').value = profile.goal || '';
+            document.getElementById('profile-notes').value = profile.notes || '';
+            document.getElementById('profile-modal').classList.add('open');
+        }
+        function closeProfileModal() {
+            document.getElementById('profile-modal').classList.remove('open');
+        }
+        async function submitProfileEdit() {
+            const uid = document.getElementById('profile-modal-uid').value;
+            const body = {
+                contractPlan: document.getElementById('profile-contract-plan').value,
+                assignedTutorId: document.getElementById('profile-tutor').value || null,
+                contractStartDate: document.getElementById('profile-contract-start').value || null,
+                contractEndDate: document.getElementById('profile-contract-end').value || null,
+                lessonStartDate: document.getElementById('profile-lesson-start').value || null,
+                goal: document.getElementById('profile-goal').value,
+                notes: document.getElementById('profile-notes').value,
+            };
+            const res = await fetchJSON(`/api/students/${uid}/profile`, {
+                method: 'PUT', body: JSON.stringify(body)
+            });
+            if (res && !res.error) {
+                showAlert('情報を保存しました', 'success');
+                closeProfileModal();
+                await loadStudents();
+            } else {
+                showAlert(res?.error || 'エラーが発生しました', 'error');
+            }
+        }
+
+        function openHandover(uid) {
+            window.location.href = `/admin/handovers?uid=${uid}`;
+        }
+
+        // ---- ユーティリティ ----
+        function formatDate(d) {
+            if (!d) return '-';
+            return new Date(d).toLocaleDateString('ja-JP', { year:'numeric', month:'2-digit', day:'2-digit' });
+        }
+        function toDateInput(d) {
+            if (!d) return '';
+            return new Date(d).toISOString().split('T')[0];
+        }
+        function timeAgo(d) {
+            const diff = Date.now() - new Date(d);
+            const days = Math.floor(diff / 86400000);
+            if (days === 0) return '今日';
+            if (days === 1) return '昨日';
+            return `${days}日前`;
+        }
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function showAlert(msg, type) {
+            const c = document.getElementById('alert-container');
+            const cls = type === 'success' ? 'alert-success' : 'alert-error';
+            c.innerHTML = `<div class="alert ${cls}">${msg}</div>`;
+            setTimeout(() => c.innerHTML = '', 3000);
+        }
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+        function buildNav(role) {
+            const nav = document.getElementById('admin-nav');
+            const links = [
+                { href:'/dashboard', label:'📊 ダッシュボード' },
+                { href:'/admin/student-management', label:'👥 生徒管理', active:true },
+                { href:'/admin/handovers', label:'📋 引き継ぎ' },
+                { href:'/admin/extensions', label:'📅 延長審査' },
+                { href:'/admin/surveys', label:'⭐ 満足度' },
+            ];
+            if (role === '管理者') {
+                links.push({ href:'/admin/accounts', label:'⚙️ アカウント管理' });
+                links.push({ href:'/admin/contents', label:'📚 コンテンツ管理' });
+                links.push({ href:'/admin/logs', label:'📜 操作ログ' });
+            }
+            nav.innerHTML = links.map(l =>
+                `<a href="${l.href}" class="nav-item${l.active ? ' active' : ''}">${l.label}</a>`
+            ).join('');
+        }
+        init();
+    </script>
+</body>
+</html>
