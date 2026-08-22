@@ -102,6 +102,8 @@ function parsePage(page) {
     lessonStartMonth,
     status,
     contractPlan,
+    // Notion連携生徒の初期ログインIDは学籍番号を使用する。
+    loginId: studentNumber?.trim() || null,
     rawData: page,
   };
 }
@@ -172,7 +174,8 @@ async function fetchEntryPlanStudents() {
  * メイン同期関数
  * 1. Notion からエントリープラン生徒を全件取得
  * 2. PostgreSQL へ UPSERT
- * @returns {{ synced: number, timestamp: Date }}
+ * 3. 学籍番号をログインID、初期PW「1111」として生徒アカウントを作成・連携
+ * @returns {{ synced: number, accountsCreated: number, accountsLinked: number, accountsSkipped: number, timestamp: Date }}
  */
 async function syncNotionStudents() {
   console.log('🔄 Notion 生徒データ同期開始...');
@@ -183,13 +186,14 @@ async function syncNotionStudents() {
 
     if (students.length === 0) {
       console.log('⚠️ 取得データが 0 件です（エントリープランに該当するデータがないか、プロパティ名を確認してください）');
-      return { synced: 0, timestamp: new Date() };
+      return { synced: 0, accountsCreated: 0, accountsLinked: 0, accountsSkipped: 0, timestamp: new Date() };
     }
 
-    const upserted = await NotionStudent.upsertMany(students);
-    console.log(`✅ Notion 同期完了: ${upserted} 件を DB に保存`);
+    const summary = await NotionStudent.upsertMany(students);
+    console.log(`✅ Notion 同期完了: ${summary.upserted} 件を DB に保存`);
+    console.log(`👤 アカウント: ${summary.accountsCreated} 件作成 / ${summary.accountsLinked} 件連携 / ${summary.accountsSkipped} 件スキップ`);
 
-    return { synced: upserted, timestamp: new Date() };
+    return { synced: summary.upserted, ...summary, timestamp: new Date() };
   } catch (error) {
     console.error('❌ Notion 同期エラー:', error.message);
     // axios のエラーレスポンスがあれば詳細を出力
@@ -246,4 +250,4 @@ async function fetchDatabaseProperties() {
   return { schema, sampleValues, dbTitle: dbRes.data.title?.[0]?.plain_text || '' };
 }
 
-module.exports = { syncNotionStudents, fetchEntryPlanStudents, fetchDatabaseProperties };
+module.exports = { syncNotionStudents, fetchEntryPlanStudents, fetchDatabaseProperties, parsePage };

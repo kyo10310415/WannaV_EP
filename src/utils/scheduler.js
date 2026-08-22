@@ -38,7 +38,7 @@ const scheduleNotionSync = () => {
     try {
       const { syncNotionStudents } = require('./notionSync');
       const result = await syncNotionStudents();
-      console.log(`✅ [Cron] Notion sync done: ${result.synced} records`);
+      console.log(`✅ [Cron] Notion sync done: ${result.synced} records, ${result.accountsCreated} accounts created`);
     } catch (error) {
       console.error('❌ [Cron] Notion sync error:', error.message);
     }

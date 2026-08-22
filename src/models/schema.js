@@ -132,11 +132,21 @@ const createTables = async () => {
         lesson_start_month DATE,
         status VARCHAR(255),
         contract_plan VARCHAR(255),
+        login_id VARCHAR(255),
+        login_id_overridden BOOLEAN NOT NULL DEFAULT FALSE,
         raw_data JSONB,
         synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS login_id VARCHAR(255)`);
+    await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS login_id_overridden BOOLEAN NOT NULL DEFAULT FALSE`);
+    // 手動変更されていない既存キャッシュは、学籍番号をログインIDへ反映する。
+    await db.query(`
+      UPDATE notion_students SET login_id = NULLIF(TRIM(student_number), '')
+      WHERE login_id_overridden = FALSE
+    `);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_plan ON notion_students(contract_plan)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_login_id_lower ON notion_students(LOWER(login_id))`);
 
     // Notifications log table
     await db.query(`
@@ -189,6 +199,62 @@ const createTables = async () => {
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS handover_completed BOOLEAN DEFAULT FALSE`);
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS handover_completed_at TIMESTAMP`);
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS notion_page_id VARCHAR(255)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_notion_page ON student_profiles(notion_page_id)`);
+    // 学籍番号と既存のusername/emailが一意に一致する生徒を自動でNotionに紐づける。
+    await db.query(`
+      INSERT INTO student_profiles (user_id, notion_page_id, updated_at)
+      SELECT u.id, ns.notion_page_id, CURRENT_TIMESTAMP
+      FROM users u
+      JOIN notion_students ns
+        ON LOWER(ns.login_id) = LOWER(u.username)
+        OR LOWER(ns.login_id) = LOWER(u.email)
+      WHERE u.role = '生徒'
+        AND ns.login_id IS NOT NULL
+        AND ns.login_id <> ''
+        AND (
+          SELECT COUNT(*) FROM users duplicate_user
+          WHERE duplicate_user.role = '生徒'
+            AND (LOWER(duplicate_user.username) = LOWER(ns.login_id)
+              OR LOWER(duplicate_user.email) = LOWER(ns.login_id))
+        ) = 1
+        AND (
+          SELECT COUNT(*) FROM notion_students duplicate_ns
+          WHERE LOWER(duplicate_ns.login_id) = LOWER(ns.login_id)
+        ) = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM student_profiles linked
+          WHERE linked.notion_page_id = ns.notion_page_id AND linked.user_id <> u.id
+        )
+      ON CONFLICT (user_id) DO UPDATE SET
+        notion_page_id = EXCLUDED.notion_page_id,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE student_profiles.notion_page_id IS NULL
+         OR student_profiles.notion_page_id = EXCLUDED.notion_page_id
+    `);
+    // Notionと紐づく既存アカウントにも、学籍番号（または管理画面の上書き値）を反映する。
+    // 重複するログインIDがある場合は既存アカウントを優先して変更しない。
+    await db.query(`
+      UPDATE users u
+      SET username = ns.login_id, updated_at = CURRENT_TIMESTAMP
+      FROM student_profiles sp
+      JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+      WHERE sp.user_id = u.id
+        AND ns.login_id IS NOT NULL
+        AND ns.login_id <> ''
+        AND (
+          SELECT COUNT(*) FROM student_profiles duplicate_sp
+          WHERE duplicate_sp.notion_page_id = sp.notion_page_id
+        ) = 1
+        AND (
+          SELECT COUNT(*) FROM notion_students duplicate_ns
+          WHERE LOWER(duplicate_ns.login_id) = LOWER(ns.login_id)
+        ) = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM users other
+          WHERE other.id <> u.id
+            AND (LOWER(other.username) = LOWER(ns.login_id) OR LOWER(other.email) = LOWER(ns.login_id))
+        )
+    `);
 
     // =====================================================
     // 引き継ぎ情報テーブル（salesからTutorへ）

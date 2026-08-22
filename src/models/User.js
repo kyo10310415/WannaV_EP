@@ -2,16 +2,16 @@ const db = require('../config/database');
 const bcrypt = require('bcrypt');
 
 class User {
-  // username ベースで作成（email は username@wannav.local として生成）
-  static async create(email, password, name, role = '生徒') {
+  // loginId ベースで作成（メール形式でなければ内部用emailを生成）
+  static async create(email, password, name, role = '生徒', queryable = db) {
     const hashedPassword = await bcrypt.hash(password, 10);
     // email フィールドが username として渡されることを考慮
     // email に @ が含まれない場合はユーザー名として扱い、email を自動生成
     const isUsername = !email.includes('@');
     const actualEmail    = isUsername ? `${email}@wannav.local` : email;
-    const actualUsername = isUsername ? email : email.split('@')[0];
+    const actualUsername = email;
 
-    const result = await db.query(
+    const result = await queryable.query(
       `INSERT INTO users (email, password, name, username, role)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, email, name, username, role, created_at`,
@@ -28,7 +28,7 @@ class User {
   // username でログイン検索
   static async findByUsername(username) {
     const result = await db.query(
-      'SELECT * FROM users WHERE username = $1 OR email = $1',
+      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)',
       [username]
     );
     return result.rows[0];
@@ -61,6 +61,17 @@ class User {
       [role, id]
     );
     return result.rows[0];
+  }
+
+  static async updateLoginId(id, loginId, queryable = db) {
+    const result = await queryable.query(
+      `UPDATE users
+       SET username = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND role = '生徒'
+       RETURNING id, email, name, username, role`,
+      [loginId, id]
+    );
+    return result.rows[0] || null;
   }
 
   static async delete(id) {

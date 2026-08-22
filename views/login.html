@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ログイン - WannaV エントリープラン</title>
+    <title>ログイン - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
         /* 初回PW変更モーダル */
@@ -47,19 +47,18 @@
 <body>
     <div class="container" style="max-width: 500px; margin-top: 100px;">
         <div class="card" style="text-align: center;">
-            <h1 class="logo" style="font-size: 36px; margin-bottom: 8px;">✨ WannaV</h1>
-            <p style="color: var(--accent-cyan); font-size: 16px; font-weight: 600; margin-bottom: 32px; letter-spacing: 0.05em;">エントリープラン</p>
+            <h1 class="logo" style="font-size: 36px; margin-bottom: 32px;">✨ WannaV ポータル</h1>
 
             <div id="alert-container"></div>
 
             <form id="login-form">
                 <div class="form-group" style="text-align:left;">
-                    <label class="form-label" for="email">ユーザー名</label>
+                    <label class="form-label" for="email">ログインID</label>
                     <input
                         type="text"
                         id="email"
                         class="form-input"
-                        placeholder="ユーザー名を入力"
+                        placeholder="ログインIDを入力"
                         required
                         autocomplete="username"
                     >
@@ -174,6 +173,7 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
 
+                if (data.token) localStorage.setItem('token', data.token);
                 document.getElementById('pw-modal').classList.remove('open');
                 showAlert('パスワードを変更しました！', 'success');
                 setTimeout(() => window.location.href = '/dashboard', 900);

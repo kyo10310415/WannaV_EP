@@ -9,7 +9,35 @@ const ActivityLog = require('../models/ActivityLog');
 const StudentGoal = require('../models/StudentGoal');
 const LessonSchedule = require('../models/LessonSchedule');
 const User = require('../models/User');
+const NotionStudent = require('../models/NotionStudent');
 const db = require('../config/database');
+const { mergeStudentRecords } = require('../utils/studentDirectory');
+
+function validateLoginId(value) {
+  const loginId = typeof value === 'string' ? value.trim() : '';
+  if (!loginId) return { error: 'ログインIDを入力してください' };
+  if (loginId.length > 255) return { error: 'ログインIDは255文字以内で入力してください' };
+  if (/\s/.test(loginId)) return { error: 'ログインIDに空白は使用できません' };
+  return { loginId };
+}
+
+async function loginIdHasConflict(queryable, loginId, { excludeUserId = null, excludeNotionPageId = null } = {}) {
+  const result = await queryable.query(`
+    SELECT (
+      EXISTS (
+        SELECT 1 FROM users
+        WHERE (LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1))
+          AND id IS DISTINCT FROM $2::integer
+      )
+      OR EXISTS (
+        SELECT 1 FROM notion_students
+        WHERE LOWER(login_id) = LOWER($1)
+          AND notion_page_id IS DISTINCT FROM $3::varchar
+      )
+    ) AS has_conflict
+  `, [loginId, excludeUserId, excludeNotionPageId]);
+  return result.rows[0]?.has_conflict === true;
+}
 
 // ====================================================
 // 生徒プロフィール管理
@@ -24,14 +52,152 @@ router.get('/', auth, checkRole('管理者', 'クルー', 'セールス'), async
     const { status, tutorId } = req.query;
     // クルーは自分の担当生徒のみ（管理者・セールスは全件）
     const filterTutorId = req.user.role === 'クルー' ? req.user.id : (tutorId || null);
-    const students = await StudentProfile.getAll({
-      status: status || null,
-      tutorId: filterTutorId
+    const [accountStudents, notionStudents] = await Promise.all([
+      StudentProfile.getAll({ tutorId: filterTutorId }),
+      NotionStudent.getAll()
+    ]);
+
+    // 担当Tutorで絞り込んだ場合、アカウント未作成（担当未設定）のNotion生徒は除外する。
+    let students = mergeStudentRecords(accountStudents, notionStudents, {
+      includeUnlinkedNotion: !filterTutorId
     });
+    if (status) {
+      students = students.filter(student => student.status === status);
+    }
     res.json(students);
   } catch (error) {
     console.error('Get students error:', error);
     res.status(500).json({ error: '生徒一覧の取得に失敗しました' });
+  }
+});
+
+/**
+ * PATCH /api/students/notion/:notionPageId/login-id
+ * アカウント未作成のNotion生徒のログインIDを設定する。
+ */
+router.patch('/notion/:notionPageId/login-id', auth, checkRole('管理者', 'セールス'), async (req, res) => {
+  const validated = validateLoginId(req.body.loginId);
+  if (validated.error) return res.status(400).json({ error: validated.error });
+
+  let client;
+  try {
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+    const conflict = await loginIdHasConflict(client, validated.loginId, {
+      excludeNotionPageId: req.params.notionPageId
+    });
+    if (conflict) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'このログインIDは既に使われています' });
+    }
+
+    const student = await NotionStudent.updateLoginId(
+      req.params.notionPageId,
+      validated.loginId,
+      client
+    );
+    if (!student) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Notion生徒が見つかりません' });
+    }
+    await client.query('COMMIT');
+
+    await ActivityLog.log({
+      userId: req.user.id,
+      action: 'student_login_id_update',
+      targetType: 'notion_student',
+      detail: { notionPageId: req.params.notionPageId, loginId: validated.loginId },
+      ipAddress: req.ip
+    });
+    res.json(student);
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    console.error('Update Notion student login ID error:', error);
+    res.status(500).json({ error: 'ログインIDの更新に失敗しました' });
+  } finally {
+    client?.release();
+  }
+});
+
+/**
+ * PATCH /api/students/:userId/login-id
+ * 生徒アカウントのログインIDを更新し、紐づくNotionキャッシュにも反映する。
+ */
+router.patch('/:userId/login-id', auth, checkRole('管理者', 'セールス'), async (req, res) => {
+  const validated = validateLoginId(req.body.loginId);
+  if (validated.error) return res.status(400).json({ error: validated.error });
+
+  const notionPageId = typeof req.body.notionPageId === 'string' && req.body.notionPageId
+    ? req.body.notionPageId
+    : null;
+  let client;
+  try {
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+    const currentResult = await client.query(
+      `SELECT id, username FROM users WHERE id = $1 AND role = '生徒'`,
+      [req.params.userId]
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: '生徒アカウントが見つかりません' });
+    }
+
+    const conflict = await loginIdHasConflict(client, validated.loginId, {
+      excludeUserId: Number(req.params.userId),
+      excludeNotionPageId: notionPageId
+    });
+    if (conflict) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'このログインIDは既に使われています' });
+    }
+
+    const user = await User.updateLoginId(req.params.userId, validated.loginId, client);
+    if (notionPageId) {
+      const existingLink = await client.query(`
+        SELECT 1 FROM student_profiles
+        WHERE notion_page_id = $1 AND user_id <> $2
+        LIMIT 1
+      `, [notionPageId, req.params.userId]);
+      if (existingLink.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'このNotion生徒は別のアカウントに紐づいています' });
+      }
+
+      const notionStudent = await NotionStudent.updateLoginId(notionPageId, validated.loginId, client);
+      if (!notionStudent) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: '紐づくNotion生徒が見つかりません' });
+      }
+      await client.query(`
+        INSERT INTO student_profiles (user_id, notion_page_id, updated_at)
+        VALUES ($1, $2, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id) DO UPDATE SET
+          notion_page_id = EXCLUDED.notion_page_id,
+          updated_at = CURRENT_TIMESTAMP
+      `, [req.params.userId, notionPageId]);
+    }
+    await client.query('COMMIT');
+
+    await ActivityLog.log({
+      userId: req.user.id,
+      action: 'student_login_id_update',
+      targetType: 'student',
+      targetId: Number(req.params.userId),
+      detail: { oldLoginId: current.username, loginId: validated.loginId, notionPageId },
+      ipAddress: req.ip
+    });
+    res.json({ ...user, login_id: validated.loginId, notion_page_id: notionPageId });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    console.error('Update student login ID error:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'このログインIDは既に使われています' });
+    }
+    res.status(500).json({ error: 'ログインIDの更新に失敗しました' });
+  } finally {
+    client?.release();
   }
 });
 

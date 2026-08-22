@@ -3,31 +3,31 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// ログイン（ユーザー名 or メールアドレス）
+// ログイン（ログインIDとして username または email を受け付ける）
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body; // フロントは "email" フィールドを使用（ユーザー名を送る）
 
     const user = await User.findByUsername(email);
     if (!user) {
-      return res.status(401).json({ error: 'ユーザー名またはパスワードが間違っています' });
+      return res.status(401).json({ error: 'ログインIDまたはパスワードが間違っています' });
     }
 
     const isValidPassword = await User.verifyPassword(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'ユーザー名またはパスワードが間違っています' });
+      return res.status(401).json({ error: 'ログインIDまたはパスワードが間違っています' });
     }
 
     await User.updateLastLogin(user.id);
 
+    // 初回パスワード変更が必要かどうか
+    const needsPasswordChange = !user.password_changed_at;
+
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: needsPasswordChange },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-
-    // 初回パスワード変更が必要かどうか
-    const needsPasswordChange = !user.password_changed_at;
 
     res.json({
       token,
@@ -60,7 +60,13 @@ router.post('/change-password', async (req, res) => {
     }
 
     await User.resetPassword(decoded.id, newPassword);
-    res.json({ success: true, message: 'パスワードを変更しました' });
+    const user = await User.findById(decoded.id);
+    const refreshedToken = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: false },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ success: true, message: 'パスワードを変更しました', token: refreshedToken });
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'パスワード変更に失敗しました' });
