@@ -8,10 +8,10 @@
     <style>
         .character-panel-content { display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap; }
         .character-current { display:flex; align-items:center; gap:18px; }
-        .character-current img { width:120px; height:120px; object-fit:cover; border-radius:18px; border:2px solid rgba(52,200,232,0.5); }
+        .character-current img { width:120px; height:120px; object-fit:contain; background:#fff; border-radius:18px; border:2px solid rgba(52,200,232,0.5); }
         .character-modal { display:none; position:fixed; inset:0; z-index:2000; background:rgba(7,16,24,0.92); padding:24px; }
         .character-modal.open { display:flex; align-items:center; justify-content:center; }
-        .character-modal-box { width:min(1180px, 100%); max-height:92vh; overflow:hidden; display:flex; flex-direction:column; background:var(--card-bg); border:1px solid rgba(74,144,217,0.5); border-radius:22px; padding:24px; }
+        .character-modal-box { position:relative; width:min(1180px, 100%); max-height:92vh; overflow:hidden; display:flex; flex-direction:column; background:var(--card-bg); border:1px solid rgba(74,144,217,0.5); border-radius:22px; padding:24px; }
         .character-modal-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; }
         .character-close { border:none; background:none; color:var(--gray-text); font-size:28px; cursor:pointer; }
         .character-tabs { display:flex; gap:10px; margin-bottom:16px; }
@@ -20,13 +20,25 @@
         .character-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:14px; overflow-y:auto; padding:4px 6px 10px 0; }
         .character-option { border:1px solid rgba(74,144,217,0.25); background:rgba(7,16,24,0.55); border-radius:15px; padding:8px; color:var(--light-text); cursor:pointer; transition:all .2s; }
         .character-option:hover { transform:translateY(-3px); border-color:var(--accent-cyan); box-shadow:0 8px 22px rgba(52,200,232,.2); }
-        .character-option img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px; display:block; background:var(--darker-bg); }
+        .character-option img { width:100%; aspect-ratio:1/1; object-fit:contain; border-radius:10px; display:block; background:#fff; }
         .character-option-name { display:block; margin-top:7px; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .character-grid-message { grid-column:1/-1; text-align:center; color:var(--gray-text); padding:50px 20px; }
+        .character-preview { display:none; position:absolute; inset:0; z-index:5; background:var(--card-bg); padding:24px; flex-direction:column; }
+        .character-preview.open { display:flex; }
+        .character-preview-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:14px; }
+        .character-preview-image-wrap { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:16px; background:#fff; }
+        .character-preview-image { display:block; width:100%; height:100%; max-height:calc(92vh - 210px); object-fit:contain; }
+        .character-preview-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; }
+        .character-preview-name { min-width:0; color:var(--gray-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .character-preview-actions { display:flex; gap:10px; flex-shrink:0; }
         @media (max-width:600px) {
             .character-modal { padding:8px; }
             .character-modal-box { padding:16px; max-height:96vh; }
             .character-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            .character-preview { padding:16px; }
+            .character-preview-image { max-height:calc(96vh - 245px); }
+            .character-preview-footer { align-items:stretch; flex-direction:column; }
+            .character-preview-actions { display:grid; grid-template-columns:1fr 1fr; }
         }
     </style>
 </head>
@@ -46,6 +58,25 @@
             </div>
             <div id="character-grid" class="character-grid">
                 <div class="character-grid-message">読み込み中...</div>
+            </div>
+            <div id="character-preview" class="character-preview" aria-hidden="true">
+                <div class="character-preview-header">
+                    <div>
+                        <h2>🎭 キャラクター全体プレビュー</h2>
+                        <p style="color:var(--gray-text);font-size:13px;margin-top:4px;">全体像を確認してから選択してください。</p>
+                    </div>
+                    <button class="character-close" onclick="closeCharacterPreview()" aria-label="一覧に戻る">×</button>
+                </div>
+                <div class="character-preview-image-wrap">
+                    <img id="character-preview-image" class="character-preview-image" alt="キャラクター全体プレビュー">
+                </div>
+                <div class="character-preview-footer">
+                    <p id="character-preview-name" class="character-preview-name"></p>
+                    <div class="character-preview-actions">
+                        <button class="btn btn-secondary" onclick="closeCharacterPreview()">一覧に戻る</button>
+                        <button id="character-select-confirm" class="btn btn-primary" onclick="confirmPreviewedCharacter()">このキャラクターを選択</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -110,6 +141,8 @@
         let characterImages = { 女性: [], 男性: [] };
         let currentCharacterCategory = '女性';
         let visibleCharacterImages = [];
+        let previewedCharacter = null;
+        let characterSelectionSubmitting = false;
 
         // 認証チェック
         async function checkAuth() {
@@ -194,6 +227,7 @@
         }
 
         async function openCharacterSelector() {
+            closeCharacterPreview();
             const modal = document.getElementById('character-modal');
             modal.classList.add('open');
             modal.setAttribute('aria-hidden', 'false');
@@ -208,6 +242,7 @@
         }
 
         function closeCharacterSelector() {
+            closeCharacterPreview();
             const modal = document.getElementById('character-modal');
             modal.classList.remove('open');
             modal.setAttribute('aria-hidden', 'true');
@@ -218,6 +253,7 @@
         }
 
         function switchCharacterCategory(category) {
+            closeCharacterPreview();
             currentCharacterCategory = category;
             document.getElementById('character-tab-female').classList.toggle('active', category === '女性');
             document.getElementById('character-tab-male').classList.toggle('active', category === '男性');
@@ -228,15 +264,40 @@
                 return;
             }
             grid.innerHTML = visibleCharacterImages.map((image, index) => `
-                <button class="character-option" onclick="chooseCharacter(${index})" title="${escHtml(image.fileName)}">
+                <button class="character-option" onclick="previewCharacter(${index})" title="${escHtml(image.fileName)}を全体表示">
                     <img src="${image.imageUrl}?size=360" alt="${escHtml(image.fileName)}" loading="lazy">
                     <span class="character-option-name">${escHtml(image.fileName)}</span>
                 </button>`).join('');
         }
 
-        async function chooseCharacter(index) {
+        function previewCharacter(index) {
             const image = visibleCharacterImages[index];
-            if (!image || !confirm('このキャラクターでいいですか？')) return;
+            if (!image) return;
+            previewedCharacter = image;
+            document.getElementById('character-preview-image').src = `${image.imageUrl}?full=1`;
+            document.getElementById('character-preview-image').alt = `${image.fileName}の全体プレビュー`;
+            document.getElementById('character-preview-name').textContent = image.fileName;
+            const preview = document.getElementById('character-preview');
+            preview.classList.add('open');
+            preview.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeCharacterPreview() {
+            previewedCharacter = null;
+            const preview = document.getElementById('character-preview');
+            if (!preview) return;
+            preview.classList.remove('open');
+            preview.setAttribute('aria-hidden', 'true');
+            document.getElementById('character-preview-image').removeAttribute('src');
+        }
+
+        async function confirmPreviewedCharacter() {
+            const image = previewedCharacter;
+            if (characterSelectionSubmitting || !image || !confirm('このキャラクターでいいですか？')) return;
+            const confirmButton = document.getElementById('character-select-confirm');
+            characterSelectionSubmitting = true;
+            confirmButton.disabled = true;
+            confirmButton.textContent = '選択中...';
             try {
                 const data = await characterFetch('/characters/select', {
                     method: 'POST',
@@ -248,6 +309,10 @@
             } catch (error) {
                 alert(error.message);
                 if (error.message.includes('他の生徒')) openCharacterSelector();
+            } finally {
+                characterSelectionSubmitting = false;
+                confirmButton.disabled = false;
+                confirmButton.textContent = 'このキャラクターを選択';
             }
         }
 

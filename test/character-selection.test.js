@@ -128,6 +128,11 @@ test('DB制約・API・画面にキャラクター選択フローが定義され
   assert.match(routes, /streamThumbnail/);
   assert.doesNotMatch(routes, /res\.redirect\(/);
   assert.match(dashboard, /このキャラクターでいいですか？/);
+  assert.match(dashboard, /character-preview/);
+  assert.match(dashboard, /previewCharacter\(\$\{index\}\)/);
+  assert.match(dashboard, /\?full=1/);
+  assert.match(dashboard, /object-fit:contain/);
+  assert.match(routes, /req\.query\.full !== '1'/);
   assert.match(dashboard, /switchCharacterCategory\('女性'\)/);
   assert.match(dashboard, /switchCharacterCategory\('男性'\)/);
   assert.match(admin, /キャラクター選択中/);
