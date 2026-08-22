@@ -5,8 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ダッシュボード - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .character-panel-content { display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+        .character-current { display:flex; align-items:center; gap:18px; }
+        .character-current img { width:120px; height:120px; object-fit:cover; border-radius:18px; border:2px solid rgba(52,200,232,0.5); }
+        .character-modal { display:none; position:fixed; inset:0; z-index:2000; background:rgba(7,16,24,0.92); padding:24px; }
+        .character-modal.open { display:flex; align-items:center; justify-content:center; }
+        .character-modal-box { width:min(1180px, 100%); max-height:92vh; overflow:hidden; display:flex; flex-direction:column; background:var(--card-bg); border:1px solid rgba(74,144,217,0.5); border-radius:22px; padding:24px; }
+        .character-modal-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; }
+        .character-close { border:none; background:none; color:var(--gray-text); font-size:28px; cursor:pointer; }
+        .character-tabs { display:flex; gap:10px; margin-bottom:16px; }
+        .character-tab { border:1px solid rgba(74,144,217,0.35); background:rgba(7,16,24,0.6); color:var(--gray-text); border-radius:22px; padding:9px 20px; cursor:pointer; font-weight:700; }
+        .character-tab.active { color:white; border-color:var(--primary-blue); background:linear-gradient(45deg,var(--primary-blue-dark),var(--primary-blue)); }
+        .character-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:14px; overflow-y:auto; padding:4px 6px 10px 0; }
+        .character-option { border:1px solid rgba(74,144,217,0.25); background:rgba(7,16,24,0.55); border-radius:15px; padding:8px; color:var(--light-text); cursor:pointer; transition:all .2s; }
+        .character-option:hover { transform:translateY(-3px); border-color:var(--accent-cyan); box-shadow:0 8px 22px rgba(52,200,232,.2); }
+        .character-option img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px; display:block; background:var(--darker-bg); }
+        .character-option-name { display:block; margin-top:7px; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .character-grid-message { grid-column:1/-1; text-align:center; color:var(--gray-text); padding:50px 20px; }
+        @media (max-width:600px) {
+            .character-modal { padding:8px; }
+            .character-modal-box { padding:16px; max-height:96vh; }
+            .character-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        }
+    </style>
 </head>
 <body>
+    <div id="character-modal" class="character-modal" aria-hidden="true" onclick="closeCharacterSelectorFromBackdrop(event)">
+        <div class="character-modal-box" role="dialog" aria-modal="true" aria-labelledby="character-modal-title">
+            <div class="character-modal-header">
+                <div>
+                    <h2 id="character-modal-title">🎭 キャラクター選択</h2>
+                    <p style="color:var(--gray-text);font-size:13px;">選択した画像は管理者・セールスの確認後に確定します。</p>
+                </div>
+                <button class="character-close" onclick="closeCharacterSelector()" aria-label="閉じる">×</button>
+            </div>
+            <div class="character-tabs" role="tablist">
+                <button id="character-tab-female" class="character-tab active" onclick="switchCharacterCategory('女性')">女性</button>
+                <button id="character-tab-male" class="character-tab" onclick="switchCharacterCategory('男性')">男性</button>
+            </div>
+            <div id="character-grid" class="character-grid">
+                <div class="character-grid-message">読み込み中...</div>
+            </div>
+        </div>
+    </div>
+
     <div class="header">
         <div class="header-content">
             <h1 class="logo">✨ WannaV ポータル</h1>
@@ -21,6 +64,11 @@
     <div class="container">
         <!-- 管理者メニュー（権限に応じて動的生成） -->
         <div id="admin-menu" class="nav" style="display: none;"></div>
+
+        <!-- 生徒キャラクター選択 -->
+        <div id="student-character-panel" class="card" style="display:none">
+            <div id="student-character-content" class="character-panel-content"></div>
+        </div>
 
         <!-- 進捗統計 -->
         <div class="dashboard-grid">
@@ -59,6 +107,9 @@
     <script>
         const API_URL = '/api';
         let currentUser = null;
+        let characterImages = { 女性: [], 男性: [] };
+        let currentCharacterCategory = '女性';
+        let visibleCharacterImages = [];
 
         // 認証チェック
         async function checkAuth() {
@@ -83,6 +134,7 @@
                 if (currentUser.role === '管理者' || currentUser.role === 'クルー' || currentUser.role === 'セールス') {
                     buildNav('admin-menu', currentUser.role, '/dashboard');
                 }
+                if (currentUser.role === '生徒') loadCharacterStatus();
 
                 loadDashboard();
             } catch (error) {
@@ -90,6 +142,118 @@
                 localStorage.removeItem('token');
                 window.location.href = '/';
             }
+        }
+
+        async function characterFetch(path, options = {}) {
+            const response = await fetch(`${API_URL}${path}`, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || '処理に失敗しました');
+            return data;
+        }
+
+        async function loadCharacterStatus() {
+            const panel = document.getElementById('student-character-panel');
+            const content = document.getElementById('student-character-content');
+            panel.style.display = '';
+            content.innerHTML = '<p style="color:var(--gray-text)">キャラクター情報を読み込み中...</p>';
+            try {
+                const data = await characterFetch('/characters/me');
+                if (!data.selection) {
+                    content.innerHTML = `
+                        <div>
+                            <h2>🎭 キャラクターを選択</h2>
+                            <p style="color:var(--gray-text);margin-top:5px">自分専用のキャラクターを1つ選んでください。</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="openCharacterSelector()">キャラクター選択</button>`;
+                    return;
+                }
+
+                const selection = data.selection;
+                const statusText = selection.status === 'confirmed'
+                    ? '✅ キャラクター確定済み'
+                    : '⏳ 管理者・セールスの確認待ち';
+                content.innerHTML = `
+                    <div class="character-current">
+                        <img src="${selection.imageUrl}?size=360" alt="選択したキャラクター">
+                        <div>
+                            <h2>🎭 選択したキャラクター</h2>
+                            <p style="color:var(--accent-cyan);font-weight:700;margin-top:6px">${statusText}</p>
+                            <p style="color:var(--gray-text);font-size:12px;margin-top:3px">${escHtml(selection.fileName)}</p>
+                        </div>
+                    </div>`;
+            } catch (error) {
+                content.innerHTML = `<p style="color:var(--danger)">${escHtml(error.message)}</p>`;
+            }
+        }
+
+        async function openCharacterSelector() {
+            const modal = document.getElementById('character-modal');
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('character-grid').innerHTML = '<div class="character-grid-message">画像を読み込み中...</div>';
+            try {
+                const data = await characterFetch('/characters/available');
+                characterImages = data.images || { 女性: [], 男性: [] };
+                switchCharacterCategory('女性');
+            } catch (error) {
+                document.getElementById('character-grid').innerHTML = `<div class="character-grid-message" style="color:var(--danger)">${escHtml(error.message)}</div>`;
+            }
+        }
+
+        function closeCharacterSelector() {
+            const modal = document.getElementById('character-modal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function closeCharacterSelectorFromBackdrop(event) {
+            if (event.target.id === 'character-modal') closeCharacterSelector();
+        }
+
+        function switchCharacterCategory(category) {
+            currentCharacterCategory = category;
+            document.getElementById('character-tab-female').classList.toggle('active', category === '女性');
+            document.getElementById('character-tab-male').classList.toggle('active', category === '男性');
+            visibleCharacterImages = characterImages[category] || [];
+            const grid = document.getElementById('character-grid');
+            if (!visibleCharacterImages.length) {
+                grid.innerHTML = '<div class="character-grid-message">選択できる画像がありません</div>';
+                return;
+            }
+            grid.innerHTML = visibleCharacterImages.map((image, index) => `
+                <button class="character-option" onclick="chooseCharacter(${index})" title="${escHtml(image.fileName)}">
+                    <img src="${image.imageUrl}?size=360" alt="${escHtml(image.fileName)}" loading="lazy">
+                    <span class="character-option-name">${escHtml(image.fileName)}</span>
+                </button>`).join('');
+        }
+
+        async function chooseCharacter(index) {
+            const image = visibleCharacterImages[index];
+            if (!image || !confirm('このキャラクターでいいですか？')) return;
+            try {
+                const data = await characterFetch('/characters/select', {
+                    method: 'POST',
+                    body: JSON.stringify({ fileId: image.fileId })
+                });
+                alert(data.message || 'キャラクターを選択しました');
+                closeCharacterSelector();
+                await loadCharacterStatus();
+            } catch (error) {
+                alert(error.message);
+                if (error.message.includes('他の生徒')) openCharacterSelector();
+            }
+        }
+
+        function escHtml(value) {
+            return String(value || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
         }
 
         // ダッシュボード読み込み
@@ -290,6 +454,7 @@
             const links = [
                 { href: '/dashboard',                label: '📊 ダッシュボード',          roles: ['管理者', 'クルー', 'セールス'] },
                 { href: '/admin/student-management', label: '👥 生徒管理',                roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/admin/characters',         label: '🎭 キャラクター管理',        roles: ['管理者', 'セールス'] },
                 { href: '/admin/handovers',          label: '📋 引き継ぎ',                roles: ['管理者', 'クルー', 'セールス'] },
                 { href: '/admin/extensions',         label: '📅 延長審査',                roles: ['管理者', 'クルー'] },
                 { href: '/admin/surveys',            label: '⭐ 満足度',                  roles: ['管理者', 'クルー'] },

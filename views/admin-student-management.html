@@ -196,7 +196,7 @@
                 <input type="text" id="search-input" class="filter-input" placeholder="🔍 名前・ログインID・学籍番号で検索" oninput="applyFilter()" style="min-width:260px">
                 <select id="filter-status" class="filter-select" onchange="applyFilter()">
                     <option value="">すべてのステータス</option>
-                    <option value="アクティブ">✅ アクティブ</option>
+                    <option value="アクティブ" selected>✅ アクティブ</option>
                     <option value="レッスン準備中">🔵 レッスン準備中</option>
                     <option value="休会">⏸ 休会</option>
                     <option value="退会">🔒 退会</option>
@@ -541,6 +541,7 @@
             const links = [
                 { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
                 { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
+                { href:'/admin/characters',         label:'🎭 キャラクター管理',     roles:['管理者','セールス'] },
                 { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },
                 { href:'/admin/extensions',         label:'📅 延長審査',             roles:['管理者','クルー'] },
                 { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
