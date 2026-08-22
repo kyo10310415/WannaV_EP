@@ -487,6 +487,26 @@ const createTables = async () => {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_goals_user ON student_goals(user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_schedules_user_date ON lesson_schedules(user_id, scheduled_date)`);
 
+    // =====================================================
+    // キャラクター選択（生徒ごと・画像ごとに1件のみ予約可能）
+    // =====================================================
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS character_selections (
+        id SERIAL PRIMARY KEY,
+        student_user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        drive_file_id VARCHAR(255) NOT NULL UNIQUE,
+        drive_file_name VARCHAR(255) NOT NULL,
+        category VARCHAR(20) NOT NULL CHECK (category IN ('女性', '男性')),
+        status VARCHAR(20) NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'confirmed')),
+        selected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        confirmed_at TIMESTAMP,
+        confirmed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_character_selections_status ON character_selections(status)`);
+
     console.log('✅ All database tables created successfully');
   } catch (error) {
     console.error('❌ Error creating tables:', error);

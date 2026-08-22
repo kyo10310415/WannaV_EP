@@ -38,6 +38,7 @@ app.use('/api/progress', require('./src/routes/progress'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/notion', require('./src/routes/notion'));
 app.use('/api/students', require('./src/routes/students'));
+app.use('/api/characters', require('./src/routes/characters'));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
@@ -94,6 +95,10 @@ app.get('/admin/logs', (req, res) => {
 
 app.get('/admin/schedule', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-schedule.html'));
+});
+
+app.get('/admin/characters', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin-character-management.html'));
 });
 
 // Initialize database and create admin user

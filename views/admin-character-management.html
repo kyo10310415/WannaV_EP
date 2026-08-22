@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>キャラクター管理 - WannaV ポータル</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .character-tabs { display:flex; gap:10px; margin:18px 0; overflow-x:auto; padding-bottom:4px; }
+        .character-tab { border:1px solid rgba(74,144,217,.35); background:rgba(7,16,24,.65); color:var(--gray-text); border-radius:22px; padding:9px 18px; cursor:pointer; font-size:13px; font-weight:700; white-space:nowrap; }
+        .character-tab.active { color:white; border-color:var(--primary-blue); background:linear-gradient(45deg,var(--primary-blue-dark),var(--primary-blue)); }
+        .tab-count { opacity:.8; margin-left:5px; }
+        .table-wrap { overflow-x:auto; border-radius:14px; }
+        .character-table { width:100%; border-collapse:separate; border-spacing:0 6px; min-width:760px; }
+        .character-table th { padding:11px 14px; text-align:left; font-size:12px; background:linear-gradient(45deg,var(--primary-blue-dark),var(--primary-blue)); color:white; }
+        .character-table th:first-child { border-radius:10px 0 0 10px; }
+        .character-table th:last-child { border-radius:0 10px 10px 0; }
+        .character-table td { background:rgba(23,42,63,.75); padding:12px 14px; border-top:1px solid rgba(74,144,217,.12); border-bottom:1px solid rgba(74,144,217,.12); vertical-align:middle; }
+        .character-table td:first-child { border-radius:10px 0 0 10px; }
+        .character-table td:last-child { border-radius:0 10px 10px 0; }
+        .character-thumb { width:96px; height:96px; object-fit:cover; border-radius:13px; border:1px solid rgba(52,200,232,.45); background:var(--darker-bg); display:block; }
+        .status-badge { display:inline-block; padding:4px 10px; border-radius:18px; font-size:11px; font-weight:700; }
+        .status-pending { color:#F7C55B; background:rgba(243,156,18,.16); border:1px solid rgba(243,156,18,.3); }
+        .status-confirmed { color:#6AEBB7; background:rgba(46,204,113,.16); border:1px solid rgba(46,204,113,.3); }
+        .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .action-btn { border:none; border-radius:9px; padding:7px 12px; cursor:pointer; font-size:12px; font-weight:700; }
+        .action-confirm { background:rgba(46,204,113,.18); color:#6AEBB7; }
+        .action-cancel { background:rgba(231,76,60,.16); color:#F1948A; }
+        .empty-state { text-align:center; padding:60px 20px; color:var(--gray-text); }
+        @media (max-width:600px) { .header-content { align-items:flex-start; gap:12px; } .user-info { gap:8px; flex-wrap:wrap; justify-content:flex-end; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV ポータル</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="nav" id="admin-nav"></div>
+        <div id="alert-container"></div>
+
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+                <div>
+                    <h2>🎭 キャラクター管理</h2>
+                    <p style="color:var(--gray-text);font-size:13px;margin-top:4px">生徒が選択したキャラクターを確認・確定します。</p>
+                </div>
+                <button class="btn btn-secondary" onclick="loadSelections()">🔄 更新</button>
+            </div>
+
+            <div class="character-tabs" role="tablist">
+                <button id="tab-pending" class="character-tab active" onclick="switchTab('pending')">
+                    キャラクター選択中 <span id="count-pending" class="tab-count">0</span>
+                </button>
+                <button id="tab-confirmed" class="character-tab" onclick="switchTab('confirmed')">
+                    キャラクター確定済み <span id="count-confirmed" class="tab-count">0</span>
+                </button>
+            </div>
+
+            <div id="character-list"><div class="loading" style="margin:50px auto"></div></div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = localStorage.getItem('token');
+        let currentTab = 'pending';
+        let selectionsByStatus = { pending: [], confirmed: [] };
+
+        async function init() {
+            if (!TOKEN) { window.location.href = '/'; return; }
+            const me = await fetchJSON('/api/auth/me');
+            if (!me) return;
+            if (me.role !== '管理者' && me.role !== 'セールス') {
+                window.location.href = '/dashboard';
+                return;
+            }
+            document.getElementById('user-name').textContent = `${me.name} (${me.role})`;
+            buildNav('admin-nav', me.role, '/admin/characters');
+            await loadSelections();
+        }
+
+        async function fetchJSON(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        Authorization: `Bearer ${TOKEN}`,
+                        'Content-Type': 'application/json',
+                        ...(options.headers || {})
+                    }
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 401) { window.location.href = '/'; return null; }
+                if (!response.ok) throw new Error(data.error || '処理に失敗しました');
+                return data;
+            } catch (error) {
+                showAlert(error.message, 'error');
+                return null;
+            }
+        }
+
+        async function loadSelections() {
+            document.getElementById('character-list').innerHTML = '<div class="loading" style="margin:50px auto"></div>';
+            const [pending, confirmed] = await Promise.all([
+                fetchJSON('/api/characters/admin?status=pending'),
+                fetchJSON('/api/characters/admin?status=confirmed')
+            ]);
+            selectionsByStatus.pending = pending?.selections || [];
+            selectionsByStatus.confirmed = confirmed?.selections || [];
+            document.getElementById('count-pending').textContent = selectionsByStatus.pending.length;
+            document.getElementById('count-confirmed').textContent = selectionsByStatus.confirmed.length;
+            renderSelections();
+        }
+
+        function switchTab(status) {
+            currentTab = status;
+            document.getElementById('tab-pending').classList.toggle('active', status === 'pending');
+            document.getElementById('tab-confirmed').classList.toggle('active', status === 'confirmed');
+            renderSelections();
+        }
+
+        function renderSelections() {
+            const items = selectionsByStatus[currentTab] || [];
+            const container = document.getElementById('character-list');
+            if (!items.length) {
+                const text = currentTab === 'pending' ? '確定待ちの選択はありません' : '確定済みの選択はありません';
+                container.innerHTML = `<div class="empty-state">🎭<br><br>${text}</div>`;
+                return;
+            }
+
+            container.innerHTML = `<div class="table-wrap"><table class="character-table">
+                <thead><tr><th>学籍番号</th><th>生徒名</th><th>選択画像</th><th>画像名</th><th>状態</th><th>操作</th></tr></thead>
+                <tbody>${items.map(item => `
+                    <tr>
+                        <td><code style="color:var(--accent-cyan)">${escHtml(item.studentNumber || '-')}</code></td>
+                        <td style="font-weight:700">${escHtml(item.studentName || '-')}</td>
+                        <td><img class="character-thumb" src="${item.imageUrl}?size=300" alt="${escHtml(item.fileName)}" loading="lazy"></td>
+                        <td><div>${escHtml(item.fileName)}</div><small style="color:var(--gray-text)">${escHtml(item.category)}</small></td>
+                        <td><span class="status-badge ${item.status === 'confirmed' ? 'status-confirmed' : 'status-pending'}">${item.status === 'confirmed' ? '確定済み' : '選択中'}</span></td>
+                        <td><div class="row-actions">
+                            ${item.status === 'pending' ? `<button class="action-btn action-confirm" onclick="confirmSelection(${item.id})">確定</button>` : ''}
+                            <button class="action-btn action-cancel" onclick="cancelSelection(${item.id}, '${item.status}')">キャンセル</button>
+                        </div></td>
+                    </tr>`).join('')}</tbody>
+            </table></div>`;
+        }
+
+        async function confirmSelection(id) {
+            if (!confirm('この生徒のキャラクターを確定しますか？')) return;
+            const result = await fetchJSON(`/api/characters/admin/${id}/confirm`, { method: 'PATCH' });
+            if (result) {
+                showAlert(result.message || 'キャラクターを確定しました', 'success');
+                await loadSelections();
+            }
+        }
+
+        async function cancelSelection(id, status) {
+            const label = status === 'confirmed' ? '確定済みのキャラクター' : '選択中のキャラクター';
+            if (!confirm(`${label}をキャンセルしますか？\n画像は再び他の生徒が選択できるようになります。`)) return;
+            const result = await fetchJSON(`/api/characters/admin/${id}`, { method: 'DELETE' });
+            if (result) {
+                showAlert(result.message || 'キャンセルしました', 'success');
+                await loadSelections();
+            }
+        }
+
+        function showAlert(message, type) {
+            const container = document.getElementById('alert-container');
+            container.innerHTML = `<div class="alert ${type === 'success' ? 'alert-success' : 'alert-error'}">${escHtml(message)}</div>`;
+            setTimeout(() => { container.innerHTML = ''; }, 3500);
+        }
+
+        function escHtml(value) {
+            return String(value || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+
+        function buildNav(elementId, role, activePath) {
+            const links = [
+                { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
+                { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
+                { href:'/admin/characters',         label:'🎭 キャラクター管理',     roles:['管理者','セールス'] },
+                { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },
+                { href:'/admin/extensions',         label:'📅 延長審査',             roles:['管理者','クルー'] },
+                { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
+                { href:'/admin/schedule',           label:'🗓 受講スケジュール',      roles:['管理者','クルー'] },
+                { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },
+                { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント作成', roles:['管理者','セールス'] },
+                { href:'/admin/contents',           label:'📹 コンテンツ管理',       roles:['管理者'] },
+                { href:'/admin/users',              label:'📈 ユーザー進捗管理',     roles:['管理者','クルー'] },
+                { href:'/admin/logs',               label:'📜 操作ログ',             roles:['管理者'] },
+            ];
+            const element = document.getElementById(elementId);
+            element.innerHTML = links.filter(link => link.roles.includes(role))
+                .map(link => `<a href="${link.href}" class="nav-link${link.href === activePath ? ' active' : ''}">${link.label}</a>`)
+                .join('');
+            element.style.display = 'flex';
+        }
+
+        init();
+    </script>
+</body>
+</html>
