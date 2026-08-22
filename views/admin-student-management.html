@@ -82,8 +82,6 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto;
         }
         .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(74,144,217,0.2); }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
 
         .progress-bar-wrap { background: rgba(74,144,217,0.1); border-radius: 10px; height: 6px; }
         .progress-bar-fill { background: linear-gradient(90deg, var(--primary-blue), var(--accent-cyan)); border-radius: 10px; height: 100%; transition: width 0.3s; }
@@ -95,7 +93,6 @@
         .action-btn:hover { transform: translateY(-1px); }
         .btn-info   { background: rgba(74,144,217,0.2); color: var(--primary-blue-light); }
         .btn-edit   { background: rgba(52,200,232,0.15); color: var(--accent-cyan); }
-        .btn-status { background: rgba(243,156,18,0.15); color: #F39C12; }
         .source-badge {
             display:inline-block; margin-top:5px; padding:2px 7px; border-radius:8px;
             font-size:10px; font-weight:700;
@@ -106,85 +103,12 @@
             display:block; max-width:220px; overflow:hidden; text-overflow:ellipsis;
             color:var(--primary-blue-light); font-size:12px;
         }
+        .notion-source-note {
+            margin: -4px 0 14px; color: var(--gray-text); font-size: 12px; line-height: 1.6;
+        }
     </style>
 </head>
 <body>
-    <!-- ステータス変更モーダル -->
-    <div id="status-modal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="modal-title">📋 ステータス変更</div>
-            <p style="color:var(--gray-text);font-size:13px;margin-bottom:20px;">
-                生徒: <strong id="status-modal-name" style="color:var(--primary-blue-light)"></strong>
-            </p>
-            <div class="form-group">
-                <label class="form-label">新しいステータス</label>
-                <select id="status-modal-select" class="form-input">
-                    <option value="アクティブ">✅ アクティブ</option>
-                    <option value="レッスン準備中">🔵 レッスン準備中</option>
-                    <option value="休会">⏸ 休会</option>
-                    <option value="退会">🔒 退会</option>
-                    <option value="強制退会">🚫 強制退会</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin-top:14px">
-                <label class="form-label">変更理由・メモ（任意）</label>
-                <textarea id="status-modal-note" class="form-input" rows="3" placeholder="理由・メモを入力"></textarea>
-            </div>
-            <div style="display:flex;gap:12px;margin-top:24px">
-                <button onclick="submitStatusChange()" class="btn btn-primary" style="flex:1">✅ 変更する</button>
-                <button onclick="closeStatusModal()" class="btn btn-secondary" style="flex:1">キャンセル</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- プロフィール編集モーダル -->
-    <div id="profile-modal" class="modal-overlay">
-        <div class="modal-box" style="max-width:680px">
-            <div class="modal-title">✏️ 生徒情報編集</div>
-            <input type="hidden" id="profile-modal-uid">
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">契約プラン</label>
-                    <input type="text" id="profile-contract-plan" class="form-input" placeholder="例: エントリープラン">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">担当Tutor</label>
-                    <select id="profile-tutor" class="form-input">
-                        <option value="">未設定</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">契約開始日</label>
-                    <input type="date" id="profile-contract-start" class="form-input">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">契約終了日</label>
-                    <input type="date" id="profile-contract-end" class="form-input">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">レッスン開始日</label>
-                    <input type="date" id="profile-lesson-start" class="form-input">
-                </div>
-            </div>
-            <div class="form-group" style="margin-top:6px">
-                <label class="form-label">目標</label>
-                <textarea id="profile-goal" class="form-input" rows="2" placeholder="生徒の目標を入力"></textarea>
-            </div>
-            <div class="form-group">
-                <label class="form-label">特記事項・メモ</label>
-                <textarea id="profile-notes" class="form-input" rows="2" placeholder="担当者向けメモ"></textarea>
-            </div>
-            <div style="display:flex;gap:12px;margin-top:24px">
-                <button onclick="submitProfileEdit()" class="btn btn-primary" style="flex:1">💾 保存</button>
-                <button onclick="closeProfileModal()" class="btn btn-secondary" style="flex:1">キャンセル</button>
-            </div>
-        </div>
-    </div>
-
     <!-- ログインID編集モーダル -->
     <div id="login-id-modal" class="modal-overlay">
         <div class="modal-box" style="max-width:480px">
@@ -260,6 +184,10 @@
                 </div>
             </div>
 
+            <p class="notion-source-note">
+                氏名・ステータス・契約プラン・レッスン開始月は、Notionの同期情報を表示します。ログインIDのみこの画面から変更できます。
+            </p>
+
             <!-- 契約プランタブ -->
             <div class="plan-tabs" id="plan-tabs" role="tablist" aria-label="契約プラン"></div>
 
@@ -272,7 +200,9 @@
                     <option value="レッスン準備中">🔵 レッスン準備中</option>
                     <option value="休会">⏸ 休会</option>
                     <option value="退会">🔒 退会</option>
+                    <option value="正規退会">🔒 正規退会</option>
                     <option value="強制退会">🚫 強制退会</option>
+                    <option value="無断キャンセル">🚫 無断キャンセル</option>
                 </select>
                 <select id="filter-tutor" class="filter-select" onchange="applyFilter()">
                     <option value="">すべてのTutor</option>
@@ -320,8 +250,6 @@
         let allStudents = [];
         let tutors = [];
         let visibleStudents = [];
-        let currentEditUid = null;
-        let currentStatusUid = null;
         let currentLoginStudent = null;
         let canEditLoginId = false;
         let currentPlanFilter = '';
@@ -354,10 +282,8 @@
             if (!data) return;
             tutors = data;
             const sel = document.getElementById('filter-tutor');
-            const profileSel = document.getElementById('profile-tutor');
             data.forEach(t => {
                 sel.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-                profileSel.innerHTML += `<option value="${t.id}">${t.name}</option>`;
             });
         }
 
@@ -494,9 +420,7 @@
                     ? `<button onclick="openLoginIdModal(${index})" class="action-btn btn-edit" style="margin-top:5px">変更</button>`
                     : '';
                 const accountActions = s.has_account
-                    ? `<button onclick="openStatusModalForRow(${index})" class="action-btn btn-status">ステータス</button>
-                       <button onclick="openProfileModal(${s.user_id})" class="action-btn btn-edit">編集</button>
-                       <button onclick="openHandover(${s.user_id})" class="action-btn btn-info">引継ぎ</button>`
+                    ? `<button onclick="openHandover(${s.user_id})" class="action-btn btn-info">引継ぎ</button>`
                     : '<span style="font-size:11px;color:var(--gray-text)">アカウント作成後に利用可能</span>';
                 return `<tr>
                     <td>
@@ -536,8 +460,8 @@
             if (status === 'アクティブ') return 'status-active';
             if (status === 'レッスン準備中') return 'status-preparing';
             if (status === '休会') return 'status-hiatus';
-            if (status === '退会') return 'status-resigned';
-            if (status === '強制退会') return 'status-forced';
+            if (status === '退会' || status === '正規退会') return 'status-resigned';
+            if (status === '強制退会' || status === '無断キャンセル') return 'status-forced';
             return 'status-none';
         }
 
@@ -584,78 +508,6 @@
             }
         }
 
-        // ---- ステータス変更モーダル ----
-        function openStatusModalForRow(index) {
-            const student = visibleStudents[index];
-            if (!student?.user_id) return;
-            openStatusModal(student.user_id, student.student_name || '', student.status || '');
-        }
-        function openStatusModal(uid, name, currentStatus) {
-            currentStatusUid = uid;
-            document.getElementById('status-modal-name').textContent = name;
-            document.getElementById('status-modal-select').value = currentStatus || 'レッスン準備中';
-            document.getElementById('status-modal-note').value = '';
-            document.getElementById('status-modal').classList.add('open');
-        }
-        function closeStatusModal() {
-            document.getElementById('status-modal').classList.remove('open');
-        }
-        async function submitStatusChange() {
-            const status = document.getElementById('status-modal-select').value;
-            const note = document.getElementById('status-modal-note').value;
-            const res = await fetchJSON(`/api/students/${currentStatusUid}/status`, {
-                method: 'PATCH', body: JSON.stringify({ status, note })
-            });
-            if (res && !res.error) {
-                showAlert('ステータスを変更しました', 'success');
-                closeStatusModal();
-                await loadStudents();
-            } else {
-                showAlert(res?.error || 'エラーが発生しました', 'error');
-            }
-        }
-
-        // ---- プロフィール編集モーダル ----
-        async function openProfileModal(uid) {
-            currentEditUid = uid;
-            document.getElementById('profile-modal-uid').value = uid;
-            const profile = await fetchJSON(`/api/students/${uid}`);
-            if (!profile) return;
-            document.getElementById('profile-contract-plan').value = profile.contract_plan || '';
-            document.getElementById('profile-tutor').value = profile.assigned_tutor_id || '';
-            document.getElementById('profile-contract-start').value = toDateInput(profile.contract_start_date);
-            document.getElementById('profile-contract-end').value = toDateInput(profile.contract_end_date);
-            document.getElementById('profile-lesson-start').value = toDateInput(profile.lesson_start_date);
-            document.getElementById('profile-goal').value = profile.goal || '';
-            document.getElementById('profile-notes').value = profile.notes || '';
-            document.getElementById('profile-modal').classList.add('open');
-        }
-        function closeProfileModal() {
-            document.getElementById('profile-modal').classList.remove('open');
-        }
-        async function submitProfileEdit() {
-            const uid = document.getElementById('profile-modal-uid').value;
-            const body = {
-                contractPlan: document.getElementById('profile-contract-plan').value,
-                assignedTutorId: document.getElementById('profile-tutor').value || null,
-                contractStartDate: document.getElementById('profile-contract-start').value || null,
-                contractEndDate: document.getElementById('profile-contract-end').value || null,
-                lessonStartDate: document.getElementById('profile-lesson-start').value || null,
-                goal: document.getElementById('profile-goal').value,
-                notes: document.getElementById('profile-notes').value,
-            };
-            const res = await fetchJSON(`/api/students/${uid}/profile`, {
-                method: 'PUT', body: JSON.stringify(body)
-            });
-            if (res && !res.error) {
-                showAlert('情報を保存しました', 'success');
-                closeProfileModal();
-                await loadStudents();
-            } else {
-                showAlert(res?.error || 'エラーが発生しました', 'error');
-            }
-        }
-
         function openHandover(uid) {
             window.location.href = `/admin/handovers?uid=${uid}`;
         }
@@ -664,10 +516,6 @@
         function formatDate(d) {
             if (!d) return '-';
             return new Date(d).toLocaleDateString('ja-JP', { year:'numeric', month:'2-digit', day:'2-digit' });
-        }
-        function toDateInput(d) {
-            if (!d) return '';
-            return new Date(d).toISOString().split('T')[0];
         }
         function timeAgo(d) {
             const diff = Date.now() - new Date(d);

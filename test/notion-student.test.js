@@ -1,11 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { parsePage, buildContractPlanFilter } = require('../src/utils/notionSync');
 const { TARGET_CONTRACT_PLANS } = require('../src/config/contractPlans');
 const { mergeStudentRecords } = require('../src/utils/studentDirectory');
 const NotionStudent = require('../src/models/NotionStudent');
+const StudentProfile = require('../src/models/StudentProfile');
 const User = require('../src/models/User');
 const db = require('../src/config/database');
 const { auth } = require('../src/middleware/auth');
@@ -54,6 +57,7 @@ test('Notionの学籍番号をログインIDとして取得する', () => {
     properties: {
       名前: { type: 'title', title: [{ plain_text: '山田 太郎' }] },
       学籍番号: { type: 'rich_text', rich_text: [{ plain_text: 'ST-001' }] },
+      ステータス: { type: 'status', status: { name: 'アクティブ' } },
       契約プラン: { type: 'select', select: { name: 'エントリープラン' } },
     },
   };
@@ -61,6 +65,7 @@ test('Notionの学籍番号をログインIDとして取得する', () => {
   const student = parsePage(page);
   assert.equal(student.studentName, '山田 太郎');
   assert.equal(student.loginId, 'ST-001');
+  assert.equal(student.status, 'アクティブ');
   assert.equal(student.contractPlan, 'エントリープラン');
 });
 
@@ -97,20 +102,59 @@ test('学籍番号が一致するNotion生徒と既存アカウントを重複�
   assert.equal(merged[0].student_login_id, 'ST-001');
 });
 
-test('Notion連携済み生徒の契約プランはNotionの最新値を表示する', () => {
+test('Notion連携済み生徒の基本情報はNotionの最新値を表示する', () => {
   const merged = mergeStudentRecords([{
     user_id: 10,
-    student_name: '山田 太郎',
+    student_name: '旧氏名',
     student_username: 'ST-001',
+    status: 'レッスン準備中',
     contract_plan: 'エントリープラン',
+    lesson_start_date: '2025-01-01',
   }], [{
     notion_page_id: 'notion-page-1',
     student_name: '山田 太郎',
     login_id: 'ST-001',
+    status: 'アクティブ',
     contract_plan: 'プレミアムプラン',
+    lesson_start_month: '2025-06-01',
   }]);
 
+  assert.equal(merged[0].student_name, '山田 太郎');
+  assert.equal(merged[0].status, 'アクティブ');
   assert.equal(merged[0].contract_plan, 'プレミアムプラン');
+  assert.equal(merged[0].lesson_start_date, '2025-06-01');
+});
+
+test('生徒管理画面とAPIから手動のステータス・プロフィール編集機能を撤去する', () => {
+  const root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'views', 'admin-student-management.html'), 'utf8');
+  const routes = fs.readFileSync(path.join(root, 'src', 'routes', 'students.js'), 'utf8');
+
+  assert.doesNotMatch(html, /openStatusModal|submitStatusChange|openProfileModal|submitProfileEdit/);
+  assert.doesNotMatch(routes, /router\.put\('\/:userId\/profile'/);
+  assert.doesNotMatch(routes, /router\.patch\('\/:userId\/(?:status|status-with-sync|tutor)'/);
+});
+
+test('関連する生徒検索もNotionのステータスを優先する', async () => {
+  const originalQuery = db.query;
+  const queries = [];
+  db.query = async (sql) => {
+    queries.push(sql);
+    return { rows: [] };
+  };
+
+  try {
+    await StudentProfile.getAll({ status: 'アクティブ' });
+    await StudentProfile.getExpiringStudents(30);
+    await StudentProfile.getFollowUpTargets(7);
+
+    assert.match(queries[0], /COALESCE\(ns\.status, sp\.status\) = \$1/);
+    assert.match(queries[1], /COALESCE\(ns\.status, sp\.status\) = 'アクティブ'/);
+    assert.match(queries[2], /COALESCE\(ns\.status, sp\.status\) = 'アクティブ'/);
+    assert.ok(queries.every(sql => sql.includes('LEFT JOIN notion_students ns')));
+  } finally {
+    db.query = originalQuery;
+  }
 });
 
 test('Notion同期で初期PW 1111の生徒アカウントを作成する', async () => {
