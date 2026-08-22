@@ -1,6 +1,22 @@
 const db = require('../config/database');
 
 class CharacterSelection {
+  static async findById(selectionId) {
+    const result = await db.query(`SELECT * FROM character_selections WHERE id = $1`, [selectionId]);
+    return result.rows[0] || null;
+  }
+
+  static async findStoredById(selectionId) {
+    const result = await db.query(`
+      SELECT id, stored_image_filename, stored_image_mime_type
+      FROM character_selections
+      WHERE id = $1
+        AND status = 'confirmed'
+        AND stored_image_filename IS NOT NULL
+    `, [selectionId]);
+    return result.rows[0] || null;
+  }
+
   static async findByStudent(studentUserId) {
     const result = await db.query(`
       SELECT
@@ -50,16 +66,36 @@ class CharacterSelection {
     return result.rows;
   }
 
-  static async confirm(selectionId, confirmedBy) {
+  static async confirm(selectionId, confirmedBy, storedImage) {
     const result = await db.query(`
       UPDATE character_selections
       SET status = 'confirmed',
           confirmed_by = $2,
           confirmed_at = CURRENT_TIMESTAMP,
+          stored_image_filename = $3,
+          stored_image_mime_type = $4,
+          stored_image_size = $5,
+          stored_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1 AND status = 'pending'
       RETURNING *
-    `, [selectionId, confirmedBy]);
+    `, [selectionId, confirmedBy, storedImage.fileName, storedImage.mimeType, storedImage.size]);
+    return result.rows[0] || null;
+  }
+
+  static async attachStoredImage(selectionId, storedImage) {
+    const result = await db.query(`
+      UPDATE character_selections
+      SET stored_image_filename = $2,
+          stored_image_mime_type = $3,
+          stored_image_size = $4,
+          stored_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND status = 'confirmed'
+        AND stored_image_filename IS NULL
+      RETURNING *
+    `, [selectionId, storedImage.fileName, storedImage.mimeType, storedImage.size]);
     return result.rows[0] || null;
   }
 

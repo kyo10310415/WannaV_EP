@@ -502,10 +502,23 @@ const createTables = async () => {
         selected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         confirmed_at TIMESTAMP,
         confirmed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        stored_image_filename VARCHAR(255),
+        stored_image_mime_type VARCHAR(100),
+        stored_image_size BIGINT,
+        stored_at TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await db.query(`ALTER TABLE character_selections ADD COLUMN IF NOT EXISTS stored_image_filename VARCHAR(255)`);
+    await db.query(`ALTER TABLE character_selections ADD COLUMN IF NOT EXISTS stored_image_mime_type VARCHAR(100)`);
+    await db.query(`ALTER TABLE character_selections ADD COLUMN IF NOT EXISTS stored_image_size BIGINT`);
+    await db.query(`ALTER TABLE character_selections ADD COLUMN IF NOT EXISTS stored_at TIMESTAMP`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_character_selections_status ON character_selections(status)`);
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_character_selections_stored_filename
+      ON character_selections(stored_image_filename)
+      WHERE stored_image_filename IS NOT NULL
+    `);
 
     console.log('✅ All database tables created successfully');
   } catch (error) {

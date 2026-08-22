@@ -17,10 +17,12 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.join(__dirname, 'uploads');
 const THUMBS_DIR = path.join(UPLOAD_DIR, 'thumbs');
+const CHARACTERS_DIR = path.join(UPLOAD_DIR, 'characters');
 
 // グローバルに公開（admin.js / thumbnail.js から参照）
 global.UPLOAD_DIR  = UPLOAD_DIR;
 global.THUMBS_DIR  = THUMBS_DIR;
+global.CHARACTERS_DIR = CHARACTERS_DIR;
 
 // Middleware
 app.use(cors());
@@ -107,7 +109,7 @@ const initializeApp = async () => {
     console.log('🚀 Initializing WannaV ポータル...');
     
     // アップロードディレクトリ作成（Render Diskマウント後でも確実に存在させる）
-    [UPLOAD_DIR, THUMBS_DIR].forEach(dir => {
+    [UPLOAD_DIR, THUMBS_DIR, CHARACTERS_DIR].forEach(dir => {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
         console.log(`✅ Directory created: ${dir}`);

@@ -10,6 +10,12 @@ const {
   toPublicImage,
 } = require('../src/utils/googleDriveCharacters');
 const { checkRole } = require('../src/middleware/auth');
+const {
+  extensionFor,
+  getCharacterStorageDir,
+  resolveStoredImagePath,
+  storedImageUrl,
+} = require('../src/utils/characterStorage');
 
 const root = path.join(__dirname, '..');
 
@@ -98,6 +104,66 @@ test('生徒のキャラクター選択をpending状態で予約する', async (
   }
 });
 
+test('確定画像の保存名・URLは安全なアプリ内パスだけを使用する', () => {
+  assert.equal(extensionFor('image/jpeg', 'character.jpeg'), 'jpg');
+  assert.equal(extensionFor('image/png', 'character.anything'), 'png');
+  assert.equal(storedImageUrl(12), '/api/characters/stored/12');
+  assert.equal(resolveStoredImagePath('../secret.png'), null);
+  assert.match(
+    resolveStoredImagePath('character-12-123e4567-e89b-12d3-a456-426614174000.png'),
+    /characters[\\/]character-12-123e4567-e89b-12d3-a456-426614174000\.png$/
+  );
+});
+
+test('本番では永続ストレージ未設定のまま確定画像を保存しない', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalUploadDir = process.env.UPLOAD_DIR;
+  process.env.NODE_ENV = 'production';
+  delete process.env.UPLOAD_DIR;
+  try {
+    assert.throws(
+      () => getCharacterStorageDir(),
+      error => error.code === 'CHARACTER_STORAGE_NOT_PERSISTENT'
+    );
+  } finally {
+    if (originalNodeEnv == null) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalUploadDir == null) delete process.env.UPLOAD_DIR;
+    else process.env.UPLOAD_DIR = originalUploadDir;
+  }
+});
+
+test('キャラクター確定時に保存画像情報をDBへ記録する', async () => {
+  const originalQuery = db.query;
+  let capturedSql = '';
+  let capturedParams = [];
+  db.query = async (sql, params) => {
+    capturedSql = sql;
+    capturedParams = params;
+    return { rows: [{ id: 3, status: 'confirmed', stored_image_filename: params[2] }] };
+  };
+
+  try {
+    const selection = await CharacterSelection.confirm(3, 2, {
+      fileName: 'character-3-123e4567-e89b-12d3-a456-426614174000.png',
+      mimeType: 'image/png',
+      size: 12345,
+    });
+    assert.match(capturedSql, /stored_image_filename = \$3/);
+    assert.match(capturedSql, /stored_at = CURRENT_TIMESTAMP/);
+    assert.deepEqual(capturedParams, [
+      3,
+      2,
+      'character-3-123e4567-e89b-12d3-a456-426614174000.png',
+      'image/png',
+      12345,
+    ]);
+    assert.equal(selection.status, 'confirmed');
+  } finally {
+    db.query = originalQuery;
+  }
+});
+
 test('キャラクター管理権限は管理者とセールスだけに許可する', () => {
   const middleware = checkRole('管理者', 'セールス');
   const response = {};
@@ -123,6 +189,8 @@ test('DB制約・API・画面にキャラクター選択フローが定義され
 
   assert.match(schema, /student_user_id INTEGER NOT NULL UNIQUE/);
   assert.match(schema, /drive_file_id VARCHAR\(255\) NOT NULL UNIQUE/);
+  assert.match(schema, /stored_image_filename VARCHAR\(255\)/);
+  assert.match(schema, /stored_image_mime_type VARCHAR\(100\)/);
   assert.match(routes, /checkRole\('生徒'\)/);
   assert.match(routes, /checkRole\('管理者', 'セールス'\)/);
   assert.match(routes, /streamThumbnail/);
@@ -133,9 +201,13 @@ test('DB制約・API・画面にキャラクター選択フローが定義され
   assert.match(dashboard, /\?full=1/);
   assert.match(dashboard, /object-fit:contain/);
   assert.match(routes, /req\.query\.full !== '1'/);
+  assert.match(routes, /saveDriveImage/);
+  assert.match(routes, /deleteStoredImage/);
+  assert.match(routes, /\/stored\/:selectionId/);
   assert.match(dashboard, /switchCharacterCategory\('女性'\)/);
   assert.match(dashboard, /switchCharacterCategory\('男性'\)/);
   assert.match(admin, /キャラクター選択中/);
   assert.match(admin, /キャラクター確定済み/);
+  assert.match(admin, /画像を保存/);
   assert.match(studentManagement, /value="アクティブ" selected/);
 });
