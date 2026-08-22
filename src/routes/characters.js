@@ -48,10 +48,12 @@ router.get('/images/:fileId', async (req, res) => {
       return res.status(400).end();
     }
     let thumbnail = null;
-    try {
-      thumbnail = await streamThumbnail(req.params.fileId);
-    } catch (thumbnailError) {
-      console.warn('Character thumbnail fallback:', thumbnailError.response?.status || thumbnailError.message);
+    if (req.query.full !== '1') {
+      try {
+        thumbnail = await streamThumbnail(req.params.fileId);
+      } catch (thumbnailError) {
+        console.warn('Character thumbnail fallback:', thumbnailError.response?.status || thumbnailError.message);
+      }
     }
     if (thumbnail) {
       res.set('Content-Type', thumbnail.response.headers['content-type']
