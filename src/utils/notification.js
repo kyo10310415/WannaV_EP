@@ -46,7 +46,7 @@ class NotificationService {
           }
         ],
         footer: {
-          text: 'WannaV エントリープラン - あなたの成長をサポートします'
+          text: 'WannaV ポータル - あなたの成長をサポートします'
         },
         timestamp: new Date().toISOString()
       };
@@ -77,7 +77,7 @@ class NotificationService {
         url: 'https://i.imgur.com/AfFp7pu.png' // 祝福アイコン
       },
       footer: {
-        text: 'WannaV エントリープラン'
+        text: 'WannaV ポータル'
       },
       timestamp: new Date().toISOString()
     };

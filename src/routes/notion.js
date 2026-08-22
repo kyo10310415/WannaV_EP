@@ -28,8 +28,11 @@ router.post('/sync', auth, checkRole('管理者', 'セールス'), async (req, r
     const result = await syncNotionStudents();
     res.json({
       success: true,
-      message: `${result.synced} 件のデータを同期しました`,
+      message: `${result.synced} 件を同期し、${result.accountsCreated} 件のアカウントを作成しました（初期PW: 1111）`,
       synced: result.synced,
+      accountsCreated: result.accountsCreated,
+      accountsLinked: result.accountsLinked,
+      accountsSkipped: result.accountsSkipped,
       timestamp: result.timestamp
     });
   } catch (error) {
@@ -98,6 +101,7 @@ router.get('/debug-raw', auth, checkRole('管理者'), async (req, res) => {
         else if (val.type === 'date')      preview = val.date?.start;
         else if (val.type === 'number')    preview = String(val.number ?? '');
         else if (val.type === 'url')       preview = val.url;
+        else if (val.type === 'email')     preview = val.email;
         else if (val.type === 'formula')   preview = val.formula?.string ?? String(val.formula?.number ?? '');
       } catch(e) { preview = '(parse error)'; }
 

@@ -9,6 +9,12 @@ const auth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.passwordChangeRequired) {
+      return res.status(403).json({
+        error: '初回ログイン時のパスワード変更が必要です',
+        code: 'PASSWORD_CHANGE_REQUIRED'
+      });
+    }
     req.user = decoded;
     next();
   } catch (error) {

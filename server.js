@@ -99,7 +99,7 @@ app.get('/admin/schedule', (req, res) => {
 // Initialize database and create admin user
 const initializeApp = async () => {
   try {
-    console.log('🚀 Initializing WannaV エントリープラン...');
+    console.log('🚀 Initializing WannaV ポータル...');
     
     // アップロードディレクトリ作成（Render Diskマウント後でも確実に存在させる）
     [UPLOAD_DIR, THUMBS_DIR].forEach(dir => {
@@ -139,7 +139,7 @@ const startServer = async () => {
   await initializeApp();
   
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🎉 WannaV エントリープラン server running on http://0.0.0.0:${PORT}`);
+    console.log(`🎉 WannaV ポータル server running on http://0.0.0.0:${PORT}`);
   });
 };
 

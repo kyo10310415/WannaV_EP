@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>生徒管理 - WannaV エントリープラン</title>
+    <title>生徒管理 - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
         .status-badge {
@@ -81,6 +81,16 @@
         .btn-info   { background: rgba(74,144,217,0.2); color: var(--primary-blue-light); }
         .btn-edit   { background: rgba(52,200,232,0.15); color: var(--accent-cyan); }
         .btn-status { background: rgba(243,156,18,0.15); color: #F39C12; }
+        .source-badge {
+            display:inline-block; margin-top:5px; padding:2px 7px; border-radius:8px;
+            font-size:10px; font-weight:700;
+        }
+        .source-notion { background:rgba(163,139,250,0.16); color:#B9A7FF; }
+        .source-account { background:rgba(46,204,113,0.14); color:#6AEBB7; }
+        .login-id-value {
+            display:block; max-width:220px; overflow:hidden; text-overflow:ellipsis;
+            color:var(--primary-blue-light); font-size:12px;
+        }
     </style>
 </head>
 <body>
@@ -160,9 +170,31 @@
         </div>
     </div>
 
+    <!-- ログインID編集モーダル -->
+    <div id="login-id-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width:480px">
+            <div class="modal-title">🔑 ログインID編集</div>
+            <p style="color:var(--gray-text);font-size:13px;margin-bottom:18px;">
+                生徒: <strong id="login-id-modal-name" style="color:var(--primary-blue-light)"></strong>
+            </p>
+            <div class="form-group">
+                <label class="form-label" for="login-id-input">ログインID</label>
+                <input type="text" id="login-id-input" class="form-input"
+                    placeholder="例: student@example.com" autocomplete="off">
+            </div>
+            <p style="color:var(--gray-text);font-size:12px;line-height:1.6;">
+                Notion由来の生徒は「学籍番号」を初期値にします。ここで変更した値は、次回のNotion同期後も維持されます。
+            </p>
+            <div style="display:flex;gap:12px;margin-top:24px">
+                <button onclick="submitLoginIdEdit()" class="btn btn-primary" style="flex:1">💾 保存</button>
+                <button onclick="closeLoginIdModal()" class="btn btn-secondary" style="flex:1">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
     <div class="header">
         <div class="header-content">
-            <h1 class="logo">✨ WannaV エントリープラン</h1>
+            <h1 class="logo">✨ WannaV ポータル</h1>
             <div class="user-info">
                 <span class="user-name" id="user-name"></span>
                 <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
@@ -206,6 +238,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
                 <h2>👥 生徒管理一覧</h2>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button id="notion-sync-button" onclick="syncNotionStudents()" class="btn btn-primary" style="display:none">🔄 Notion同期</button>
                     <button onclick="window.location='/admin/handovers'" class="btn btn-secondary">📋 引き継ぎ管理</button>
                     <button onclick="window.location='/admin/extensions'" class="btn btn-secondary">📅 延長審査</button>
                     <button onclick="window.location='/admin/surveys'" class="btn btn-secondary">⭐ 満足度</button>
@@ -214,7 +247,7 @@
 
             <!-- フィルター -->
             <div class="filter-bar">
-                <input type="text" id="search-input" class="filter-input" placeholder="🔍 名前・ユーザー名で検索" oninput="applyFilter()" style="min-width:200px">
+                <input type="text" id="search-input" class="filter-input" placeholder="🔍 名前・ログインID・学籍番号で検索" oninput="applyFilter()" style="min-width:260px">
                 <select id="filter-status" class="filter-select" onchange="applyFilter()">
                     <option value="">すべてのステータス</option>
                     <option value="アクティブ">✅ アクティブ</option>
@@ -238,6 +271,7 @@
                     <thead>
                         <tr>
                             <th>生徒名</th>
+                            <th>ログインID</th>
                             <th>ステータス</th>
                             <th>担当Tutor</th>
                             <th>契約プラン</th>
@@ -262,14 +296,19 @@
         const TOKEN = localStorage.getItem('token');
         let allStudents = [];
         let tutors = [];
+        let visibleStudents = [];
         let currentEditUid = null;
         let currentStatusUid = null;
+        let currentLoginStudent = null;
+        let canEditLoginId = false;
 
         async function init() {
             if (!TOKEN) { window.location.href = '/'; return; }
             const me = await fetchJSON('/api/auth/me');
             if (!me) return;
             document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
+            canEditLoginId = me.role === '管理者' || me.role === 'セールス';
+            if (canEditLoginId) document.getElementById('notion-sync-button').style.display = '';
             buildNav('admin-nav', me.role, '/admin/student-management');
             await loadTutors();
             await loadStudents();
@@ -306,6 +345,21 @@
             renderTable(allStudents);
         }
 
+        async function syncNotionStudents() {
+            const button = document.getElementById('notion-sync-button');
+            button.disabled = true;
+            button.textContent = '同期中...';
+            const res = await fetchJSON('/api/notion/sync', { method: 'POST' });
+            button.disabled = false;
+            button.textContent = '🔄 Notion同期';
+            if (res && !res.error) {
+                showAlert(res.message || 'Notion同期が完了しました', 'success');
+                await loadStudents();
+            } else {
+                showAlert(res?.error || 'Notion同期に失敗しました', 'error');
+            }
+        }
+
         function updateStats() {
             const counts = { active:0, preparing:0, hiatus:0 };
             allStudents.forEach(s => {
@@ -333,8 +387,11 @@
             const flag = document.getElementById('filter-flag').value;
             const filtered = allStudents.filter(s => {
                 const name = (s.student_name || '').toLowerCase();
-                const user = (s.student_username || '').toLowerCase();
-                if (search && !name.includes(search) && !user.includes(search)) return false;
+                const loginId = (s.student_login_id || '').toLowerCase();
+                const furigana = (s.name_furigana || '').toLowerCase();
+                const studentNumber = (s.student_number || '').toLowerCase();
+                if (search && !name.includes(search) && !loginId.includes(search)
+                    && !furigana.includes(search) && !studentNumber.includes(search)) return false;
                 if (status && s.status !== status) return false;
                 if (tutorId && String(s.assigned_tutor_id) !== tutorId) return false;
                 if (flag === 'followup' && !s.inactive_flag) return false;
@@ -345,6 +402,7 @@
         }
 
         function renderTable(students) {
+            visibleStudents = students;
             const tbody = document.getElementById('students-tbody');
             const empty = document.getElementById('students-empty');
             if (!students.length) {
@@ -355,11 +413,20 @@
             empty.style.display = 'none';
 
             const now = new Date();
-            tbody.innerHTML = students.map(s => {
+            tbody.innerHTML = students.map((s, index) => {
                 const statusClass = getStatusClass(s.status);
-                const statusLabel = s.status || '未設定';
-                const tutorName = s.tutor_name || '<span style="color:var(--gray-text)">未設定</span>';
+                const statusLabel = escHtml(s.status || '未設定');
+                const tutorName = s.tutor_name
+                    ? escHtml(s.tutor_name)
+                    : '<span style="color:var(--gray-text)">未設定</span>';
                 const plan = s.contract_plan || '-';
+                const lessonStart = s.lesson_start_date ? formatDate(s.lesson_start_date) : null;
+                const furigana = s.name_furigana
+                    ? `<div style="font-size:11px;color:var(--gray-text)">${escHtml(s.name_furigana)}</div>`
+                    : '';
+                const studentNumber = s.student_number
+                    ? `<div style="font-size:11px;color:var(--gray-text)">学籍番号: ${escHtml(s.student_number)}</div>`
+                    : '';
                 const endDate = s.contract_end_date ? formatDate(s.contract_end_date) : '-';
                 const endDanger = s.contract_end_date && (new Date(s.contract_end_date) - now) < 30*86400000;
                 const lastActivity = s.last_activity ? timeAgo(s.last_activity) : '未受講';
@@ -367,14 +434,40 @@
                 const satisfaction = s.latest_satisfaction ? renderStars(s.latest_satisfaction) : '-';
                 const flags = [];
                 if (s.under_review) flags.push('<span class="review-flag">🔍 審査中</span>');
+                if (!s.has_account) flags.push('<span class="review-flag">⚠️ アカウント未作成</span>');
+                const sourceBadge = s.record_source === 'notion'
+                    ? '<span class="source-badge source-notion">Notion</span>'
+                    : s.record_source === 'account+notion'
+                        ? '<span class="source-badge source-notion">Notion連携</span>'
+                        : '<span class="source-badge source-account">アプリ登録</span>';
+                const notionLink = s.notion_url
+                    ? `<a href="${escHtml(s.notion_url)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent-cyan)">Notionを開く</a>`
+                    : '';
+                const loginEditButton = canEditLoginId
+                    ? `<button onclick="openLoginIdModal(${index})" class="action-btn btn-edit" style="margin-top:5px">変更</button>`
+                    : '';
+                const accountActions = s.has_account
+                    ? `<button onclick="openStatusModalForRow(${index})" class="action-btn btn-status">ステータス</button>
+                       <button onclick="openProfileModal(${s.user_id})" class="action-btn btn-edit">編集</button>
+                       <button onclick="openHandover(${s.user_id})" class="action-btn btn-info">引継ぎ</button>`
+                    : '<span style="font-size:11px;color:var(--gray-text)">アカウント作成後に利用可能</span>';
                 return `<tr>
                     <td>
                         <div style="font-weight:600">${escHtml(s.student_name || '')}</div>
-                        <div style="font-size:11px;color:var(--gray-text)">@${escHtml(s.student_username || '')}</div>
+                        ${furigana}
+                        ${studentNumber}
+                        ${sourceBadge} ${notionLink}
+                    </td>
+                    <td>
+                        <code class="login-id-value" title="${escHtml(s.student_login_id || '')}">${escHtml(s.student_login_id || '未設定')}</code>
+                        ${loginEditButton}
                     </td>
                     <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
                     <td>${tutorName}</td>
-                    <td style="font-size:12px">${escHtml(plan)}</td>
+                    <td style="font-size:12px">
+                        ${escHtml(plan)}
+                        ${lessonStart ? `<div style="font-size:10px;color:var(--gray-text);margin-top:3px">開始: ${lessonStart}</div>` : ''}
+                    </td>
                     <td style="${endDanger ? 'color:#E74C3C;font-weight:600' : ''}">${endDate}</td>
                     <td style="font-size:12px;color:var(--gray-text)">${lastActivity}</td>
                     <td>
@@ -385,9 +478,7 @@
                     <td>${flags.join(' ') || '-'}</td>
                     <td>
                         <div style="display:flex;gap:6px;flex-wrap:wrap">
-                            <button onclick="openStatusModal(${s.user_id},'${escHtml(s.student_name || '')}','${s.status || ''}')" class="action-btn btn-status">ステータス</button>
-                            <button onclick="openProfileModal(${s.user_id})" class="action-btn btn-edit">編集</button>
-                            <button onclick="openHandover(${s.user_id})" class="action-btn btn-info">引継ぎ</button>
+                            ${accountActions}
                         </div>
                     </td>
                 </tr>`;
@@ -408,7 +499,50 @@
             return '<span class="stars">' + '★'.repeat(full) + '☆'.repeat(5-full) + '</span>';
         }
 
+        // ---- ログインID編集モーダル ----
+        function openLoginIdModal(index) {
+            const student = visibleStudents[index];
+            if (!student || !canEditLoginId) return;
+            currentLoginStudent = student;
+            document.getElementById('login-id-modal-name').textContent = student.student_name || '';
+            document.getElementById('login-id-input').value = student.student_login_id || '';
+            document.getElementById('login-id-modal').classList.add('open');
+            document.getElementById('login-id-input').focus();
+        }
+        function closeLoginIdModal() {
+            currentLoginStudent = null;
+            document.getElementById('login-id-modal').classList.remove('open');
+        }
+        async function submitLoginIdEdit() {
+            if (!currentLoginStudent) return;
+            const loginId = document.getElementById('login-id-input').value.trim();
+            if (!loginId) { showAlert('ログインIDを入力してください', 'error'); return; }
+            if (/\s/.test(loginId)) { showAlert('ログインIDに空白は使用できません', 'error'); return; }
+
+            const hasAccount = Boolean(currentLoginStudent.user_id);
+            const url = hasAccount
+                ? `/api/students/${currentLoginStudent.user_id}/login-id`
+                : `/api/students/notion/${encodeURIComponent(currentLoginStudent.notion_page_id)}/login-id`;
+            const body = {
+                loginId,
+                notionPageId: currentLoginStudent.notion_page_id || null,
+            };
+            const res = await fetchJSON(url, { method: 'PATCH', body: JSON.stringify(body) });
+            if (res && !res.error) {
+                showAlert('ログインIDを更新しました', 'success');
+                closeLoginIdModal();
+                await loadStudents();
+            } else {
+                showAlert(res?.error || 'ログインIDの更新に失敗しました', 'error');
+            }
+        }
+
         // ---- ステータス変更モーダル ----
+        function openStatusModalForRow(index) {
+            const student = visibleStudents[index];
+            if (!student?.user_id) return;
+            openStatusModal(student.user_id, student.student_name || '', student.status || '');
+        }
         function openStatusModal(uid, name, currentStatus) {
             currentStatusUid = uid;
             document.getElementById('status-modal-name').textContent = name;
