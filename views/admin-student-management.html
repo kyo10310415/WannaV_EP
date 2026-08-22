@@ -177,6 +177,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
                 <h2>👥 生徒管理一覧</h2>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button onclick="copyInvitationUrl()" class="btn btn-secondary">🔗 招待URLをコピー</button>
                     <button id="notion-sync-button" onclick="syncNotionStudents()" class="btn btn-primary" style="display:none">🔄 Notion同期</button>
                     <button onclick="window.location='/admin/handovers'" class="btn btn-secondary">📋 引き継ぎ管理</button>
                     <button onclick="window.location='/admin/extensions'" class="btn btn-secondary">📅 延長審査</button>
@@ -512,6 +513,43 @@
             window.location.href = `/admin/handovers?uid=${uid}`;
         }
 
+        // ---- 生徒招待URL ----
+        async function copyInvitationUrl() {
+            const invitationUrl = new URL('/', window.location.origin).href;
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(invitationUrl);
+                } else if (!copyTextFallback(invitationUrl)) {
+                    throw new Error('clipboard unavailable');
+                }
+                showAlert(`招待URLをコピーしました: ${invitationUrl}`, 'success');
+            } catch (error) {
+                if (copyTextFallback(invitationUrl)) {
+                    showAlert(`招待URLをコピーしました: ${invitationUrl}`, 'success');
+                } else {
+                    showAlert('招待URLをコピーできませんでした', 'error');
+                }
+            }
+        }
+
+        function copyTextFallback(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            let copied = false;
+            try {
+                copied = document.execCommand('copy');
+            } catch (error) {
+                copied = false;
+            }
+            textarea.remove();
+            return copied;
+        }
+
         // ---- ユーティリティ ----
         function formatDate(d) {
             if (!d) return '-';
@@ -530,7 +568,7 @@
         function showAlert(msg, type) {
             const c = document.getElementById('alert-container');
             const cls = type === 'success' ? 'alert-success' : 'alert-error';
-            c.innerHTML = `<div class="alert ${cls}">${msg}</div>`;
+            c.innerHTML = `<div class="alert ${cls}">${escHtml(msg)}</div>`;
             setTimeout(() => c.innerHTML = '', 3000);
         }
         function logout() {
