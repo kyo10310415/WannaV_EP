@@ -50,6 +50,10 @@
 
         <div id="alert-container"></div>
 
+        <div style="margin: 8px 0 24px;">
+            <h2>🎓 生徒用アカウント管理</h2>
+        </div>
+
         <!-- アカウント追加 -->
         <div class="card">
             <h2 style="margin-bottom: 8px;">➕ 生徒アカウント作成</h2>
@@ -154,9 +158,10 @@
         async function loadStudentUsers() {
             const token = localStorage.getItem('token');
             try {
-                const res = await fetch(`${API_URL}/admin/users`, {
+                const res = await fetch(`${API_URL}/admin/users?scope=students`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                if (!res.ok) throw new Error('生徒アカウントの取得に失敗しました');
                 const users = await res.json();
                 // 生徒のみ表示
                 renderUsers(users.filter(u => u.role === '生徒'));
@@ -298,7 +303,7 @@
                 { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
                 { href:'/admin/schedule',           label:'🗓 受講スケジュール',      roles:['管理者','クルー'] },
                 { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },
-                { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント作成', roles:['管理者','セールス'] },
+                { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント管理', roles:['管理者','セールス'] },
                 { href:'/admin/contents',           label:'📹 コンテンツ管理',       roles:['管理者'] },
                 { href:'/admin/users',              label:'📈 ユーザー進捗管理',     roles:['管理者','クルー'] },
                 { href:'/admin/logs',               label:'📜 操作ログ',             roles:['管理者'] },

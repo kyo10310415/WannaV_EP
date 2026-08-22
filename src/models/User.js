@@ -43,10 +43,16 @@ class User {
     return result.rows[0];
   }
 
-  static async getAll() {
+  static async getAll(scope = 'all') {
+    const whereByScope = {
+      all: '',
+      staff: `WHERE role <> '生徒'`,
+      students: `WHERE role = '生徒'`,
+    };
+    if (!(scope in whereByScope)) throw new Error('Invalid user scope');
     const result = await db.query(
       `SELECT id, email, name, username, role, created_at, last_login, password_changed_at
-       FROM users ORDER BY created_at DESC`
+       FROM users ${whereByScope[scope]} ORDER BY created_at DESC`
     );
     return result.rows;
   }

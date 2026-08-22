@@ -42,10 +42,16 @@ const upload = multer({
 
 // ===== ユーザー管理 =====
 
-// 全ユーザー取得
+// ユーザー取得（ページ用途に応じて生徒・生徒以外を分離）
 router.get('/users', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
-    const users = await User.getAll();
+    const requestedScope = req.query.scope || 'all';
+    if (!['all', 'staff', 'students'].includes(requestedScope)) {
+      return res.status(400).json({ error: '無効なユーザー絞り込みです' });
+    }
+    // セールス権限には生徒アカウントだけを返す。
+    const scope = req.user.role === 'セールス' ? 'students' : requestedScope;
+    const users = await User.getAll(scope);
     res.json(users);
   } catch (error) {
     console.error('Get users error:', error);

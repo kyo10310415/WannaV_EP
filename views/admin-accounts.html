@@ -191,12 +191,13 @@
             const token = localStorage.getItem('token');
 
             try {
-                const response = await fetch(`${API_URL}/admin/users`, {
+                const response = await fetch(`${API_URL}/admin/users?scope=staff`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
+                if (!response.ok) throw new Error('ユーザーの取得に失敗しました');
                 const users = await response.json();
-                renderUsers(users);
+                renderUsers(users.filter(user => user.role !== '生徒'));
             } catch (error) {
                 console.error('ユーザー読み込みエラー:', error);
                 showAlert('ユーザーの読み込みに失敗しました', 'error');
@@ -392,7 +393,7 @@
                 { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
                 { href:'/admin/schedule',           label:'🗓 受講スケジュール',      roles:['管理者','クルー'] },
                 { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },
-                { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント作成', roles:['管理者','セールス'] },
+                { href:'/admin/students-accounts',  label:'🎓 生徒用アカウント管理', roles:['管理者','セールス'] },
                 { href:'/admin/contents',           label:'📹 コンテンツ管理',       roles:['管理者'] },
                 { href:'/admin/users',              label:'📈 ユーザー進捗管理',     roles:['管理者','クルー'] },
                 { href:'/admin/logs',               label:'📜 操作ログ',             roles:['管理者'] },
