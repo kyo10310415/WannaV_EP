@@ -8,7 +8,10 @@ class StudentProfile {
     const result = await db.query(`
       SELECT
         sp.*,
-        u.name AS student_name,
+        COALESCE(ns.student_name, u.name) AS student_name,
+        COALESCE(ns.status, sp.status) AS status,
+        COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
+        COALESCE(ns.lesson_start_month, sp.lesson_start_date) AS lesson_start_date,
         u.username AS student_username,
         u.email AS student_email,
         u.created_at AS account_created_at,
@@ -18,6 +21,7 @@ class StudentProfile {
         cb.name AS status_changed_by_name
       FROM student_profiles sp
       JOIN users u ON sp.user_id = u.id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
       LEFT JOIN users t ON sp.assigned_tutor_id = t.id
       LEFT JOIN users cb ON sp.status_changed_by = cb.id
       WHERE sp.user_id = $1
@@ -34,7 +38,7 @@ class StudentProfile {
 
     if (status) {
       params.push(status);
-      whereClause += ` AND sp.status = $${params.length}`;
+      whereClause += ` AND COALESCE(ns.status, sp.status) = $${params.length}`;
     }
     if (tutorId) {
       params.push(tutorId);
@@ -44,19 +48,19 @@ class StudentProfile {
     const result = await db.query(`
       SELECT
         u.id AS user_id,
-        u.name AS student_name,
+        COALESCE(ns.student_name, u.name) AS student_name,
         u.username AS student_username,
         u.email AS student_email,
         u.created_at AS account_created_at,
         u.last_login,
         sp.id AS profile_id,
-        sp.status,
+        COALESCE(ns.status, sp.status) AS status,
         sp.status_changed_at,
         sp.status_note,
-        sp.contract_plan,
+        COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
         sp.contract_start_date,
         sp.contract_end_date,
-        sp.lesson_start_date,
+        COALESCE(ns.lesson_start_month, sp.lesson_start_date) AS lesson_start_date,
         sp.assigned_tutor_id,
         sp.goal,
         sp.notes,
@@ -76,6 +80,7 @@ class StudentProfile {
         EXISTS(SELECT 1 FROM extension_reviews er WHERE er.student_user_id = u.id AND er.review_status = '審査中') AS under_review
       FROM users u
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
       LEFT JOIN users t ON sp.assigned_tutor_id = t.id
       LEFT JOIN user_progress up ON u.id = up.user_id
       ${whereClause}
@@ -84,8 +89,9 @@ class StudentProfile {
                sp.contract_plan, sp.contract_start_date, sp.contract_end_date,
                sp.lesson_start_date, sp.assigned_tutor_id, sp.goal, sp.notes,
                sp.handover_completed, sp.handover_completed_at, sp.notion_page_id, sp.updated_at,
+               ns.student_name, ns.status, ns.contract_plan, ns.lesson_start_month,
                t.name, t.username
-      ORDER BY sp.status NULLS LAST, u.created_at DESC
+      ORDER BY COALESCE(ns.status, sp.status) NULLS LAST, u.created_at DESC
     `, params);
     return result.rows;
   }
@@ -189,11 +195,11 @@ class StudentProfile {
     const result = await db.query(`
       SELECT
         u.id AS user_id,
-        u.name AS student_name,
+        COALESCE(ns.student_name, u.name) AS student_name,
         u.username,
-        sp.status,
+        COALESCE(ns.status, sp.status) AS status,
         sp.contract_end_date,
-        sp.contract_plan,
+        COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
         sp.assigned_tutor_id,
         t.name AS tutor_name,
         (sp.contract_end_date - CURRENT_DATE) AS days_remaining,
@@ -204,9 +210,10 @@ class StudentProfile {
         ) AS already_under_review
       FROM users u
       JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
       LEFT JOIN users t ON sp.assigned_tutor_id = t.id
       WHERE u.role = '生徒'
-        AND sp.status = 'アクティブ'
+        AND COALESCE(ns.status, sp.status) = 'アクティブ'
         AND sp.contract_end_date IS NOT NULL
         AND sp.contract_end_date <= CURRENT_DATE + INTERVAL '${daysThreshold} days'
         AND sp.contract_end_date >= CURRENT_DATE
@@ -222,21 +229,23 @@ class StudentProfile {
     const result = await db.query(`
       SELECT
         u.id AS user_id,
-        u.name AS student_name,
+        COALESCE(ns.student_name, u.name) AS student_name,
         u.username,
-        sp.status,
-        sp.contract_plan,
+        COALESCE(ns.status, sp.status) AS status,
+        COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
         sp.assigned_tutor_id,
         t.name AS tutor_name,
         MAX(up.last_watched_at) AS last_activity,
         (CURRENT_DATE - MAX(up.last_watched_at)::date) AS inactive_days
       FROM users u
       JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
       LEFT JOIN users t ON sp.assigned_tutor_id = t.id
       LEFT JOIN user_progress up ON u.id = up.user_id
       WHERE u.role = '生徒'
-        AND sp.status = 'アクティブ'
+        AND COALESCE(ns.status, sp.status) = 'アクティブ'
       GROUP BY u.id, u.name, u.username, sp.status, sp.contract_plan,
+               ns.student_name, ns.status, ns.contract_plan,
                sp.assigned_tutor_id, t.name
       HAVING MAX(up.last_watched_at) < CURRENT_TIMESTAMP - INTERVAL '${inactiveDays} days'
           OR MAX(up.last_watched_at) IS NULL

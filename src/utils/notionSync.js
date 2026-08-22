@@ -48,6 +48,8 @@ function getTextValue(prop) {
       return prop.rich_text?.map(t => t.plain_text).join('') || null;
     case 'select':
       return prop.select?.name || null;
+    case 'status':
+      return prop.status?.name || null;
     case 'multi_select':
       return prop.multi_select?.map(s => s.name).join(', ') || null;
     case 'date':

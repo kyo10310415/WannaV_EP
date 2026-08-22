@@ -39,16 +39,17 @@ function mergeStudentRecords(accountStudents = [], notionStudents = [], { includ
       const account = merged[accountIndex];
       merged[accountIndex] = {
         ...account,
-        student_name: account.student_name || notion.student_name,
+        // Notion連携済みの生徒は、Notion側の基本情報を表示の正とする。
+        student_name: notion.student_name || account.student_name,
         student_login_id: notion.login_id || account.student_login_id,
         notion_page_id: notion.notion_page_id,
         notion_url: notion.notion_url,
         student_number: notion.student_number,
         name_furigana: notion.name_furigana,
         notion_status: notion.status,
-        // Notion連携済みの生徒は、同期元の契約プランをタブ表示にも使用する。
+        status: notion.status || account.status,
         contract_plan: notion.contract_plan || account.contract_plan,
-        lesson_start_date: account.lesson_start_date || notion.lesson_start_month,
+        lesson_start_date: notion.lesson_start_month || account.lesson_start_date,
         notion_login_id_overridden: notion.login_id_overridden,
         notion_synced_at: notion.synced_at,
         record_source: 'account+notion',
