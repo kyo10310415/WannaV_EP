@@ -45,6 +45,21 @@
             border: 1px solid rgba(74,144,217,0.3); color: var(--light-text); font-size: 13px;
         }
         .filter-select:focus, .filter-input:focus { outline: none; border-color: var(--primary-blue); }
+        .plan-tabs {
+            display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 8px;
+            margin-bottom: 14px; scrollbar-width: thin;
+        }
+        .plan-tab {
+            flex: 0 0 auto; padding: 8px 14px; border-radius: 20px; cursor: pointer;
+            border: 1px solid rgba(74,144,217,0.3); background: rgba(7,16,24,0.7);
+            color: var(--gray-text); font-size: 12px; font-weight: 700; transition: all 0.2s;
+        }
+        .plan-tab:hover { border-color: var(--primary-blue-light); color: var(--light-text); }
+        .plan-tab.active {
+            border-color: var(--primary-blue); color: white;
+            background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue));
+        }
+        .plan-count { opacity: 0.75; margin-left: 4px; font-size: 11px; }
 
         .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 24px; }
         .stat-card {
@@ -245,6 +260,9 @@
                 </div>
             </div>
 
+            <!-- 契約プランタブ -->
+            <div class="plan-tabs" id="plan-tabs" role="tablist" aria-label="契約プラン"></div>
+
             <!-- フィルター -->
             <div class="filter-bar">
                 <input type="text" id="search-input" class="filter-input" placeholder="🔍 名前・ログインID・学籍番号で検索" oninput="applyFilter()" style="min-width:260px">
@@ -294,6 +312,11 @@
 
     <script>
         const TOKEN = localStorage.getItem('token');
+        const CONTRACT_PLANS = [
+            'エントリープラン', '生徒プラン', 'スタンダードプラン',
+            'プレミアムプラン', 'PROプラン', '永久会員'
+        ];
+        const PLAN_TABS = ['', ...CONTRACT_PLANS];
         let allStudents = [];
         let tutors = [];
         let visibleStudents = [];
@@ -301,6 +324,7 @@
         let currentStatusUid = null;
         let currentLoginStudent = null;
         let canEditLoginId = false;
+        let currentPlanFilter = '';
 
         async function init() {
             if (!TOKEN) { window.location.href = '/'; return; }
@@ -342,7 +366,8 @@
             if (!data) return;
             allStudents = Array.isArray(data) ? data : [];
             updateStats();
-            renderTable(allStudents);
+            renderPlanTabs();
+            applyFilter();
         }
 
         async function syncNotionStudents() {
@@ -380,6 +405,27 @@
             });
         }
 
+        function renderPlanTabs() {
+            const container = document.getElementById('plan-tabs');
+            container.innerHTML = PLAN_TABS.map((plan, index) => {
+                const label = plan || 'すべて';
+                const count = plan
+                    ? allStudents.filter(student => student.contract_plan === plan).length
+                    : allStudents.length;
+                const active = currentPlanFilter === plan;
+                return `<button type="button" role="tab" class="plan-tab${active ? ' active' : ''}"
+                    aria-selected="${active}" onclick="setPlanFilter(${index})">
+                    ${escHtml(label)}<span class="plan-count">${count}</span>
+                </button>`;
+            }).join('');
+        }
+
+        function setPlanFilter(index) {
+            currentPlanFilter = PLAN_TABS[index] ?? '';
+            renderPlanTabs();
+            applyFilter();
+        }
+
         function applyFilter() {
             const search = document.getElementById('search-input').value.toLowerCase();
             const status = document.getElementById('filter-status').value;
@@ -392,6 +438,7 @@
                 const studentNumber = (s.student_number || '').toLowerCase();
                 if (search && !name.includes(search) && !loginId.includes(search)
                     && !furigana.includes(search) && !studentNumber.includes(search)) return false;
+                if (currentPlanFilter && s.contract_plan !== currentPlanFilter) return false;
                 if (status && s.status !== status) return false;
                 if (tutorId && String(s.assigned_tutor_id) !== tutorId) return false;
                 if (flag === 'followup' && !s.inactive_flag) return false;

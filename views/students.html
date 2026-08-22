@@ -64,6 +64,22 @@
             box-shadow: 0 0 0 3px rgba(74,144,217,0.2);
         }
 
+        .plan-tabs {
+            display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 8px;
+            margin-bottom: 14px; scrollbar-width: thin;
+        }
+        .plan-tab {
+            flex: 0 0 auto; padding: 8px 14px; border-radius: 20px; cursor: pointer;
+            border: 1px solid rgba(74,144,217,0.3); background: rgba(7,16,24,0.7);
+            color: var(--gray-text); font-size: 12px; font-weight: 700; transition: all 0.2s;
+        }
+        .plan-tab:hover { border-color: var(--primary-blue-light); color: var(--light-text); }
+        .plan-tab.active {
+            border-color: var(--primary-blue); color: white;
+            background: linear-gradient(45deg, var(--primary-blue-dark), var(--primary-blue));
+        }
+        .plan-count { opacity: 0.75; margin-left: 4px; font-size: 11px; }
+
         /* テーブルラッパー（横スクロール） */
         .table-wrap {
             overflow-x: auto;
@@ -237,7 +253,7 @@
         <div class="card">
             <div class="students-header-row">
                 <div>
-                    <h2 style="margin-bottom: 4px;">🎓 生徒一覧（エントリープラン）</h2>
+                    <h2 style="margin-bottom: 4px;">🎓 生徒一覧</h2>
                     <div class="sync-info">
                         <span id="last-synced-text">同期日時を取得中...</span>
                     </div>
@@ -254,6 +270,9 @@
                     </button>
                 </div>
             </div>
+
+            <!-- 契約プランタブ -->
+            <div class="plan-tabs" id="plan-tabs" role="tablist" aria-label="契約プラン"></div>
 
             <!-- 検索 -->
             <div class="search-wrap">
@@ -284,8 +303,14 @@
 
     <script>
         const API_URL = '/api';
+        const CONTRACT_PLANS = [
+            'エントリープラン', '生徒プラン', 'スタンダードプラン',
+            'プレミアムプラン', 'PROプラン', '永久会員'
+        ];
+        const PLAN_TABS = ['', ...CONTRACT_PLANS];
         let allStudents = [];
         let currentUser = null;
+        let currentPlanFilter = '';
 
         // ===== 認証チェック =====
         async function checkAuth() {
@@ -356,6 +381,7 @@
                 const data = await res.json();
                 allStudents = data.students || [];
                 updateLastSynced(data.lastSynced);
+                renderPlanTabs();
                 filterStudents(); // デフォルト「アクティブ」で絞り込んで描画
             } catch (err) {
                 console.error('生徒データ取得エラー:', err);
@@ -413,7 +439,7 @@
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">🎓</div>
-                        <p>エントリープランの生徒データがありません</p>
+                        <p>該当する生徒データがありません</p>
                         <small>「今すぐ同期」ボタンで Notion から取得してください</small>
                     </div>
                 `;
@@ -505,6 +531,28 @@
             container.innerHTML = html;
         }
 
+        // ===== 契約プランタブ =====
+        function renderPlanTabs() {
+            const container = document.getElementById('plan-tabs');
+            container.innerHTML = PLAN_TABS.map((plan, index) => {
+                const label = plan || 'すべて';
+                const count = plan
+                    ? allStudents.filter(student => student.contract_plan === plan).length
+                    : allStudents.length;
+                const active = currentPlanFilter === plan;
+                return `<button type="button" role="tab" class="plan-tab${active ? ' active' : ''}"
+                    aria-selected="${active}" onclick="setPlanFilter(${index})">
+                    ${escHtml(label)}<span class="plan-count">${count}</span>
+                </button>`;
+            }).join('');
+        }
+
+        function setPlanFilter(index) {
+            currentPlanFilter = PLAN_TABS[index] ?? '';
+            renderPlanTabs();
+            filterStudents();
+        }
+
         // ===== フィルタリング =====
         function filterStudents() {
             const query  = document.getElementById('search-input').value.toLowerCase().trim();
@@ -517,8 +565,9 @@
                     (s.student_number || '').toLowerCase().includes(query);
 
                 const matchStatus = !status || s.status === status;
+                const matchPlan = !currentPlanFilter || s.contract_plan === currentPlanFilter;
 
-                return matchSearch && matchStatus;
+                return matchSearch && matchStatus && matchPlan;
             });
 
             renderStudents(filtered);

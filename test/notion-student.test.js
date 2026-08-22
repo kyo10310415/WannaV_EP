@@ -2,12 +2,50 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { parsePage } = require('../src/utils/notionSync');
+const { parsePage, buildContractPlanFilter } = require('../src/utils/notionSync');
+const { TARGET_CONTRACT_PLANS } = require('../src/config/contractPlans');
 const { mergeStudentRecords } = require('../src/utils/studentDirectory');
 const NotionStudent = require('../src/models/NotionStudent');
 const User = require('../src/models/User');
 const db = require('../src/config/database');
 const { auth } = require('../src/middleware/auth');
+
+test('Notion同期の対象に指定された6つの契約プランを含める', () => {
+  assert.deepEqual(TARGET_CONTRACT_PLANS, [
+    'エントリープラン',
+    '生徒プラン',
+    'スタンダードプラン',
+    'プレミアムプラン',
+    'PROプラン',
+    '永久会員',
+  ]);
+
+  assert.deepEqual(buildContractPlanFilter(), {
+    or: TARGET_CONTRACT_PLANS.map(plan => ({
+      property: '契約プラン',
+      select: { equals: plan },
+    })),
+  });
+});
+
+test('DBキャッシュ一覧も対象6プランで絞り込む', async () => {
+  const originalQuery = db.query;
+  let capturedSql = '';
+  let capturedParams = [];
+  db.query = async (sql, params) => {
+    capturedSql = sql;
+    capturedParams = params;
+    return { rows: [] };
+  };
+
+  try {
+    await NotionStudent.getAll();
+    assert.match(capturedSql, /contract_plan = ANY/);
+    assert.deepEqual(capturedParams, [TARGET_CONTRACT_PLANS]);
+  } finally {
+    db.query = originalQuery;
+  }
+});
 
 test('Notionの学籍番号をログインIDとして取得する', () => {
   const page = {
@@ -57,6 +95,22 @@ test('学籍番号が一致するNotion生徒と既存アカウントを重複�
   assert.equal(merged[0].record_source, 'account+notion');
   assert.equal(merged[0].has_account, true);
   assert.equal(merged[0].student_login_id, 'ST-001');
+});
+
+test('Notion連携済み生徒の契約プランはNotionの最新値を表示する', () => {
+  const merged = mergeStudentRecords([{
+    user_id: 10,
+    student_name: '山田 太郎',
+    student_username: 'ST-001',
+    contract_plan: 'エントリープラン',
+  }], [{
+    notion_page_id: 'notion-page-1',
+    student_name: '山田 太郎',
+    login_id: 'ST-001',
+    contract_plan: 'プレミアムプラン',
+  }]);
+
+  assert.equal(merged[0].contract_plan, 'プレミアムプラン');
 });
 
 test('Notion同期で初期PW 1111の生徒アカウントを作成する', async () => {

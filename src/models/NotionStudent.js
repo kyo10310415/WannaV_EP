@@ -1,9 +1,10 @@
 const db = require('../config/database');
 const User = require('./User');
+const { TARGET_CONTRACT_PLANS } = require('../config/contractPlans');
 
 class NotionStudent {
   /**
-   * エントリープランの生徒を全件取得（synced_at 降順）
+   * 対象6プランの生徒を全件取得
    */
   static async getAll() {
     const result = await db.query(`
@@ -12,9 +13,9 @@ class NotionStudent {
         student_number, notion_url, lesson_start_month,
         status, contract_plan, login_id, login_id_overridden, synced_at
       FROM notion_students
-      WHERE contract_plan = 'エントリープラン'
+      WHERE contract_plan = ANY($1::text[])
       ORDER BY student_number ASC NULLS LAST, student_name ASC
-    `);
+    `, [TARGET_CONTRACT_PLANS]);
     return result.rows;
   }
 
@@ -206,11 +207,18 @@ class NotionStudent {
   }
 
   /**
-   * エントリープラン以外を含め全件削除してから再挿入したい場合用
+   * 対象外プランを削除する場合用
    * （今回は upsertMany を推奨のため補助メソッドのみ）
    */
+  static async deleteNonTargetPlans() {
+    await db.query(
+      `DELETE FROM notion_students WHERE NOT (contract_plan = ANY($1::text[]))`,
+      [TARGET_CONTRACT_PLANS]
+    );
+  }
+
   static async deleteNonEntryPlan() {
-    await db.query(`DELETE FROM notion_students WHERE contract_plan != 'エントリープラン'`);
+    return NotionStudent.deleteNonTargetPlans();
   }
 
   /**

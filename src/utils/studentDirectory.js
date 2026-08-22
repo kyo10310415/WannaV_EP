@@ -46,7 +46,8 @@ function mergeStudentRecords(accountStudents = [], notionStudents = [], { includ
         student_number: notion.student_number,
         name_furigana: notion.name_furigana,
         notion_status: notion.status,
-        contract_plan: account.contract_plan || notion.contract_plan,
+        // Notion連携済みの生徒は、同期元の契約プランをタブ表示にも使用する。
+        contract_plan: notion.contract_plan || account.contract_plan,
         lesson_start_date: account.lesson_start_date || notion.lesson_start_month,
         notion_login_id_overridden: notion.login_id_overridden,
         notion_synced_at: notion.synced_at,
