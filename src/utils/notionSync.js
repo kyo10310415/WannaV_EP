@@ -10,6 +10,7 @@
 
 const axios = require('axios');
 const NotionStudent = require('../models/NotionStudent');
+const { TARGET_CONTRACT_PLANS } = require('../config/contractPlans');
 
 const NOTION_API_BASE = 'https://api.notion.com/v1';
 const NOTION_VERSION  = '2022-06-28';
@@ -23,8 +24,6 @@ const PROP = {
   STATUS:         'ステータス',
   CONTRACT_PLAN:  '契約プラン',
 };
-
-const ENTRY_PLAN_NAME = 'エントリープラン';
 
 // ===== axios インスタンスを token 付きで生成 =====
 function createNotionAxios(token) {
@@ -109,9 +108,21 @@ function parsePage(page) {
 }
 
 /**
- * Notion DB をページネーション対応で全件取得（エントリープランのみフィルタ）
+ * 対象契約プランを Notion API の OR 条件へ変換する。
  */
-async function fetchEntryPlanStudents() {
+function buildContractPlanFilter() {
+  return {
+    or: TARGET_CONTRACT_PLANS.map(plan => ({
+      property: PROP.CONTRACT_PLAN,
+      select: { equals: plan },
+    })),
+  };
+}
+
+/**
+ * Notion DB をページネーション対応で全件取得（対象6プランのみフィルタ）
+ */
+async function fetchTargetPlanStudents() {
   const token = process.env.NOTION_TOKEN;
   const dbId  = process.env.NOTION_DATABASE_ID;
 
@@ -124,11 +135,7 @@ async function fetchEntryPlanStudents() {
   let startCursor = undefined;
   let hasMore = true;
 
-  // select型の契約プランフィルタ
-  const filter = {
-    property: PROP.CONTRACT_PLAN,
-    select: { equals: ENTRY_PLAN_NAME },
-  };
+  const filter = buildContractPlanFilter();
 
   while (hasMore) {
     const body = {
@@ -158,7 +165,7 @@ async function fetchEntryPlanStudents() {
       // ------------------------------------
 
       // フィルタが効いているが念のため再チェック
-      if (parsed.contractPlan === ENTRY_PLAN_NAME) {
+      if (TARGET_CONTRACT_PLANS.includes(parsed.contractPlan)) {
         students.push(parsed);
       }
     }
@@ -172,7 +179,7 @@ async function fetchEntryPlanStudents() {
 
 /**
  * メイン同期関数
- * 1. Notion からエントリープラン生徒を全件取得
+ * 1. Notion から対象6プランの生徒を全件取得
  * 2. PostgreSQL へ UPSERT
  * 3. 学籍番号をログインID、初期PW「1111」として生徒アカウントを作成・連携
  * @returns {{ synced: number, accountsCreated: number, accountsLinked: number, accountsSkipped: number, timestamp: Date }}
@@ -181,11 +188,11 @@ async function syncNotionStudents() {
   console.log('🔄 Notion 生徒データ同期開始...');
 
   try {
-    const students = await fetchEntryPlanStudents();
-    console.log(`📋 Notion から ${students.length} 件取得（エントリープランのみ）`);
+    const students = await fetchTargetPlanStudents();
+    console.log(`📋 Notion から ${students.length} 件取得（対象プラン: ${TARGET_CONTRACT_PLANS.join('、')}）`);
 
     if (students.length === 0) {
-      console.log('⚠️ 取得データが 0 件です（エントリープランに該当するデータがないか、プロパティ名を確認してください）');
+      console.log('⚠️ 取得データが 0 件です（対象プランに該当するデータがないか、プロパティ名を確認してください）');
       return { synced: 0, accountsCreated: 0, accountsLinked: 0, accountsSkipped: 0, timestamp: new Date() };
     }
 
@@ -250,4 +257,14 @@ async function fetchDatabaseProperties() {
   return { schema, sampleValues, dbTitle: dbRes.data.title?.[0]?.plain_text || '' };
 }
 
-module.exports = { syncNotionStudents, fetchEntryPlanStudents, fetchDatabaseProperties, parsePage };
+// 既存の呼び出し元との互換性を維持するため、旧関数名もエイリアスとして残す。
+const fetchEntryPlanStudents = fetchTargetPlanStudents;
+
+module.exports = {
+  syncNotionStudents,
+  fetchTargetPlanStudents,
+  fetchEntryPlanStudents,
+  fetchDatabaseProperties,
+  parsePage,
+  buildContractPlanFilter,
+};

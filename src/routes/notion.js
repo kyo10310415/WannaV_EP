@@ -6,7 +6,7 @@ const { syncNotionStudents, fetchDatabaseProperties } = require('../utils/notion
 
 /**
  * GET /api/notion/students
- * エントリープランの生徒一覧を返す（DBキャッシュから）
+ * 対象6プランの生徒一覧を返す（DBキャッシュから）
  */
 router.get('/students', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
