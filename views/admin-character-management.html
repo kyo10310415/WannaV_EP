@@ -142,17 +142,24 @@
                         <td style="font-weight:700">${escHtml(item.studentName || '-')}</td>
                         <td><img class="character-thumb" src="${item.imageUrl}?size=300" alt="${escHtml(item.fileName)}" loading="lazy"></td>
                         <td><div>${escHtml(item.fileName)}</div><small style="color:var(--gray-text)">${escHtml(item.category)}</small></td>
-                        <td><span class="status-badge ${item.status === 'confirmed' ? 'status-confirmed' : 'status-pending'}">${item.status === 'confirmed' ? '確定済み' : '選択中'}</span></td>
+                        <td>
+                            <span class="status-badge ${item.status === 'confirmed' ? 'status-confirmed' : 'status-pending'}">${item.status === 'confirmed' ? '確定済み' : '選択中'}</span>
+                            ${item.status === 'confirmed' ? `<small style="display:block;margin-top:5px;color:${item.isStored ? '#6AEBB7' : '#F7C55B'}">${item.isStored ? '画像保存済み' : '画像未保存'}</small>` : ''}
+                        </td>
                         <td><div class="row-actions">
-                            ${item.status === 'pending' ? `<button class="action-btn action-confirm" onclick="confirmSelection(${item.id})">確定</button>` : ''}
+                            ${item.status === 'pending' ? `<button class="action-btn action-confirm" onclick="confirmSelection(${item.id}, false)">確定</button>` : ''}
+                            ${item.status === 'confirmed' && !item.isStored ? `<button class="action-btn action-confirm" onclick="confirmSelection(${item.id}, true)">画像を保存</button>` : ''}
                             <button class="action-btn action-cancel" onclick="cancelSelection(${item.id}, '${item.status}')">キャンセル</button>
                         </div></td>
                     </tr>`).join('')}</tbody>
             </table></div>`;
         }
 
-        async function confirmSelection(id) {
-            if (!confirm('この生徒のキャラクターを確定しますか？')) return;
+        async function confirmSelection(id, archiveOnly) {
+            const prompt = archiveOnly
+                ? 'この確定済みキャラクターをアプリ用ストレージへ保存しますか？'
+                : '画像をアプリ用ストレージへ保存し、この生徒のキャラクターを確定しますか？';
+            if (!confirm(prompt)) return;
             const result = await fetchJSON(`/api/characters/admin/${id}/confirm`, { method: 'PATCH' });
             if (result) {
                 showAlert(result.message || 'キャラクターを確定しました', 'success');

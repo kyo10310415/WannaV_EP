@@ -320,15 +320,16 @@ pg_dump $DATABASE_URL > backup.sql
 
 ---
 
-## 💾 動画ファイルを永続化する（Render Disk 設定）
+## 💾 動画・確定済みキャラクター画像を永続化する（Render Disk 設定）
 
 > デプロイのたびに動画ファイルが消える問題を解消します。
-> Render Disk を使うと、アップロードしたMP4・サムネイルが永続的に保存されます。
+> Render Disk を使うと、アップロードしたMP4・サムネイルと、管理者・セールスが確定したキャラクター画像が永続的に保存されます。
 
-### ⚠️ なぜ動画が消えるのか
+### ⚠️ なぜ保存ファイルが消えるのか
 
 Render の Web Service はデプロイのたびにコンテナを作り直します。
-`uploads/` フォルダはコンテナ内にあるため、**デプロイ＝動画が全消去**になります。
+`uploads/` フォルダはコンテナ内にあるため、Disk未設定ではデプロイ時に動画や確定済みキャラクター画像が消えます。
+本番環境で `UPLOAD_DIR` が未設定の場合、キャラクターの確定処理は安全のためエラーになります。
 
 ### ✅ 解決策: Render Disk（月 $1〜）
 
@@ -372,6 +373,7 @@ Render の Web Service はデプロイのたびにコンテナを作り直しま
 ```
 📂 Upload directory: /var/data/uploads
 ✅ Directory created: /var/data/uploads/thumbs   ← 初回のみ
+✅ Directory created: /var/data/uploads/characters   ← 初回のみ
 ```
 
 ---
@@ -391,6 +393,8 @@ Render の Web Service はデプロイのたびにコンテナを作り直しま
 ### 注意事項
 
 - **Disk を追加するまでにアップロードした動画は消えています**（再アップロードが必要）
+- 確定済みキャラクター画像は `/var/data/uploads/characters` に保存されます
+- 機能追加前に確定済みだったキャラクターは、管理画面の「画像を保存」から移行してください
 - 同一リージョンの Web Service と Disk を同じリージョンに配置してください
 - Free プランの Web Service には Disk を追加できません（Starter $7/月 以上が必要）
 

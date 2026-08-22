@@ -4,6 +4,12 @@ const { auth, checkRole } = require('../middleware/auth');
 const CharacterSelection = require('../models/CharacterSelection');
 const ActivityLog = require('../models/ActivityLog');
 const {
+  resolveStoredImagePath,
+  storedImageUrl,
+  saveDriveImage,
+  deleteStoredImage,
+} = require('../utils/characterStorage');
+const {
   getCatalogue,
   getAllowedImage,
   streamThumbnail,
@@ -25,7 +31,11 @@ function serializeSelection(selection) {
     status: selection.status,
     selectedAt: selection.selected_at,
     confirmedAt: selection.confirmed_at,
-    imageUrl: imagePath(selection.drive_file_id),
+    isStored: Boolean(selection.stored_image_filename),
+    storedAt: selection.stored_at || null,
+    imageUrl: selection.stored_image_filename
+      ? storedImageUrl(selection.id)
+      : imagePath(selection.drive_file_id),
   };
 }
 
@@ -39,6 +49,48 @@ function handleDriveError(error, res, message) {
       : message,
   });
 }
+
+function handleStorageError(error, res) {
+  console.error('Character storage error:', error.response?.data || error.message);
+  if (error.code === 'CHARACTER_STORAGE_NOT_PERSISTENT') {
+    return res.status(503).json({
+      error: 'キャラクター保存用の永続ストレージが未設定です。RenderのDiskとUPLOAD_DIRを設定してください',
+    });
+  }
+  if (error.code === 'CHARACTER_IMAGE_TOO_LARGE') {
+    return res.status(413).json({ error: 'キャラクター画像のサイズが上限を超えています' });
+  }
+  if (error.code === 'CHARACTER_DRIVE_IMAGE_NOT_FOUND') {
+    return res.status(404).json({ error: 'Google Driveに選択画像が見つからないため確定できません' });
+  }
+  return res.status(502).json({
+    error: '画像をアプリ用ストレージへ保存できなかったため、キャラクターは確定されませんでした',
+  });
+}
+
+// 確定時にアプリ用ストレージへコピーした画像を配信する。
+router.get('/stored/:selectionId', async (req, res) => {
+  try {
+    const selectionId = Number(req.params.selectionId);
+    if (!Number.isInteger(selectionId) || selectionId <= 0) return res.status(400).end();
+    const selection = await CharacterSelection.findStoredById(selectionId);
+    if (!selection) return res.status(404).end();
+    const storedPath = resolveStoredImagePath(selection.stored_image_filename);
+    if (!storedPath) return res.status(404).end();
+
+    res.type(selection.stored_image_mime_type || 'application/octet-stream');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(storedPath, error => {
+      if (!error) return;
+      console.error('Stored character image error:', error.message);
+      if (!res.headersSent) res.status(error.code === 'ENOENT' ? 404 : 500).end();
+      else res.destroy(error);
+    });
+  } catch (error) {
+    console.error('Stored character lookup error:', error.message);
+    return res.status(500).end();
+  }
+});
 
 // 画像はGoogle Driveの許可フォルダ内に存在するIDだけを配信する。
 // <img>タグから利用できるよう、このルート自体にはBearer認証を要求しない。
@@ -196,24 +248,58 @@ router.get('/admin', checkRole('管理者', 'セールス'), async (req, res) =>
  * PATCH /api/characters/admin/:id/confirm
  */
 router.patch('/admin/:id/confirm', checkRole('管理者', 'セールス'), async (req, res) => {
+  let storedImage = null;
+  let storageCommitted = false;
   try {
-    const selection = await CharacterSelection.confirm(req.params.id, req.user.id);
-    if (!selection) {
+    const currentSelection = await CharacterSelection.findById(req.params.id);
+    if (!currentSelection) {
       return res.status(404).json({ error: '確定待ちのキャラクター選択が見つかりません' });
     }
+    if (currentSelection.status === 'confirmed' && currentSelection.stored_image_filename) {
+      return res.status(409).json({ error: 'このキャラクターは確定・保存済みです' });
+    }
+
+    storedImage = await saveDriveImage({
+      selectionId: currentSelection.id,
+      driveFileId: currentSelection.drive_file_id,
+      originalFileName: currentSelection.drive_file_name,
+    });
+
+    const wasAlreadyConfirmed = currentSelection.status === 'confirmed';
+    const selection = wasAlreadyConfirmed
+      ? await CharacterSelection.attachStoredImage(currentSelection.id, storedImage)
+      : await CharacterSelection.confirm(currentSelection.id, req.user.id, storedImage);
+    if (!selection) {
+      await deleteStoredImage(storedImage.fileName);
+      storedImage = null;
+      return res.status(409).json({ error: 'キャラクターの状態が変更されました。一覧を更新してください' });
+    }
+    storageCommitted = true;
 
     await ActivityLog.log({
       userId: req.user.id,
-      action: 'character_confirm',
+      action: wasAlreadyConfirmed ? 'character_archive' : 'character_confirm',
       targetType: 'character_selection',
       targetId: selection.id,
-      detail: { studentUserId: selection.student_user_id, fileId: selection.drive_file_id },
+      detail: {
+        studentUserId: selection.student_user_id,
+        fileId: selection.drive_file_id,
+        storedImageFileName: selection.stored_image_filename,
+      },
       ipAddress: req.ip,
+    }).catch(logError => console.error('Character confirm activity log error:', logError));
+    res.json({
+      message: wasAlreadyConfirmed
+        ? '確定済みキャラクターの画像をアプリ用ストレージへ保存しました'
+        : '画像をアプリ用ストレージへ保存し、キャラクターを確定しました',
+      selection: serializeSelection(selection),
     });
-    res.json({ message: 'キャラクターを確定しました', selection: serializeSelection(selection) });
   } catch (error) {
-    console.error('Confirm character selection error:', error);
-    res.status(500).json({ error: 'キャラクターの確定に失敗しました' });
+    if (storedImage && !storageCommitted) {
+      await deleteStoredImage(storedImage.fileName)
+        .catch(cleanupError => console.error('Character storage rollback error:', cleanupError));
+    }
+    return handleStorageError(error, res);
   }
 });
 
@@ -225,6 +311,11 @@ router.delete('/admin/:id', checkRole('管理者', 'セールス'), async (req, 
   try {
     const selection = await CharacterSelection.cancel(req.params.id);
     if (!selection) return res.status(404).json({ error: 'キャラクター選択が見つかりません' });
+
+    if (selection.stored_image_filename) {
+      await deleteStoredImage(selection.stored_image_filename)
+        .catch(storageError => console.error('Cancelled character image cleanup error:', storageError));
+    }
 
     await ActivityLog.log({
       userId: req.user.id,
