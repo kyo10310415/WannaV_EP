@@ -237,6 +237,20 @@ router.get('/meta/expiring', auth, checkRole('管理者', 'クルー'), async (r
 });
 
 /**
+ * GET /api/students/meta/extension-review-candidates
+ * レッスン開始から4か月目の延長審査対象者一覧
+ */
+router.get('/meta/extension-review-candidates', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+  try {
+    const students = await StudentProfile.getExtensionReviewCandidates();
+    res.json(students);
+  } catch (error) {
+    console.error('Get extension review candidates error:', error);
+    res.status(500).json({ error: '延長審査対象者の取得に失敗しました' });
+  }
+});
+
+/**
  * GET /api/students/meta/followup
  * フォロー対象者一覧
  */

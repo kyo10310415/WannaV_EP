@@ -223,6 +223,45 @@ class StudentProfile {
   }
 
   /**
+   * 延長審査対象者
+   * レッスン開始月を1か月目として、現在が4か月目の
+   * エントリープラン・アクティブのNotion連携済み生徒を取得する。
+   */
+  static async getExtensionReviewCandidates() {
+    const result = await db.query(`
+      SELECT
+        u.id AS user_id,
+        COALESCE(ns.student_name, u.name) AS student_name,
+        u.username,
+        ns.status,
+        ns.contract_plan,
+        ns.lesson_start_month AS lesson_start_date,
+        (DATE_TRUNC('month', ns.lesson_start_month) + INTERVAL '3 months')::date
+          AS fourth_month_start,
+        sp.contract_end_date,
+        sp.assigned_tutor_id,
+        t.name AS tutor_name,
+        EXISTS(
+          SELECT 1 FROM extension_reviews er
+          WHERE er.student_user_id = u.id
+            AND er.review_status IN ('審査中', '保留')
+        ) AS already_under_review
+      FROM users u
+      JOIN student_profiles sp ON u.id = sp.user_id
+      JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+      LEFT JOIN users t ON sp.assigned_tutor_id = t.id
+      WHERE u.role = '生徒'
+        AND ns.contract_plan = 'エントリープラン'
+        AND ns.status = 'アクティブ'
+        AND ns.lesson_start_month IS NOT NULL
+        AND DATE_TRUNC('month', ns.lesson_start_month) + INTERVAL '3 months'
+          = DATE_TRUNC('month', CURRENT_DATE)
+      ORDER BY ns.lesson_start_month ASC, ns.student_name ASC NULLS LAST
+    `);
+    return result.rows;
+  }
+
+  /**
    * フォロー対象者（最終活動から7日以上経過したアクティブ生徒）
    */
   static async getFollowUpTargets(inactiveDays = 7) {

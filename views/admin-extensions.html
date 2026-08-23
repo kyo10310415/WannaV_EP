@@ -49,18 +49,16 @@
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
 
-        .expiring-item {
+        .candidate-item {
             display: flex; justify-content: space-between; align-items: center;
             padding: 14px 18px; background: rgba(23,42,63,0.7); border-radius: 12px;
             border: 1px solid rgba(74,144,217,0.15); margin-bottom: 8px;
         }
-        .expiring-item:hover { border-color: rgba(74,144,217,0.4); }
-        .days-tag {
+        .candidate-item:hover { border-color: rgba(74,144,217,0.4); }
+        .month-tag {
             padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700;
+            background: rgba(52,200,232,0.15); color: #34C8E8;
         }
-        .days-urgent  { background: rgba(231,76,60,0.2);   color: #E74C3C; }
-        .days-warning { background: rgba(243,156,18,0.2);  color: #F39C12; }
-        .days-ok      { background: rgba(52,200,232,0.15); color: #34C8E8; }
 
         .action-btn { padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
         .action-btn:hover { transform: translateY(-1px); }
@@ -162,7 +160,7 @@
 
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('active', this)">🔍 審査中</button>
-            <button class="tab-btn" onclick="switchTab('expiring', this)">⚠️ 期限接近</button>
+            <button class="tab-btn" onclick="switchTab('candidates', this)">📅 4か月目対象者</button>
             <button class="tab-btn" onclick="switchTab('all', this)">📋 全履歴</button>
         </div>
 
@@ -183,19 +181,15 @@
             </div>
         </div>
 
-        <!-- 期限接近タブ -->
-        <div id="tab-expiring" style="display:none">
+        <!-- 延長審査対象者タブ -->
+        <div id="tab-candidates" style="display:none">
             <div class="card">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
-                    <h3>契約終了が近い生徒（30日以内）</h3>
-                    <select id="expiring-days-filter" class="filter-select" onchange="loadExpiring()" style="padding:8px 14px;border-radius:20px;background:rgba(7,16,24,0.7);border:1px solid rgba(74,144,217,0.3);color:var(--light-text)">
-                        <option value="14">14日以内</option>
-                        <option value="30" selected>30日以内</option>
-                        <option value="60">60日以内</option>
-                    </select>
-                </div>
-                <div id="expiring-list"></div>
-                <div id="expiring-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">対象者なし</div>
+                <h3 style="margin-bottom:8px">レッスン開始から4か月目の生徒</h3>
+                <p style="margin-bottom:16px;color:var(--gray-text);font-size:13px">
+                    契約プランが「エントリープラン」、ステータスが「アクティブ」の生徒のみ表示しています。
+                </p>
+                <div id="candidate-list"></div>
+                <div id="candidate-empty" style="text-align:center;padding:32px;color:var(--gray-text);display:none">今月の対象者はいません</div>
             </div>
         </div>
 
@@ -252,12 +246,12 @@
         }
 
         function switchTab(tab, btn) {
-            ['active','expiring','all'].forEach(t => {
+            ['active','candidates','all'].forEach(t => {
                 document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
             });
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            if (tab === 'expiring') loadExpiring();
+            if (tab === 'candidates') loadCandidates();
             if (tab === 'all') loadAll();
         }
 
@@ -283,24 +277,21 @@
             </tr>`).join('');
         }
 
-        async function loadExpiring() {
-            const days = document.getElementById('expiring-days-filter').value;
-            const data = await fetchJSON(`/api/students/meta/expiring?days=${days}`);
-            const list = document.getElementById('expiring-list');
-            const empty = document.getElementById('expiring-empty');
+        async function loadCandidates() {
+            const data = await fetchJSON('/api/students/meta/extension-review-candidates');
+            const list = document.getElementById('candidate-list');
+            const empty = document.getElementById('candidate-empty');
             if (!data || !data.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
             empty.style.display = 'none';
             list.innerHTML = data.map(s => {
-                const d = s.days_remaining;
-                const dClass = d <= 7 ? 'days-urgent' : d <= 14 ? 'days-warning' : 'days-ok';
                 const reviewed = s.already_under_review;
-                return `<div class="expiring-item">
+                return `<div class="candidate-item">
                     <div>
                         <div style="font-weight:600">${escHtml(s.student_name||'')}</div>
-                        <div style="font-size:12px;color:var(--gray-text)">担当: ${escHtml(s.tutor_name||'未設定')} / 終了日: ${formatDate(s.contract_end_date)}</div>
+                        <div style="font-size:12px;color:var(--gray-text)">担当: ${escHtml(s.tutor_name||'未設定')} / レッスン開始月: ${formatMonth(s.lesson_start_date)}</div>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px">
-                        <span class="days-tag ${dClass}">残${d}日</span>
+                        <span class="month-tag">4か月目</span>
                         ${reviewed
                             ? '<span style="font-size:12px;color:var(--gray-text)">⏳ 審査中</span>'
                             : `<button onclick="openStartModal(${s.user_id},'${escHtml(s.student_name||'')}','${toDateInput(s.contract_end_date)}')" class="action-btn btn-start">審査開始</button>`
@@ -356,7 +347,7 @@
                 showAlert('延長審査を開始しました', 'success');
                 document.getElementById('start-modal').classList.remove('open');
                 await loadActive();
-                await loadExpiring();
+                await loadCandidates();
             } else {
                 showAlert(res?.error || 'エラーが発生しました', 'error');
             }
@@ -406,6 +397,7 @@
         }
         function isUrgent(d) { return d && (new Date(d) - new Date()) < 14*86400000; }
         function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit'}); }
+        function formatMonth(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('ja-JP', {year:'numeric',month:'long'}); }
         function toDateInput(d) { if (!d) return ''; return new Date(d).toISOString().split('T')[0]; }
         function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
         function showAlert(msg, type) {
