@@ -181,9 +181,17 @@ class LessonSchedule {
   }
 
   /**
-   * 担当Tutorの全生徒スケジュール概況
+   * 生徒スケジュール概況
+   * tutorId 指定時は担当生徒のみ、未指定時は全生徒を取得する。
    */
-  static async getOverviewForTutor(tutorId) {
+  static async getOverviewForTutor(tutorId = null) {
+    const params = [];
+    let tutorFilter = '';
+    if (tutorId) {
+      params.push(tutorId);
+      tutorFilter = `AND sp.assigned_tutor_id = $${params.length}`;
+    }
+
     const result = await db.query(`
       SELECT
         u.id AS user_id,
@@ -199,10 +207,11 @@ class LessonSchedule {
       FROM users u
       JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN lesson_schedules ls ON u.id = ls.user_id
-      WHERE sp.assigned_tutor_id = $1 AND u.role = '生徒'
+      WHERE u.role = '生徒'
+        ${tutorFilter}
       GROUP BY u.id, u.name, u.username
       ORDER BY overdue DESC, next_lesson_date ASC NULLS LAST
-    `, [tutorId]);
+    `, params);
     return result.rows;
   }
 
