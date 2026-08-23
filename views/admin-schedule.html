@@ -391,10 +391,10 @@
     async function loadStudents() {
         const data = await fetchJSON('/api/students?limit=200');
         if (!data) return;
-        allStudents = data.students || data || [];
+        allStudents = (data.students || data || []).filter(s => s.user_id || s.id);
         const sel = document.getElementById('sel-student');
         sel.innerHTML = '<option value="">生徒を選択...</option>' +
-            allStudents.map(s => `<option value="${s.user_id || s.id}">${s.username || s.name}</option>`).join('');
+            allStudents.map(s => `<option value="${s.user_id || s.id}">${escHtml(s.student_name || s.name || s.student_username || s.username)}</option>`).join('');
         // テンプレート適用モーダル用選択肢は共有
     }
 

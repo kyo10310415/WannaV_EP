@@ -202,6 +202,22 @@ router.patch('/:userId/login-id', auth, checkRole('管理者', 'セールス'), 
 });
 
 /**
+ * GET /api/students/schedule-templates
+ * テンプレート一覧
+ *
+ * 単一セグメントの静的ルートなので、/:userId より先に定義する。
+ */
+router.get('/schedule-templates', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+  try {
+    const templates = await LessonSchedule.getTemplates();
+    res.json(templates);
+  } catch (error) {
+    console.error('Get templates error:', error);
+    res.status(500).json({ error: 'テンプレートの取得に失敗しました' });
+  }
+});
+
+/**
  * GET /api/students/:userId
  * 特定生徒のプロフィール詳細
  */
@@ -1027,7 +1043,6 @@ router.delete('/schedule/:scheduleId', auth, checkRole('管理者', 'クルー')
 router.get('/schedule/overview', auth, checkRole('管理者', 'クルー'), async (req, res) => {
   try {
     const tutorId = req.user.role === 'クルー' ? req.user.id : (req.query.tutorId || null);
-    if (!tutorId) return res.status(400).json({ error: 'tutorIdが必要です' });
     const overview = await LessonSchedule.getOverviewForTutor(tutorId);
     res.json(overview);
   } catch (error) {
@@ -1039,20 +1054,6 @@ router.get('/schedule/overview', auth, checkRole('管理者', 'クルー'), asyn
 // ====================================================
 // スケジュールテンプレート管理
 // ====================================================
-
-/**
- * GET /api/students/schedule-templates
- * テンプレート一覧
- */
-router.get('/schedule-templates', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const templates = await LessonSchedule.getTemplates();
-    res.json(templates);
-  } catch (error) {
-    console.error('Get templates error:', error);
-    res.status(500).json({ error: 'テンプレートの取得に失敗しました' });
-  }
-});
 
 /**
  * POST /api/students/schedule-templates
