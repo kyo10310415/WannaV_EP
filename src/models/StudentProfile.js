@@ -32,7 +32,7 @@ class StudentProfile {
   /**
    * 全生徒プロフィール一覧（役割: 生徒のみ）
    */
-  static async getAll({ status, tutorId } = {}) {
+  static async getAll({ status, tutorId, contractPlan } = {}) {
     let whereClause = `WHERE u.role = '生徒'`;
     const params = [];
 
@@ -43,6 +43,10 @@ class StudentProfile {
     if (tutorId) {
       params.push(tutorId);
       whereClause += ` AND sp.assigned_tutor_id = $${params.length}`;
+    }
+    if (contractPlan) {
+      params.push(contractPlan);
+      whereClause += ` AND COALESCE(ns.contract_plan, sp.contract_plan) = $${params.length}`;
     }
 
     const result = await db.query(`
@@ -94,6 +98,24 @@ class StudentProfile {
       ORDER BY COALESCE(ns.status, sp.status) NULLS LAST, u.created_at DESC
     `, params);
     return result.rows;
+  }
+
+  /**
+   * 指定ユーザーがスケジュール管理対象のエントリープラン生徒か確認する。
+   */
+  static async isEntryPlanStudent(userId, queryable = db) {
+    const result = await queryable.query(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM users u
+        JOIN student_profiles sp ON sp.user_id = u.id
+        LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+        WHERE u.id = $1
+          AND u.role = '生徒'
+          AND COALESCE(ns.contract_plan, sp.contract_plan) = 'エントリープラン'
+      ) AS is_entry_plan_student
+    `, [userId]);
+    return result.rows[0]?.is_entry_plan_student === true;
   }
 
   /**

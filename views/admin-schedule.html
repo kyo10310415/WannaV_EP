@@ -148,7 +148,7 @@
 
     <h2 style="margin-bottom:6px;">📅 受講スケジュール管理</h2>
     <p style="color:var(--gray-text);font-size:13px;margin-bottom:20px;">
-        生徒ごとの受講予定を管理・設定します。テンプレートから一括生成も可能です。
+        エントリープランの生徒ごとの受講予定を管理・設定します。テンプレートから一括生成も可能です。
     </p>
 
     <!-- タブ切り替え -->
@@ -336,7 +336,7 @@
             </div>
             <div class="form-row">
                 <label>対象プラン</label>
-                <input type="text" id="tmpl-plan" placeholder="例: スタンダード">
+                <input type="text" id="tmpl-plan" value="エントリープラン" disabled>
             </div>
         </div>
         <div class="form-row">
@@ -389,7 +389,7 @@
 
     // ── データ取得 ──────────────────────────────────────
     async function loadStudents() {
-        const data = await fetchJSON('/api/students?limit=200');
+        const data = await fetchJSON('/api/students?contractPlan=' + encodeURIComponent('エントリープラン'));
         if (!data) return;
         allStudents = (data.students || data || []).filter(s => s.user_id || s.id);
         const sel = document.getElementById('sel-student');
@@ -531,7 +531,7 @@
             <div class="tmpl-card">
                 <div class="tmpl-name">${escHtml(t.name)}</div>
                 <div class="tmpl-meta">
-                    ${t.contract_plan ? '📋 ' + escHtml(t.contract_plan) + ' &nbsp;' : ''}
+                    📋 エントリープラン &nbsp;
                     📚 ${t.item_count||0} レッスン
                     ${t.created_by_name ? ' &nbsp;👤 ' + escHtml(t.created_by_name) : ''}
                 </div>
@@ -668,7 +668,7 @@
             method:'POST', body: JSON.stringify({ templateId: Number(tmplId), startDate })
         });
         if (result) {
-            showAlert(`${result.created?.length||0} 件のスケジュールを生成しました`,'success');
+            showAlert(`${Number(result.created)||0} 件のスケジュールを生成しました`,'success');
             closeModal('modal-apply-tmpl');
             loadSchedule();
             loadOverview();
@@ -682,7 +682,7 @@
         document.getElementById('modal-tmpl-title').textContent = '📐 テンプレート作成';
         document.getElementById('edit-tmpl-id').value = '';
         document.getElementById('tmpl-name').value = '';
-        document.getElementById('tmpl-plan').value = '';
+        document.getElementById('tmpl-plan').value = 'エントリープラン';
         document.getElementById('tmpl-desc').value = '';
         tmplItems = [];
         renderTmplItems();
@@ -693,7 +693,7 @@
         document.getElementById('modal-tmpl-title').textContent = '📐 テンプレート編集';
         document.getElementById('edit-tmpl-id').value = t.id;
         document.getElementById('tmpl-name').value = t.name || '';
-        document.getElementById('tmpl-plan').value = t.contract_plan || '';
+        document.getElementById('tmpl-plan').value = 'エントリープラン';
         document.getElementById('tmpl-desc').value = t.description || '';
         tmplItems = Array.isArray(t.items) ? t.items.map(i => ({...i})) : [];
         renderTmplItems();
@@ -724,17 +724,17 @@
                 </select>
                 <div>
                     <div style="font-size:10px;color:var(--gray-text);margin-bottom:2px;">day+</div>
-                    <input type="number" min="0" value="${item.dayOffset||0}" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].dayOffset=Number(this.value)">
+                    <input type="number" min="0" step="1" value="${item.dayOffset ?? 0}" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].dayOffset=this.value===''?null:Number(this.value)">
                 </div>
                 <div>
                     <div style="font-size:10px;color:var(--gray-text);margin-bottom:2px;">期限+</div>
-                    <input type="number" min="0" value="${item.dueOffset||7}" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].dueOffset=Number(this.value)">
+                    <input type="number" min="0" step="1" value="${item.dueOffset ?? ''}" placeholder="期限なし" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;" onchange="tmplItems[${idx}].dueOffset=this.value===''?null:Number(this.value)">
                 </div>
                 <div>
                     <div style="font-size:10px;color:var(--gray-text);margin-bottom:2px;">優先</div>
                     <select onchange="tmplItems[${idx}].priority=Number(this.value)" style="width:100%;padding:4px 6px;background:rgba(23,42,63,0.9);border:1px solid rgba(74,144,217,0.3);border-radius:6px;color:var(--light-text);font-size:12px;">
                         <option value="0" ${item.priority===0?'selected':''}>低</option>
-                        <option value="1" ${(item.priority||1)===1?'selected':''}>普</option>
+                        <option value="1" ${(item.priority ?? 1)===1?'selected':''}>普</option>
                         <option value="2" ${item.priority===2?'selected':''}>高</option>
                         <option value="3" ${item.priority===3?'selected':''}>最高</option>
                     </select>
@@ -749,11 +749,18 @@
         const id   = document.getElementById('edit-tmpl-id').value;
         const name = document.getElementById('tmpl-name').value.trim();
         if (!name) { showAlert('テンプレート名を入力してください','error'); return; }
+        if (!tmplItems.length) { showAlert('1件以上のレッスンを追加してください','error'); return; }
         if (tmplItems.some(i => !i.lessonId)) { showAlert('全ての行にレッスンを選択してください','error'); return; }
+        if (tmplItems.some(i => !Number.isInteger(i.dayOffset) || i.dayOffset < 0)) {
+            showAlert('dayOffsetは0以上の整数で入力してください','error'); return;
+        }
+        if (tmplItems.some(i => i.dueOffset !== null && (!Number.isInteger(i.dueOffset) || i.dueOffset < 0))) {
+            showAlert('期限Offsetは空欄または0以上の整数で入力してください','error'); return;
+        }
 
         const body = {
             name,
-            contractPlan: document.getElementById('tmpl-plan').value || null,
+            contractPlan: 'エントリープラン',
             description:  document.getElementById('tmpl-desc').value || null,
             items: tmplItems,
         };
