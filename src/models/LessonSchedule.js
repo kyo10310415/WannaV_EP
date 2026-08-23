@@ -1,4 +1,85 @@
 const db = require('../config/database');
+const StudentProfile = require('./StudentProfile');
+
+const ENTRY_PLAN = 'エントリープラン';
+
+function invalidTemplate(message) {
+  const error = new Error(message);
+  error.code = 'INVALID_SCHEDULE_TEMPLATE';
+  return error;
+}
+
+function normalizeTemplateData(data = {}) {
+  const name = typeof data.name === 'string' ? data.name.trim() : '';
+  if (!name) throw invalidTemplate('テンプレート名を入力してください');
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    throw invalidTemplate('テンプレートには1件以上のレッスンが必要です');
+  }
+
+  const items = data.items.map((rawItem, index) => {
+    const item = rawItem && typeof rawItem === 'object' ? rawItem : {};
+    const lessonId = Number(item.lessonId);
+    const dayOffset = item.dayOffset === null || item.dayOffset === undefined || item.dayOffset === ''
+      ? Number.NaN
+      : Number(item.dayOffset);
+    const dueOffset = item.dueOffset === null || item.dueOffset === undefined || item.dueOffset === ''
+      ? null
+      : Number(item.dueOffset);
+    const priority = item.priority === null || item.priority === undefined || item.priority === ''
+      ? 1
+      : Number(item.priority);
+
+    if (!Number.isInteger(lessonId) || lessonId <= 0) {
+      throw invalidTemplate(`${index + 1}行目のレッスンを選択してください`);
+    }
+    if (!Number.isInteger(dayOffset) || dayOffset < 0) {
+      throw invalidTemplate(`${index + 1}行目のdayOffsetは0以上の整数で入力してください`);
+    }
+    if (dueOffset !== null && (!Number.isInteger(dueOffset) || dueOffset < 0)) {
+      throw invalidTemplate(`${index + 1}行目の期限Offsetは空欄または0以上の整数で入力してください`);
+    }
+    if (!Number.isInteger(priority) || priority < 0 || priority > 3) {
+      throw invalidTemplate(`${index + 1}行目の優先度が不正です`);
+    }
+
+    return {
+      lessonId,
+      dayOffset,
+      dueOffset,
+      priority,
+      note: typeof item.note === 'string' && item.note !== '' ? item.note : null
+    };
+  });
+
+  return {
+    name,
+    description: typeof data.description === 'string' && data.description.trim()
+      ? data.description.trim()
+      : null,
+    contractPlan: ENTRY_PLAN,
+    items
+  };
+}
+
+function parseIsoDate(dateString) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateString || ''));
+  if (!match) throw invalidTemplate('開始日の形式が不正です');
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw invalidTemplate('開始日が不正です');
+  }
+  return date;
+}
+
+function addUtcDays(date, days) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+}
 
 class LessonSchedule {
   // =====================================================
@@ -8,13 +89,13 @@ class LessonSchedule {
   /**
    * スケジュールを1件作成
    */
-  static async create(data) {
+  static async create(data, queryable = db) {
     const {
       userId, lessonId, scheduledDate, dueDate,
       orderInSchedule, priority, tutorNote, createdBy
     } = data;
 
-    const result = await db.query(`
+    const result = await queryable.query(`
       INSERT INTO lesson_schedules
         (user_id, lesson_id, scheduled_date, due_date,
          order_in_schedule, priority, tutor_note, created_by, status)
@@ -42,43 +123,57 @@ class LessonSchedule {
    * startDate を基準に dayOffset を加算してスケジュールを作成
    */
   static async bulkCreateFromTemplate(userId, templateId, startDate, createdBy) {
-    const tRes = await db.query(
-      'SELECT * FROM schedule_templates WHERE id = $1',
-      [templateId]
-    );
-    const template = tRes.rows[0];
-    if (!template) throw new Error('テンプレートが見つかりません');
+    let client;
+    try {
+      client = await db.pool.connect();
+      await client.query('BEGIN');
 
-    const items = template.items || [];
-    const base = new Date(startDate);
-    const created = [];
+      const isEntryPlanStudent = await StudentProfile.isEntryPlanStudent(userId, client);
+      if (!isEntryPlanStudent) {
+        const error = new Error('エントリープランの生徒のみスケジュールを生成できます');
+        error.code = 'SCHEDULE_STUDENT_NOT_ALLOWED';
+        throw error;
+      }
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const schedDate = new Date(base);
-      schedDate.setDate(schedDate.getDate() + (item.dayOffset || i * 2));
-      const dueDate = item.dueOffset
-        ? new Date(schedDate.getTime() + item.dueOffset * 86400000)
-        : null;
+      const tRes = await client.query(`
+        SELECT * FROM schedule_templates
+        WHERE id = $1 AND is_active = true
+      `, [templateId]);
+      const template = tRes.rows[0];
+      if (!template) throw invalidTemplate('利用可能なテンプレートが見つかりません');
 
-      try {
+      const { items } = normalizeTemplateData(template);
+      const base = parseIsoDate(startDate);
+      const created = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const scheduledDate = addUtcDays(base, item.dayOffset);
+        const dueDate = item.dueOffset === null
+          ? null
+          : addUtcDays(parseIsoDate(scheduledDate), item.dueOffset);
+
         const row = await LessonSchedule.create({
           userId,
           lessonId: item.lessonId,
-          scheduledDate: schedDate.toISOString().split('T')[0],
-          dueDate: dueDate ? dueDate.toISOString().split('T')[0] : null,
+          scheduledDate,
+          dueDate,
           orderInSchedule: i,
-          priority: item.priority || 0,
+          priority: item.priority,
           tutorNote: item.note || null,
           createdBy
-        });
+        }, client);
         created.push(row);
-      } catch (e) {
-        // 個別エラーはスキップ（重複など）
-        console.warn('Schedule create skip:', e.message);
       }
+
+      await client.query('COMMIT');
+      return created;
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client?.release();
     }
-    return created;
   }
 
   /**
@@ -206,8 +301,10 @@ class LessonSchedule {
         MIN(ls.scheduled_date) FILTER (WHERE ls.status = 'pending') AS next_lesson_date
       FROM users u
       JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
       LEFT JOIN lesson_schedules ls ON u.id = ls.user_id
       WHERE u.role = '生徒'
+        AND COALESCE(ns.contract_plan, sp.contract_plan) = '${ENTRY_PLAN}'
         ${tutorFilter}
       GROUP BY u.id, u.name, u.username
       ORDER BY overdue DESC, next_lesson_date ASC NULLS LAST
@@ -243,7 +340,17 @@ class LessonSchedule {
    */
   static async getTemplates() {
     const result = await db.query(`
-      SELECT st.*, u.name AS created_by_name,
+      SELECT
+        st.id,
+        st.name,
+        st.description,
+        '${ENTRY_PLAN}' AS contract_plan,
+        st.items,
+        st.created_by,
+        st.is_active,
+        st.created_at,
+        st.updated_at,
+        u.name AS created_by_name,
         jsonb_array_length(st.items) AS item_count
       FROM schedule_templates st
       LEFT JOIN users u ON st.created_by = u.id
@@ -257,7 +364,8 @@ class LessonSchedule {
    * テンプレート作成
    */
   static async createTemplate(data) {
-    const { name, description, contractPlan, items, createdBy } = data;
+    const { name, description, contractPlan, items } = normalizeTemplateData(data);
+    const { createdBy } = data;
     const result = await db.query(`
       INSERT INTO schedule_templates (name, description, contract_plan, items, created_by)
       VALUES ($1, $2, $3, $4, $5)
@@ -270,21 +378,17 @@ class LessonSchedule {
    * テンプレート更新
    */
   static async updateTemplate(templateId, data) {
-    const { name, description, contractPlan, items, isActive } = data;
+    const { name, description, contractPlan, items } = normalizeTemplateData(data);
     const result = await db.query(`
       UPDATE schedule_templates SET
-        name = COALESCE($1, name),
-        description = COALESCE($2, description),
-        contract_plan = COALESCE($3, contract_plan),
-        items = COALESCE($4, items),
-        is_active = COALESCE($5, is_active),
+        name = $1,
+        description = $2,
+        contract_plan = $3,
+        items = $4,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $6
+      WHERE id = $5 AND is_active = true
       RETURNING *
-    `, [name||null, description||null, contractPlan||null,
-        items ? JSON.stringify(items) : null,
-        isActive !== undefined ? isActive : null,
-        templateId]);
+    `, [name, description, contractPlan, JSON.stringify(items), templateId]);
     return result.rows[0];
   }
 
@@ -292,10 +396,18 @@ class LessonSchedule {
    * テンプレート削除（論理削除）
    */
   static async deleteTemplate(templateId) {
-    await db.query(
-      'UPDATE schedule_templates SET is_active = false WHERE id = $1',
+    const result = await db.query(
+      `UPDATE schedule_templates
+       SET is_active = false, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING id`,
       [templateId]
     );
+    return result.rows.length > 0;
+  }
+
+  static normalizeTemplateData(data) {
+    return normalizeTemplateData(data);
   }
 }
 

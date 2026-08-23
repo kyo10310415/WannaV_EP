@@ -39,6 +39,43 @@ async function loginIdHasConflict(queryable, loginId, { excludeUserId = null, ex
   return result.rows[0]?.has_conflict === true;
 }
 
+async function requireEntryPlanStudent(req, res, next) {
+  try {
+    const allowed = await StudentProfile.isEntryPlanStudent(req.params.userId);
+    if (!allowed) {
+      return res.status(403).json({ error: 'スケジュール管理の対象はエントリープランの生徒のみです' });
+    }
+    next();
+  } catch (error) {
+    console.error('Check entry plan student error:', error);
+    res.status(500).json({ error: '生徒の契約プラン確認に失敗しました' });
+  }
+}
+
+async function requireEntryPlanSchedule(req, res, next) {
+  try {
+    const result = await db.query(`
+      SELECT
+        ls.user_id,
+        COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan
+      FROM lesson_schedules ls
+      JOIN student_profiles sp ON sp.user_id = ls.user_id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+      WHERE ls.id = $1
+    `, [req.params.scheduleId]);
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'スケジュールが見つかりません' });
+    }
+    if (result.rows[0].contract_plan !== 'エントリープラン') {
+      return res.status(403).json({ error: 'スケジュール管理の対象はエントリープランの生徒のみです' });
+    }
+    next();
+  } catch (error) {
+    console.error('Check entry plan schedule error:', error);
+    res.status(500).json({ error: '生徒の契約プラン確認に失敗しました' });
+  }
+}
+
 // ====================================================
 // 生徒プロフィール管理
 // ====================================================
@@ -49,11 +86,11 @@ async function loginIdHasConflict(queryable, loginId, { excludeUserId = null, ex
  */
 router.get('/', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
-    const { status, tutorId } = req.query;
+    const { status, tutorId, contractPlan } = req.query;
     // クルーは自分の担当生徒のみ（管理者・セールスは全件）
     const filterTutorId = req.user.role === 'クルー' ? req.user.id : (tutorId || null);
     const [accountStudents, notionStudents] = await Promise.all([
-      StudentProfile.getAll({ tutorId: filterTutorId }),
+      StudentProfile.getAll({ tutorId: filterTutorId, contractPlan: contractPlan || null }),
       NotionStudent.getAll()
     ]);
 
@@ -63,6 +100,9 @@ router.get('/', auth, checkRole('管理者', 'クルー', 'セールス'), async
     });
     if (status) {
       students = students.filter(student => student.status === status);
+    }
+    if (contractPlan) {
+      students = students.filter(student => student.contract_plan === contractPlan);
     }
     res.json(students);
   } catch (error) {
@@ -913,7 +953,7 @@ router.get('/goals/overview', auth, checkRole('管理者', 'クルー'), async (
  * GET /api/students/:userId/schedule
  * 特定生徒のスケジュール一覧
  */
-router.get('/:userId/schedule', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
+router.get('/:userId/schedule', auth, checkRole('管理者', 'クルー', 'セールス'), requireEntryPlanStudent, async (req, res) => {
   try {
     const { from, to, status } = req.query;
     // 進捗との同期を先に実行
@@ -949,7 +989,7 @@ router.get('/:userId/schedule/week', auth, async (req, res) => {
  * POST /api/students/:userId/schedule
  * スケジュールを1件追加
  */
-router.post('/:userId/schedule', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.post('/:userId/schedule', auth, checkRole('管理者', 'クルー'), requireEntryPlanStudent, async (req, res) => {
   try {
     const { lessonId, scheduledDate, dueDate, priority, tutorNote } = req.body;
     if (!lessonId || !scheduledDate) {
@@ -981,7 +1021,7 @@ router.post('/:userId/schedule', auth, checkRole('管理者', 'クルー'), asyn
  * POST /api/students/:userId/schedule/from-template
  * テンプレートから一括スケジュール生成
  */
-router.post('/:userId/schedule/from-template', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.post('/:userId/schedule/from-template', auth, checkRole('管理者', 'クルー'), requireEntryPlanStudent, async (req, res) => {
   try {
     const { templateId, startDate } = req.body;
     if (!templateId || !startDate) {
@@ -1003,6 +1043,12 @@ router.post('/:userId/schedule/from-template', auth, checkRole('管理者', 'ク
     res.status(201).json({ created: items.length, items });
   } catch (error) {
     console.error('Bulk schedule error:', error);
+    if (error.code === 'INVALID_SCHEDULE_TEMPLATE') {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error.code === 'SCHEDULE_STUDENT_NOT_ALLOWED') {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ error: 'スケジュール一括生成に失敗しました' });
   }
 });
@@ -1011,7 +1057,7 @@ router.post('/:userId/schedule/from-template', auth, checkRole('管理者', 'ク
  * PATCH /api/students/schedule/:scheduleId
  * スケジュール更新（日付変更・ステータス更新など）
  */
-router.patch('/schedule/:scheduleId', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.patch('/schedule/:scheduleId', auth, checkRole('管理者', 'クルー'), requireEntryPlanSchedule, async (req, res) => {
   try {
     const item = await LessonSchedule.update(req.params.scheduleId, req.body);
     if (!item) return res.status(404).json({ error: 'スケジュールが見つかりません' });
@@ -1026,7 +1072,7 @@ router.patch('/schedule/:scheduleId', auth, checkRole('管理者', 'クルー'),
  * DELETE /api/students/schedule/:scheduleId
  * スケジュール削除
  */
-router.delete('/schedule/:scheduleId', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+router.delete('/schedule/:scheduleId', auth, checkRole('管理者', 'クルー'), requireEntryPlanSchedule, async (req, res) => {
   try {
     await LessonSchedule.delete(req.params.scheduleId);
     res.json({ success: true });
@@ -1061,15 +1107,17 @@ router.get('/schedule/overview', auth, checkRole('管理者', 'クルー'), asyn
  */
 router.post('/schedule-templates', auth, checkRole('管理者', 'クルー'), async (req, res) => {
   try {
-    const { name, description, contractPlan, items } = req.body;
-    if (!name) return res.status(400).json({ error: 'テンプレート名を入力してください' });
+    const { name, description, items } = req.body;
     const template = await LessonSchedule.createTemplate({
-      name, description, contractPlan, items: items || [],
+      name, description, items,
       createdBy: req.user.id
     });
     res.status(201).json(template);
   } catch (error) {
     console.error('Create template error:', error);
+    if (error.code === 'INVALID_SCHEDULE_TEMPLATE') {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'テンプレートの作成に失敗しました' });
   }
 });
@@ -1085,6 +1133,9 @@ router.patch('/schedule-templates/:templateId', auth, checkRole('管理者', '�
     res.json(template);
   } catch (error) {
     console.error('Update template error:', error);
+    if (error.code === 'INVALID_SCHEDULE_TEMPLATE') {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'テンプレートの更新に失敗しました' });
   }
 });
@@ -1095,7 +1146,8 @@ router.patch('/schedule-templates/:templateId', auth, checkRole('管理者', '�
  */
 router.delete('/schedule-templates/:templateId', auth, checkRole('管理者', 'クルー'), async (req, res) => {
   try {
-    await LessonSchedule.deleteTemplate(req.params.templateId);
+    const deleted = await LessonSchedule.deleteTemplate(req.params.templateId);
+    if (!deleted) return res.status(404).json({ error: 'テンプレートが見つかりません' });
     res.json({ success: true });
   } catch (error) {
     console.error('Delete template error:', error);
