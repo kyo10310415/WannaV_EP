@@ -50,3 +50,28 @@ test('生徒用アカウントページとナビゲーションの名称が管�
   assert.match(studentPage, /<h2>🎓 生徒用アカウント管理<\/h2>/);
   assert.match(allViews, /🎓 生徒用アカウント管理/);
 });
+
+test('生徒用アカウント管理は50件単位でページングする', async () => {
+  const originalQuery = db.query;
+  let capturedSql = '';
+  let capturedParams = [];
+  db.query = async (sql, params) => {
+    capturedSql = sql;
+    capturedParams = params;
+    return { rows: [] };
+  };
+
+  try {
+    const page = await User.getPage('students', { limit: 50, offset: 100 });
+    assert.match(capturedSql, /WHERE role = '生徒'/);
+    assert.match(capturedSql, /LIMIT \$1 OFFSET \$2/);
+    assert.deepEqual(capturedParams, [50, 100]);
+    assert.deepEqual(page.users, []);
+
+    const html = fs.readFileSync(path.join(root, 'views', 'admin-students-accounts.html'), 'utf8');
+    assert.match(html, /STUDENT_PAGE_SIZE = 50/);
+    assert.match(html, /users-pagination/);
+  } finally {
+    db.query = originalQuery;
+  }
+});

@@ -142,8 +142,10 @@ const createTables = async () => {
     await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS login_id_overridden BOOLEAN NOT NULL DEFAULT FALSE`);
     // 手動変更されていない既存キャッシュは、学籍番号をログインIDへ反映する。
     await db.query(`
-      UPDATE notion_students SET login_id = NULLIF(TRIM(student_number), '')
+      UPDATE notion_students
+      SET login_id = NULLIF(TRIM(student_number), '')
       WHERE login_id_overridden = FALSE
+        AND login_id IS DISTINCT FROM NULLIF(TRIM(student_number), '')
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_plan ON notion_students(contract_plan)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_login_id_lower ON notion_students(LOWER(login_id))`);
@@ -229,7 +231,6 @@ const createTables = async () => {
         notion_page_id = EXCLUDED.notion_page_id,
         updated_at = CURRENT_TIMESTAMP
       WHERE student_profiles.notion_page_id IS NULL
-         OR student_profiles.notion_page_id = EXCLUDED.notion_page_id
     `);
     // Notionと紐づく既存アカウントにも、学籍番号（または管理画面の上書き値）を反映する。
     // 重複するログインIDがある場合は既存アカウントを優先して変更しない。
@@ -241,6 +242,7 @@ const createTables = async () => {
       WHERE sp.user_id = u.id
         AND ns.login_id IS NOT NULL
         AND ns.login_id <> ''
+        AND u.username IS DISTINCT FROM ns.login_id
         AND (
           SELECT COUNT(*) FROM student_profiles duplicate_sp
           WHERE duplicate_sp.notion_page_id = sp.notion_page_id
@@ -358,16 +360,23 @@ const createTables = async () => {
 
     // Create indexes for better performance
     await db.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users(LOWER(username))`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email))`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_lessons_course ON lessons(course_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_progress_user ON user_progress(user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_progress_lesson ON user_progress(lesson_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_progress_completed ON user_progress(completed)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_progress_user_last_watched ON user_progress(user_id, last_watched_at DESC)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_user ON student_profiles(user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_status ON student_profiles(status)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_tutor ON student_profiles(assigned_tutor_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_extension_reviews_student ON extension_reviews(student_user_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_extension_reviews_student_status ON extension_reviews(student_user_id, review_status)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_satisfaction_student ON satisfaction_surveys(student_user_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_satisfaction_student_created ON satisfaction_surveys(student_user_id, created_at DESC)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_status_plan ON notion_students(status, contract_plan)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_contract_end ON student_profiles(contract_end_date)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at)`);
 

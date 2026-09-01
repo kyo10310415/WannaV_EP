@@ -28,51 +28,112 @@ class NotionStudent {
     const summary = { upserted: 0, accountsCreated: 0, accountsLinked: 0, accountsSkipped: 0 };
     if (!entries || entries.length === 0) return summary;
 
-    for (const e of entries) {
-      const result = await db.query(`
+    // 同期前のログインID・アカウント紐づけ状態を一括取得し、
+    // 変更のない既存アカウントでは重いアカウント確認処理を行わない。
+    const pageIds = entries.map(entry => entry.notionPageId);
+    const stateResult = await db.query(`
+      SELECT
+        ns.notion_page_id,
+        ns.login_id,
+        ns.login_id_overridden,
+        EXISTS (
+          SELECT 1
+          FROM student_profiles sp
+          JOIN users u ON u.id = sp.user_id AND u.role = '生徒'
+          WHERE sp.notion_page_id = ns.notion_page_id
+        ) AS has_account
+      FROM notion_students ns
+      WHERE ns.notion_page_id = ANY($1::text[])
+    `, [pageIds]);
+    const previousStates = new Map(
+      stateResult.rows.map(row => [row.notion_page_id, row])
+    );
+
+    // raw_data を含むため1パラメータが過大にならないよう200件単位で一括UPSERTする。
+    const chunkSize = 200;
+    for (let start = 0; start < entries.length; start += chunkSize) {
+      const chunk = entries.slice(start, start + chunkSize).map(e => ({
+        notion_page_id: e.notionPageId,
+        student_name: e.studentName || null,
+        name_furigana: e.nameFurigana || null,
+        student_number: e.studentNumber || null,
+        notion_url: e.notionUrl || null,
+        lesson_start_month: e.lessonStartMonth
+          ? new Date(e.lessonStartMonth).toISOString().slice(0, 10)
+          : null,
+        status: e.status || null,
+        contract_plan: e.contractPlan || null,
+        login_id: e.loginId || null,
+        raw_data: e.rawData || null,
+      }));
+      await db.query(`
         INSERT INTO notion_students
           (notion_page_id, student_name, name_furigana, student_number,
            notion_url, lesson_start_month, status, contract_plan, login_id,
            login_id_overridden, raw_data, synced_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, FALSE, $10, CURRENT_TIMESTAMP)
+        SELECT
+          incoming.notion_page_id,
+          incoming.student_name,
+          incoming.name_furigana,
+          incoming.student_number,
+          incoming.notion_url,
+          incoming.lesson_start_month,
+          incoming.status,
+          incoming.contract_plan,
+          incoming.login_id,
+          FALSE,
+          incoming.raw_data,
+          CURRENT_TIMESTAMP
+        FROM jsonb_to_recordset($1::jsonb) AS incoming(
+          notion_page_id varchar,
+          student_name varchar,
+          name_furigana varchar,
+          student_number varchar,
+          notion_url text,
+          lesson_start_month date,
+          status varchar,
+          contract_plan varchar,
+          login_id varchar,
+          raw_data jsonb
+        )
         ON CONFLICT (notion_page_id) DO UPDATE SET
-          student_name      = EXCLUDED.student_name,
-          name_furigana     = EXCLUDED.name_furigana,
-          student_number    = EXCLUDED.student_number,
-          notion_url        = EXCLUDED.notion_url,
-          lesson_start_month= EXCLUDED.lesson_start_month,
-          status            = EXCLUDED.status,
-          contract_plan     = EXCLUDED.contract_plan,
-          login_id          = CASE
+          student_name       = EXCLUDED.student_name,
+          name_furigana      = EXCLUDED.name_furigana,
+          student_number     = EXCLUDED.student_number,
+          notion_url         = EXCLUDED.notion_url,
+          lesson_start_month = EXCLUDED.lesson_start_month,
+          status             = EXCLUDED.status,
+          contract_plan      = EXCLUDED.contract_plan,
+          login_id           = CASE
             WHEN notion_students.login_id_overridden THEN notion_students.login_id
             ELSE EXCLUDED.login_id
           END,
-          raw_data          = EXCLUDED.raw_data,
-          synced_at         = CURRENT_TIMESTAMP
-        RETURNING notion_page_id, login_id, login_id_overridden
-      `, [
-        e.notionPageId,
-        e.studentName    || null,
-        e.nameFurigana   || null,
-        e.studentNumber  || null,
-        e.notionUrl      || null,
-        e.lessonStartMonth ? new Date(e.lessonStartMonth) : null,
-        e.status         || null,
-        e.contractPlan   || null,
-        e.loginId        || null,
-        e.rawData ? JSON.stringify(e.rawData) : null
-      ]);
+          raw_data           = EXCLUDED.raw_data,
+          synced_at          = CURRENT_TIMESTAMP
+      `, [JSON.stringify(chunk)]);
+      summary.upserted += chunk.length;
+    }
 
-      const saved = result.rows[0];
+    for (const e of entries) {
+      const previous = previousStates.get(e.notionPageId);
+      const effectiveLoginId = previous?.login_id_overridden
+        ? previous.login_id
+        : e.loginId;
+      const loginChanged = !previous
+        || String(previous.login_id || '').toLowerCase() !== String(effectiveLoginId || '').toLowerCase();
+      if (previous?.has_account && !loginChanged) {
+        summary.accountsSkipped++;
+        continue;
+      }
+
       const provisioned = await NotionStudent.provisionAccount({
-        notionPageId: saved.notion_page_id,
-        loginId: saved.login_id,
+        notionPageId: e.notionPageId,
+        loginId: effectiveLoginId,
         studentName: e.studentName,
       });
       if (provisioned.status === 'created') summary.accountsCreated++;
       else if (provisioned.status === 'linked') summary.accountsLinked++;
       else summary.accountsSkipped++;
-      summary.upserted++;
     }
     return summary;
   }

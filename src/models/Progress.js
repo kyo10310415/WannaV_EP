@@ -94,27 +94,101 @@ class Progress {
     return result.rows[0];
   }
 
-  static async getAllUsersProgress() {
+  static async getAllUsersProgress({ limit = 50, offset = 0 } = {}) {
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const safeOffset = Math.max(0, Number(offset) || 0);
     const result = await db.query(`
-      SELECT 
-        u.id,
-        u.name,
-        u.email,
-        COUNT(DISTINCT l.id) as total_lessons,
-        COUNT(DISTINCT CASE WHEN up.completed THEN l.id END) as completed_lessons,
-        ROUND(
-          COUNT(DISTINCT CASE WHEN up.completed THEN l.id END)::numeric / 
-          NULLIF(COUNT(DISTINCT l.id), 0) * 100, 2
-        ) as completion_percentage,
-        MAX(up.last_watched_at) as last_activity
-      FROM users u
-      CROSS JOIN lessons l
-      LEFT JOIN user_progress up ON l.id = up.lesson_id AND up.user_id = u.id
-      WHERE u.role = '生徒'
-      GROUP BY u.id, u.name, u.email
-      ORDER BY completion_percentage DESC NULLS LAST
-    `);
+      WITH lesson_total AS (
+        SELECT COUNT(*)::integer AS total_lessons FROM lessons
+      ), progress_by_user AS (
+        SELECT
+          user_id,
+          COUNT(*) FILTER (WHERE completed = true)::integer AS completed_lessons,
+          MAX(last_watched_at) AS last_activity
+        FROM user_progress
+        GROUP BY user_id
+      ), student_progress AS (
+        SELECT
+          u.id,
+          COALESCE(ns.student_name, u.name) AS name,
+          u.email,
+          COALESCE(ns.status, sp.status, '未設定') AS contract_status,
+          lt.total_lessons,
+          COALESCE(p.completed_lessons, 0) AS completed_lessons,
+          ROUND(
+            COALESCE(p.completed_lessons, 0)::numeric /
+            NULLIF(lt.total_lessons, 0) * 100,
+            2
+          ) AS completion_percentage,
+          p.last_activity,
+          CASE
+            WHEN p.last_activity IS NULL THEN '未受講'
+            WHEN p.last_activity < CURRENT_TIMESTAMP - INTERVAL '7 days' THEN '非アクティブ'
+            WHEN p.last_activity < CURRENT_TIMESTAMP - INTERVAL '3 days' THEN '要注意'
+            ELSE '活動中'
+          END AS learning_status,
+          CASE
+            WHEN p.last_activity IS NULL THEN NULL
+            ELSE GREATEST(0, CURRENT_DATE - p.last_activity::date)
+          END AS days_since_activity
+        FROM users u
+        LEFT JOIN student_profiles sp ON sp.user_id = u.id
+        LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+        LEFT JOIN progress_by_user p ON p.user_id = u.id
+        CROSS JOIN lesson_total lt
+        WHERE u.role = '生徒'
+      )
+      SELECT *, COUNT(*) OVER()::integer AS total_count
+      FROM student_progress
+      ORDER BY completion_percentage DESC NULLS LAST, name ASC
+      LIMIT $1 OFFSET $2
+    `, [safeLimit, safeOffset]);
     return result.rows;
+  }
+
+  static async getAllUsersProgressSummary() {
+    const result = await db.query(`
+      WITH progress_by_user AS (
+        SELECT
+          user_id,
+          COUNT(*) FILTER (WHERE completed = true)::integer AS completed_lessons,
+          MAX(last_watched_at) AS last_activity
+        FROM user_progress
+        GROUP BY user_id
+      ), lesson_total AS (
+        SELECT COUNT(*)::integer AS total_lessons FROM lessons
+      )
+      SELECT
+        COUNT(*)::integer AS total_students,
+        COUNT(*) FILTER (
+          WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
+        )::integer AS contract_active_students,
+        COUNT(*) FILTER (WHERE p.last_activity IS NULL)::integer AS not_started_students,
+        COUNT(*) FILTER (
+          WHERE p.last_activity >= CURRENT_TIMESTAMP - INTERVAL '3 days'
+        )::integer AS learning_active_students,
+        COUNT(*) FILTER (
+          WHERE p.last_activity < CURRENT_TIMESTAMP - INTERVAL '3 days'
+            AND p.last_activity >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+        )::integer AS warning_students,
+        COUNT(*) FILTER (
+          WHERE p.last_activity < CURRENT_TIMESTAMP - INTERVAL '7 days'
+        )::integer AS inactive_students,
+        ROUND(
+          AVG(
+            COALESCE(p.completed_lessons, 0)::numeric /
+            NULLIF(lt.total_lessons, 0) * 100
+          ),
+          2
+        ) AS average_completion
+      FROM users u
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+      LEFT JOIN progress_by_user p ON p.user_id = u.id
+      CROSS JOIN lesson_total lt
+      WHERE u.role = '生徒'
+    `);
+    return result.rows[0];
   }
 
   static async canAccessLesson(userId, lessonId) {

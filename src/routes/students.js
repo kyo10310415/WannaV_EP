@@ -11,7 +11,6 @@ const LessonSchedule = require('../models/LessonSchedule');
 const User = require('../models/User');
 const NotionStudent = require('../models/NotionStudent');
 const db = require('../config/database');
-const { mergeStudentRecords } = require('../utils/studentDirectory');
 
 function validateLoginId(value) {
   const loginId = typeof value === 'string' ? value.trim() : '';
@@ -86,28 +85,48 @@ async function requireEntryPlanSchedule(req, res, next) {
  */
 router.get('/', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
-    const { status, tutorId, contractPlan } = req.query;
+    const { status, tutorId, contractPlan, search, flag } = req.query;
+    if (flag && !['followup', 'review'].includes(flag)) {
+      return res.status(400).json({ error: '無効なフラグ絞り込みです' });
+    }
     // クルーは自分の担当生徒のみ（管理者・セールスは全件）
     const filterTutorId = req.user.role === 'クルー' ? req.user.id : (tutorId || null);
-    const [accountStudents, notionStudents] = await Promise.all([
-      StudentProfile.getAll({ tutorId: filterTutorId, contractPlan: contractPlan || null }),
-      NotionStudent.getAll()
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const [page, summary] = await Promise.all([
+      StudentProfile.getDirectoryPage({
+        status: status || null,
+        tutorId: filterTutorId,
+        contractPlan: contractPlan || null,
+        search: search || null,
+        flag: flag || null,
+        limit,
+        offset,
+      }),
+      StudentProfile.getDirectorySummary({ tutorId: filterTutorId }),
     ]);
-
-    // 担当Tutorで絞り込んだ場合、アカウント未作成（担当未設定）のNotion生徒は除外する。
-    let students = mergeStudentRecords(accountStudents, notionStudents, {
-      includeUnlinkedNotion: !filterTutorId
-    });
-    if (status) {
-      students = students.filter(student => student.status === status);
-    }
-    if (contractPlan) {
-      students = students.filter(student => student.contract_plan === contractPlan);
-    }
-    res.json(students);
+    res.json({ ...page, summary });
   } catch (error) {
     console.error('Get students error:', error);
     res.status(500).json({ error: '生徒一覧の取得に失敗しました' });
+  }
+});
+
+/**
+ * GET /api/students/options
+ * 選択欄向けに、アカウント作成済み生徒の最小項目だけを返す。
+ */
+router.get('/options', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
+  try {
+    const filterTutorId = req.user.role === 'クルー' ? req.user.id : (req.query.tutorId || null);
+    const students = await StudentProfile.getDirectoryOptions({
+      tutorId: filterTutorId,
+      contractPlan: req.query.contractPlan || null,
+    });
+    res.json(students);
+  } catch (error) {
+    console.error('Get student options error:', error);
+    res.status(500).json({ error: '生徒選択肢の取得に失敗しました' });
   }
 });
 

@@ -186,7 +186,7 @@ async function fetchTargetPlanStudents() {
  * 3. 学籍番号をログインID、初期PW「1111」として生徒アカウントを作成・連携
  * @returns {{ synced: number, accountsCreated: number, accountsLinked: number, accountsSkipped: number, timestamp: Date }}
  */
-async function syncNotionStudents() {
+async function runNotionStudentSync() {
   console.log('🔄 Notion 生徒データ同期開始...');
 
   try {
@@ -212,6 +212,20 @@ async function syncNotionStudents() {
     }
     throw error;
   }
+}
+
+let activeSyncPromise = null;
+
+function syncNotionStudents() {
+  if (activeSyncPromise) {
+    console.log('⏳ Notion 同期は既に実行中のため、同じ処理の完了を待ちます');
+    return activeSyncPromise;
+  }
+  activeSyncPromise = runNotionStudentSync()
+    .finally(() => {
+      activeSyncPromise = null;
+    });
+  return activeSyncPromise;
 }
 
 /**

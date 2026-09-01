@@ -57,6 +57,44 @@ class User {
     return result.rows;
   }
 
+  static async getPage(scope = 'all', { limit = 50, offset = 0, search } = {}) {
+    const scopeConditions = {
+      all: null,
+      staff: `role <> '生徒'`,
+      students: `role = '生徒'`,
+    };
+    if (!(scope in scopeConditions)) throw new Error('Invalid user scope');
+    const conditions = [];
+    const params = [];
+    if (scopeConditions[scope]) conditions.push(scopeConditions[scope]);
+    if (search) {
+      params.push(`%${String(search).trim()}%`);
+      conditions.push(`(name ILIKE $${params.length} OR username ILIKE $${params.length} OR email ILIKE $${params.length})`);
+    }
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    params.push(safeLimit, safeOffset);
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await db.query(
+      `SELECT id, email, name, username, role, created_at, last_login, password_changed_at,
+              COUNT(*) OVER()::integer AS total_count
+       FROM users ${where}
+       ORDER BY created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    const total = result.rows[0]?.total_count || 0;
+    return {
+      users: result.rows.map(({ total_count, ...user }) => user),
+      pagination: {
+        limit: safeLimit,
+        offset: safeOffset,
+        total,
+        hasMore: safeOffset + result.rows.length < total,
+      },
+    };
+  }
+
   static async updateLastLogin(id) {
     await db.query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [id]);
   }

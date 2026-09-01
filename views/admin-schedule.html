@@ -389,7 +389,7 @@
 
     // ── データ取得 ──────────────────────────────────────
     async function loadStudents() {
-        const data = await fetchJSON('/api/students?contractPlan=' + encodeURIComponent('エントリープラン'));
+        const data = await fetchJSON('/api/students/options?contractPlan=' + encodeURIComponent('エントリープラン'));
         if (!data) return;
         allStudents = (data.students || data || []).filter(s => s.user_id || s.id);
         const sel = document.getElementById('sel-student');
