@@ -72,7 +72,8 @@ app.get('/admin/users', (req, res) => {
 });
 
 app.get('/students', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'students.html'));
+  // 旧Notion全件一覧は大量DOM描画になるため、ページング対応済みの生徒管理へ統合する。
+  res.redirect('/admin/student-management');
 });
 
 app.get('/admin/student-management', (req, res) => {

@@ -1,6 +1,301 @@
 const db = require('../config/database');
+const { TARGET_CONTRACT_PLANS } = require('../config/contractPlans');
+
+const DIRECTORY_CTE = `
+  WITH accounts AS (
+    SELECT
+      u.id AS user_id,
+      u.name AS account_name,
+      u.username AS student_username,
+      u.email AS student_email,
+      u.created_at AS account_created_at,
+      u.last_login,
+      sp.id AS profile_id,
+      sp.status AS profile_status,
+      sp.status_changed_at,
+      sp.status_note,
+      sp.contract_plan AS profile_contract_plan,
+      sp.contract_start_date,
+      sp.contract_end_date,
+      sp.lesson_start_date AS profile_lesson_start_date,
+      sp.assigned_tutor_id,
+      sp.goal,
+      sp.notes,
+      sp.handover_completed,
+      sp.handover_completed_at,
+      sp.updated_at AS profile_updated_at,
+      COALESCE(sp.notion_page_id, login_match.notion_page_id) AS linked_notion_page_id,
+      tutor.name AS tutor_name,
+      tutor.username AS tutor_username
+    FROM users u
+    LEFT JOIN student_profiles sp ON sp.user_id = u.id
+    LEFT JOIN LATERAL (
+      SELECT ns.notion_page_id
+      FROM notion_students ns
+      WHERE sp.notion_page_id IS NULL
+        AND ns.contract_plan = ANY($1::text[])
+        AND ns.login_id IS NOT NULL
+        AND (
+          LOWER(ns.login_id) = LOWER(u.username)
+          OR LOWER(ns.login_id) = LOWER(u.email)
+        )
+      ORDER BY ns.notion_page_id
+      LIMIT 1
+    ) login_match ON true
+    LEFT JOIN users tutor ON tutor.id = sp.assigned_tutor_id
+    WHERE u.role = '生徒'
+  ), directory AS (
+    SELECT
+      a.user_id,
+      a.profile_id,
+      COALESCE(ns.student_name, a.account_name) AS student_name,
+      a.student_username,
+      a.student_email,
+      COALESCE(ns.login_id, a.student_username, a.student_email) AS student_login_id,
+      ns.student_number,
+      ns.name_furigana,
+      ns.notion_page_id,
+      ns.notion_url,
+      ns.login_id_overridden AS notion_login_id_overridden,
+      ns.synced_at AS notion_synced_at,
+      COALESCE(ns.status, a.profile_status) AS status,
+      COALESCE(ns.contract_plan, a.profile_contract_plan) AS contract_plan,
+      COALESCE(ns.lesson_start_month, a.profile_lesson_start_date) AS lesson_start_date,
+      a.account_created_at,
+      a.last_login,
+      a.status_changed_at,
+      a.status_note,
+      a.contract_start_date,
+      a.contract_end_date,
+      a.assigned_tutor_id,
+      a.goal,
+      a.notes,
+      a.handover_completed,
+      a.handover_completed_at,
+      a.profile_updated_at,
+      a.tutor_name,
+      a.tutor_username,
+      CASE WHEN a.user_id IS NULL THEN 'notion' ELSE 'account+notion' END AS record_source,
+      (a.user_id IS NOT NULL) AS has_account
+    FROM notion_students ns
+    LEFT JOIN accounts a ON a.linked_notion_page_id = ns.notion_page_id
+    WHERE ns.contract_plan = ANY($1::text[])
+
+    UNION ALL
+
+    SELECT
+      a.user_id,
+      a.profile_id,
+      a.account_name AS student_name,
+      a.student_username,
+      a.student_email,
+      COALESCE(a.student_username, a.student_email) AS student_login_id,
+      NULL::varchar AS student_number,
+      NULL::varchar AS name_furigana,
+      NULL::varchar AS notion_page_id,
+      NULL::text AS notion_url,
+      FALSE AS notion_login_id_overridden,
+      NULL::timestamp AS notion_synced_at,
+      a.profile_status AS status,
+      a.profile_contract_plan AS contract_plan,
+      a.profile_lesson_start_date AS lesson_start_date,
+      a.account_created_at,
+      a.last_login,
+      a.status_changed_at,
+      a.status_note,
+      a.contract_start_date,
+      a.contract_end_date,
+      a.assigned_tutor_id,
+      a.goal,
+      a.notes,
+      a.handover_completed,
+      a.handover_completed_at,
+      a.profile_updated_at,
+      a.tutor_name,
+      a.tutor_username,
+      'account'::text AS record_source,
+      TRUE AS has_account
+    FROM accounts a
+    WHERE a.linked_notion_page_id IS NULL
+  )
+`;
 
 class StudentProfile {
+  /**
+   * 生徒管理画面用の統合一覧をDB側で絞り込み・ページングする。
+   * Notion連携済みレコードはNotionの基本情報を正とする。
+   */
+  static async getDirectoryPage({
+    status,
+    tutorId,
+    contractPlan,
+    search,
+    flag,
+    limit = 50,
+    offset = 0,
+  } = {}) {
+    const params = [TARGET_CONTRACT_PLANS];
+    const conditions = [];
+    const addParam = value => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    if (status) conditions.push(`d.status = ${addParam(status)}`);
+    if (tutorId) conditions.push(`d.assigned_tutor_id = ${addParam(tutorId)}`);
+    if (contractPlan) conditions.push(`d.contract_plan = ${addParam(contractPlan)}`);
+    if (search) {
+      const placeholder = addParam(`%${String(search).trim()}%`);
+      conditions.push(`(
+        d.student_name ILIKE ${placeholder}
+        OR d.student_login_id ILIKE ${placeholder}
+        OR d.name_furigana ILIKE ${placeholder}
+        OR d.student_number ILIKE ${placeholder}
+      )`);
+    }
+    if (flag === 'review') {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM extension_reviews er
+        WHERE er.student_user_id = d.user_id AND er.review_status = '審査中'
+      )`);
+    }
+    if (flag === 'followup') {
+      conditions.push(`d.status = 'アクティブ' AND d.user_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM user_progress recent
+        WHERE recent.user_id = d.user_id
+          AND recent.last_watched_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+      )`);
+    }
+
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    const limitParam = addParam(safeLimit);
+    const offsetParam = addParam(safeOffset);
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await db.query(`
+      ${DIRECTORY_CTE}, filtered AS (
+        SELECT d.* FROM directory d ${where}
+      ), paged AS (
+        SELECT f.*, COUNT(*) OVER()::integer AS total_count
+        FROM filtered f
+        ORDER BY f.student_number ASC NULLS LAST, f.student_name ASC NULLS LAST
+        LIMIT ${limitParam} OFFSET ${offsetParam}
+      )
+      SELECT
+        p.*,
+        progress.last_activity,
+        COALESCE(progress.completed_lessons, 0) AS completed_lessons,
+        satisfaction.latest_satisfaction,
+        EXISTS (
+          SELECT 1 FROM extension_reviews er
+          WHERE er.student_user_id = p.user_id AND er.review_status = '審査中'
+        ) AS under_review,
+        (
+          p.status = 'アクティブ'
+          AND p.user_id IS NOT NULL
+          AND (
+            progress.last_activity IS NULL
+            OR progress.last_activity < CURRENT_TIMESTAMP - INTERVAL '7 days'
+          )
+        ) AS inactive_flag
+      FROM paged p
+      LEFT JOIN LATERAL (
+        SELECT
+          MAX(up.last_watched_at) AS last_activity,
+          COUNT(*) FILTER (WHERE up.completed = true)::integer AS completed_lessons
+        FROM user_progress up
+        WHERE up.user_id = p.user_id
+      ) progress ON p.user_id IS NOT NULL
+      LEFT JOIN LATERAL (
+        SELECT ss.overall_score AS latest_satisfaction
+        FROM satisfaction_surveys ss
+        WHERE ss.student_user_id = p.user_id
+        ORDER BY ss.created_at DESC
+        LIMIT 1
+      ) satisfaction ON p.user_id IS NOT NULL
+      ORDER BY p.student_number ASC NULLS LAST, p.student_name ASC NULLS LAST
+    `, params);
+
+    const total = result.rows[0]?.total_count || 0;
+    return {
+      students: result.rows.map(({ total_count, ...student }) => student),
+      pagination: {
+        limit: safeLimit,
+        offset: safeOffset,
+        total,
+        hasMore: safeOffset + result.rows.length < total,
+      },
+    };
+  }
+
+  static async getDirectorySummary({ tutorId } = {}) {
+    const params = [TARGET_CONTRACT_PLANS];
+    let where = '';
+    if (tutorId) {
+      params.push(tutorId);
+      where = `WHERE d.assigned_tutor_id = $2`;
+    }
+    const result = await db.query(`
+      ${DIRECTORY_CTE}
+      SELECT
+        COUNT(*)::integer AS total,
+        COUNT(*) FILTER (WHERE d.status = 'アクティブ')::integer AS active,
+        COUNT(*) FILTER (WHERE d.status = 'レッスン準備中')::integer AS preparing,
+        COUNT(*) FILTER (WHERE d.status = '休会')::integer AS hiatus,
+        COUNT(*) FILTER (
+          WHERE d.status = 'アクティブ'
+            AND d.user_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM user_progress recent
+              WHERE recent.user_id = d.user_id
+                AND recent.last_watched_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+            )
+        )::integer AS followup,
+        COUNT(*) FILTER (
+          WHERE d.contract_end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+        )::integer AS expiring,
+        COALESCE((
+          SELECT jsonb_object_agg(plan_counts.contract_plan, plan_counts.student_count)
+          FROM (
+            SELECT contract_plan, COUNT(*)::integer AS student_count
+            FROM directory
+            WHERE contract_plan IS NOT NULL
+              ${tutorId ? 'AND assigned_tutor_id = $2' : ''}
+            GROUP BY contract_plan
+          ) plan_counts
+        ), '{}'::jsonb) AS plan_counts
+      FROM directory d
+      ${where}
+    `, params);
+    return result.rows[0];
+  }
+
+  static async getDirectoryOptions({ tutorId, contractPlan } = {}) {
+    const params = [TARGET_CONTRACT_PLANS];
+    const conditions = ['d.user_id IS NOT NULL'];
+    if (tutorId) {
+      params.push(tutorId);
+      conditions.push(`d.assigned_tutor_id = $${params.length}`);
+    }
+    if (contractPlan) {
+      params.push(contractPlan);
+      conditions.push(`d.contract_plan = $${params.length}`);
+    }
+    const result = await db.query(`
+      ${DIRECTORY_CTE}
+      SELECT
+        d.user_id,
+        d.student_name,
+        d.student_username,
+        d.contract_plan
+      FROM directory d
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY d.student_name ASC NULLS LAST
+    `, params);
+    return result.rows;
+  }
+
   /**
    * 生徒プロフィールを取得（user_id から）
    */

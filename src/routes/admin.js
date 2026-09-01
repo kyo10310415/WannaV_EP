@@ -51,6 +51,14 @@ router.get('/users', auth, checkRole('管理者', 'クルー', 'セールス'), 
     }
     // セールス権限には生徒アカウントだけを返す。
     const scope = req.user.role === 'セールス' ? 'students' : requestedScope;
+    if (req.query.limit != null) {
+      const page = await User.getPage(scope, {
+        limit: req.query.limit,
+        offset: req.query.offset,
+        search: req.query.search,
+      });
+      return res.json(page);
+    }
     const users = await User.getAll(scope);
     res.json(users);
   } catch (error) {
@@ -62,8 +70,23 @@ router.get('/users', auth, checkRole('管理者', 'クルー', 'セールス'), 
 // ★ 全ユーザーの進捗取得（/users/:id より前に定義する必要あり）
 router.get('/users/progress', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {
-    const progress = await Progress.getAllUsersProgress();
-    res.json(progress);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const [users, summary] = await Promise.all([
+      Progress.getAllUsersProgress({ limit, offset }),
+      Progress.getAllUsersProgressSummary(),
+    ]);
+    const total = users[0]?.total_count || 0;
+    res.json({
+      users: users.map(({ total_count, ...user }) => user),
+      summary,
+      pagination: {
+        limit,
+        offset,
+        total,
+        hasMore: offset + users.length < total,
+      },
+    });
   } catch (error) {
     console.error('Get all progress error:', error);
     res.status(500).json({ error: '進捗の取得に失敗しました' });

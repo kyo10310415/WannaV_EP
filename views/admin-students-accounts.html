@@ -84,6 +84,7 @@
             <div id="users-container">
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
+            <div id="users-pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:20px"></div>
         </div>
     </div>
 
@@ -155,20 +156,42 @@
         }
 
         // ===== 生徒ユーザー一覧読み込み =====
-        async function loadStudentUsers() {
+        const STUDENT_PAGE_SIZE = 50;
+        let studentPageOffset = 0;
+
+        async function loadStudentUsers(offset = studentPageOffset) {
             const token = localStorage.getItem('token');
             try {
-                const res = await fetch(`${API_URL}/admin/users?scope=students`, {
+                const res = await fetch(`${API_URL}/admin/users?scope=students&limit=${STUDENT_PAGE_SIZE}&offset=${offset}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (!res.ok) throw new Error('生徒アカウントの取得に失敗しました');
-                const users = await res.json();
+                const data = await res.json();
+                const users = data.users || [];
+                studentPageOffset = offset;
                 // 生徒のみ表示
                 renderUsers(users.filter(u => u.role === '生徒'));
+                renderStudentPagination(data.pagination || {});
             } catch (err) {
                 console.error('ユーザー読み込みエラー:', err);
                 showAlert('ユーザーの読み込みに失敗しました', 'error');
             }
+        }
+
+        function renderStudentPagination(pagination) {
+            const container = document.getElementById('users-pagination');
+            const total = Number(pagination.total) || 0;
+            if (total <= STUDENT_PAGE_SIZE) {
+                container.innerHTML = total ? `<span>全${total}名</span>` : '';
+                return;
+            }
+            const page = Math.floor((Number(pagination.offset) || 0) / STUDENT_PAGE_SIZE) + 1;
+            const pages = Math.ceil(total / STUDENT_PAGE_SIZE);
+            container.innerHTML = `
+                <button class="btn btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="loadStudentUsers(${Math.max(0, studentPageOffset - STUDENT_PAGE_SIZE)})">前へ</button>
+                <span>${page} / ${pages} ページ（全${total}名）</span>
+                <button class="btn btn-secondary" ${pagination.hasMore ? '' : 'disabled'} onclick="loadStudentUsers(${studentPageOffset + STUDENT_PAGE_SIZE})">次へ</button>
+            `;
         }
 
         // ===== 生徒テーブル描画 =====

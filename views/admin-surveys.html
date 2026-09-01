@@ -227,7 +227,7 @@
         }
 
         async function loadStudents() {
-            const data = await fetchJSON('/api/students');
+            const data = await fetchJSON('/api/students/options');
             if (!data) return;
             students = Array.isArray(data) ? data : [];
             const sel = document.getElementById('survey-student');

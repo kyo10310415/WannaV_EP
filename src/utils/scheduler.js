@@ -68,14 +68,15 @@ const scheduleContractExpiryWarnings = () => {
             u.username,
             u.email,
             sp.contract_end_date,
-            sp.contract_plan,
-            sp.status,
+            COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
+            COALESCE(ns.status, sp.status) AS status,
             COALESCE(tu.username, '') AS tutor_name,
             sp.assigned_tutor_id
           FROM student_profiles sp
           JOIN users u ON u.id = sp.user_id
+          LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
           LEFT JOIN users tu ON tu.id = sp.assigned_tutor_id
-          WHERE sp.status = 'アクティブ'
+          WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
             AND sp.contract_end_date::date = (CURRENT_DATE + INTERVAL '${threshold.days} days')::date
         `);
 
@@ -163,11 +164,12 @@ const scheduleAutoCreateExtensionReviews = () => {
           sp.user_id,
           u.username,
           sp.contract_end_date,
-          sp.contract_plan,
+          COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
           sp.assigned_tutor_id
         FROM student_profiles sp
         JOIN users u ON u.id = sp.user_id
-        WHERE sp.status = 'アクティブ'
+        LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+        WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
           AND sp.contract_end_date IS NOT NULL
           AND sp.contract_end_date::date <= (CURRENT_DATE + INTERVAL '14 days')::date
           AND sp.contract_end_date::date >= CURRENT_DATE
@@ -193,7 +195,7 @@ const scheduleAutoCreateExtensionReviews = () => {
           VALUES ($1, $2, $3, $4)
         `, [
           student.user_id,
-          'auto_expiry',   // trigger_type: 自動作成
+          'auto',          // trigger_type: 自動作成
           '審査中',
           `契約終了14日前の自動審査レコード (終了日: ${
             student.contract_end_date
@@ -263,17 +265,18 @@ const scheduleActiveStudentInactivityCheck = () => {
           u.email,
           sp.assigned_tutor_id,
           COALESCE(tu.username, '') AS tutor_name,
-          MAX(up.last_accessed) AS last_accessed,
-          EXTRACT(DAY FROM NOW() - MAX(up.last_accessed)) AS inactive_days
+          MAX(up.last_watched_at) AS last_activity,
+          EXTRACT(DAY FROM NOW() - MAX(up.last_watched_at)) AS inactive_days
         FROM users u
         JOIN student_profiles sp ON sp.user_id = u.id
+        LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
         LEFT JOIN users tu ON tu.id = sp.assigned_tutor_id
         LEFT JOIN user_progress up ON up.user_id = u.id
-        WHERE sp.status = 'アクティブ'
+        WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
           AND u.role = '生徒'
         GROUP BY u.id, u.username, u.email, sp.assigned_tutor_id, tu.username
-        HAVING MAX(up.last_accessed) IS NULL
-            OR MAX(up.last_accessed) < NOW() - INTERVAL '7 days'
+        HAVING MAX(up.last_watched_at) IS NULL
+            OR MAX(up.last_watched_at) < NOW() - INTERVAL '7 days'
       `);
 
       if (result.rows.length === 0) {
@@ -293,8 +296,8 @@ const scheduleActiveStudentInactivityCheck = () => {
           description: `**${student.username}** さん (アクティブ) が **${inactiveDays}日間** 学習していません。`,
           color: 0xE67E22,
           fields: [
-            { name: '⏰ 最終学習', value: student.last_accessed
-                ? new Date(student.last_accessed).toLocaleDateString('ja-JP')
+            { name: '⏰ 最終学習', value: student.last_activity
+                ? new Date(student.last_activity).toLocaleDateString('ja-JP')
                 : '記録なし', inline: true },
             { name: '👨‍🏫 担当チューター', value: student.tutor_name || '未割当', inline: true },
             { name: '📋 推奨アクション', value: '担当チューターからのフォローアップを検討してください', inline: false },
@@ -333,7 +336,7 @@ const scheduleActiveStudentInactivityCheck = () => {
             'long_term_inactivity_detected',
             'student',
             student.id,
-            JSON.stringify({ inactive_days: inactiveDays, last_accessed: student.last_accessed }),
+            JSON.stringify({ inactive_days: inactiveDays, last_activity: student.last_activity }),
           ]);
         } catch (_) { /* サイレント */ }
       }
