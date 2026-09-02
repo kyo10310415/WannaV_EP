@@ -85,6 +85,14 @@
         }
         /* テーブル操作列のボタン間隔 */
         .action-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .view-analytics-note { color: var(--gray-text); font-size: 13px; margin: -18px 0 22px; }
+        .view-analytics-list { display: grid; gap: 12px; }
+        .view-analytics-item { border: 1px solid rgba(74,144,217,.25); border-radius: 14px; background: rgba(7,16,24,.38); overflow: hidden; }
+        .view-analytics-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; cursor: pointer; font-weight: 700; }
+        .view-analytics-summary::marker { color: var(--primary-blue-light); }
+        .view-total { flex-shrink: 0; color: var(--accent-cyan); font-size: 18px; }
+        .student-view-table { padding: 0 18px 18px; overflow-x: auto; }
+        .student-view-empty { color: var(--gray-text); padding: 0 18px 18px; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -162,7 +170,7 @@
                         </label>
                     </div>
                     <div id="video-file-input">
-                        <label class="form-label">動画ファイル (MP4, MOV, AVI, MKV - 最大500MB)</label>
+                        <label class="form-label">動画ファイル (MP4, MOV, AVI, MKV - <span id="create-upload-limit">最大2GB</span>)</label>
                         <input type="file" class="form-input" id="lesson-video" accept="video/*">
                     </div>
                     <div id="video-url-input" style="display:none;">
@@ -176,7 +184,7 @@
                         </p>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-success">✅ レッスン作成</button>
+                <button type="submit" class="btn btn-success" id="create-lesson-btn">✅ レッスン作成</button>
                 <div id="upload-progress" style="display: none; margin-top: 20px;">
                     <p style="color: var(--accent-cyan);">アップロード中...</p>
                     <div class="progress-bar">
@@ -212,6 +220,15 @@
             <h2 style="margin-bottom: 30px;">📋 レッスン一覧</h2>
             <div id="lessons-container">
                 <div class="loading" style="margin: 50px auto;"></div>
+            </div>
+        </div>
+
+        <!-- 自由科目の視聴回数 -->
+        <div class="card">
+            <h2 style="margin-bottom: 30px;">👀 自由科目の視聴回数</h2>
+            <p class="view-analytics-note">この機能の公開後に、生徒が動画の再生画面を開いた回数を記録します。動画名を押すと視聴した生徒ごとの内訳を確認できます。</p>
+            <div id="free-subject-view-analytics">
+                <div class="loading" style="margin: 35px auto;"></div>
             </div>
         </div>
     </div>
@@ -272,7 +289,7 @@
                     </div>
                     <div id="edit-video-file-input" style="display:none;">
                         <input type="file" class="form-input" id="edit-video-file" accept="video/*">
-                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">MP4 / MOV / AVI / MKV（最大500MB）</p>
+                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">MP4 / MOV / AVI / MKV（<span id="edit-upload-limit">最大2GB</span>）</p>
                     </div>
                     <div id="edit-video-url-input" style="display:none;">
                         <input type="url" class="form-input" id="edit-video-url" placeholder="https://drive.google.com/file/d/XXXXX/view">
@@ -306,6 +323,7 @@
         let lessons = [];
         let quizQuestions = [];
         let editingLesson = null; // 現在編集中のレッスンオブジェクト
+        let maxVideoUploadMb = 2048;
 
         // ===== 新規作成フォームの動画切替 =====
         function toggleVideoInput() {
@@ -338,12 +356,63 @@
                     return;
                 }
                 buildNav('admin-nav', user.role, '/admin/contents');
-                loadCourses();
-                loadLessons();
+                await Promise.all([loadUploadConfig(), loadCourses(), loadLessons()]);
             } catch {
                 localStorage.removeItem('token');
                 window.location.href = '/';
             }
+        }
+
+        async function loadUploadConfig() {
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`${API_URL}/admin/upload-config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('アップロード設定の取得に失敗しました');
+                const data = await res.json();
+                maxVideoUploadMb = Number(data.maxVideoUploadMb) || 2048;
+            } catch (error) {
+                console.error(error);
+            }
+            const text = `最大${formatUploadLimit(maxVideoUploadMb)}`;
+            document.getElementById('create-upload-limit').textContent = text;
+            document.getElementById('edit-upload-limit').textContent = text;
+        }
+
+        function formatUploadLimit(megabytes) {
+            if (megabytes >= 1024 && megabytes % 1024 === 0) return `${megabytes / 1024}GB`;
+            return `${megabytes}MB`;
+        }
+
+        function validateVideoFileSize(file) {
+            if (!file) return true;
+            const maxBytes = maxVideoUploadMb * 1024 * 1024;
+            if (file.size <= maxBytes) return true;
+            showAlert(`動画ファイルは最大${formatUploadLimit(maxVideoUploadMb)}までです`, 'error');
+            return false;
+        }
+
+        function uploadForm(url, method, formData, onProgress) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open(method, url);
+                xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('token')}`);
+                xhr.upload.addEventListener('progress', (event) => {
+                    if (event.lengthComputable && onProgress) {
+                        onProgress(Math.round((event.loaded / event.total) * 100));
+                    }
+                });
+                xhr.addEventListener('load', () => {
+                    let data = {};
+                    try { data = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+                    if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+                    reject(new Error(data.error || `アップロードに失敗しました（${xhr.status}）`));
+                });
+                xhr.addEventListener('error', () => reject(new Error('通信エラーでアップロードに失敗しました')));
+                xhr.addEventListener('abort', () => reject(new Error('アップロードが中断されました')));
+                xhr.send(formData);
+            });
         }
 
         // ===== コース読み込み =====
@@ -390,7 +459,51 @@
                 if (prevVal) quizSel.value = prevVal;
 
                 renderLessons();
+                loadFreeSubjectViewAnalytics();
             } catch (e) { console.error(e); }
+        }
+
+        async function loadFreeSubjectViewAnalytics() {
+            const container = document.getElementById('free-subject-view-analytics');
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch(`${API_URL}/admin/lessons/free-subject/view-analytics`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '視聴回数の取得に失敗しました');
+                renderFreeSubjectViewAnalytics(data.lessons || []);
+            } catch (error) {
+                container.innerHTML = `<p style="color:var(--danger);">${escHtml(error.message)}</p>`;
+            }
+        }
+
+        function renderFreeSubjectViewAnalytics(freeSubjectLessons) {
+            const container = document.getElementById('free-subject-view-analytics');
+            if (freeSubjectLessons.length === 0) {
+                container.innerHTML = '<p style="color:var(--gray-text);">「自由科目」の動画がありません</p>';
+                return;
+            }
+            container.innerHTML = `<div class="view-analytics-list">${freeSubjectLessons.map(lesson => {
+                const students = Array.isArray(lesson.student_views) ? lesson.student_views : [];
+                const breakdown = students.length === 0
+                    ? '<p class="student-view-empty">まだ生徒の視聴記録がありません</p>'
+                    : `<div class="student-view-table"><table class="table">
+                        <thead><tr><th>学籍番号</th><th>生徒名</th><th style="text-align:right;">視聴回数</th></tr></thead>
+                        <tbody>${students.map(student => `<tr>
+                            <td>${escHtml(student.studentNumber || '未設定')}</td>
+                            <td>${escHtml(student.studentName || '名称未設定')}</td>
+                            <td style="text-align:right;font-weight:700;color:var(--accent-cyan);">${Number(student.viewCount) || 0}回</td>
+                        </tr>`).join('')}</tbody>
+                    </table></div>`;
+                return `<details class="view-analytics-item">
+                    <summary class="view-analytics-summary">
+                        <span>🎬 ${escHtml(lesson.lesson_title)}</span>
+                        <span class="view-total">合計 ${Number(lesson.total_views) || 0}回</span>
+                    </summary>
+                    ${breakdown}
+                </details>`;
+            }).join('')}</div>`;
         }
 
         // ===== レッスン一覧テーブル描画 =====
@@ -491,6 +604,7 @@
 
             // プログレスリセット
             document.getElementById('edit-upload-progress').style.display = 'none';
+            document.getElementById('edit-upload-bar').style.width = '0%';
             document.getElementById('edit-save-btn').disabled = false;
             document.getElementById('edit-save-btn').textContent = '💾 保存する';
 
@@ -520,7 +634,6 @@
             const title = document.getElementById('edit-title').value.trim();
             if (!title) { showAlert('レッスン名を入力してください', 'error'); return; }
 
-            const token = localStorage.getItem('token');
             const videoType = document.querySelector('input[name="edit-video-type"]:checked').value;
             const formData  = new FormData();
 
@@ -533,6 +646,7 @@
             if (videoType === 'file') {
                 const file = document.getElementById('edit-video-file').files[0];
                 if (!file) { showAlert('差し替えるファイルを選択してください', 'error'); return; }
+                if (!validateVideoFileSize(file)) return;
                 formData.append('video', file);
             } else if (videoType === 'url') {
                 const url = document.getElementById('edit-video-url').value.trim();
@@ -549,13 +663,9 @@
             }
 
             try {
-                const res = await fetch(`${API_URL}/admin/lessons/${editingLesson.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
+                await uploadForm(`${API_URL}/admin/lessons/${editingLesson.id}`, 'PATCH', formData, (percentage) => {
+                    document.getElementById('edit-upload-bar').style.width = `${percentage}%`;
                 });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || '保存に失敗しました');
 
                 showAlert(`「${title}」を更新しました ✅`, 'success');
                 closeEditModal();
@@ -596,12 +706,12 @@
             // ===== レッスン作成 =====
             document.getElementById('create-lesson-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const token = localStorage.getItem('token');
                 const isFileMode = document.getElementById('video-type-file').checked;
                 const videoFile  = document.getElementById('lesson-video').files[0];
                 const videoUrl   = document.getElementById('lesson-video-url').value.trim();
 
                 if (isFileMode && !videoFile) { showAlert('動画ファイルを選択してください', 'error'); return; }
+                if (isFileMode && !validateVideoFileSize(videoFile)) return;
                 if (!isFileMode && !videoUrl) { showAlert('動画URLを入力してください', 'error'); return; }
 
                 const formData = new FormData();
@@ -614,25 +724,30 @@
                 else if (!isFileMode && videoUrl) formData.append('externalVideoUrl', videoUrl);
 
                 try {
+                    const createButton = document.getElementById('create-lesson-btn');
+                    createButton.disabled = true;
+                    createButton.textContent = '作成中...';
                     document.getElementById('upload-progress').style.display = 'block';
-                    const res = await fetch(`${API_URL}/admin/lessons`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: formData
+                    await uploadForm(`${API_URL}/admin/lessons`, 'POST', formData, (percentage) => {
+                        document.getElementById('upload-progress-bar').style.width = `${percentage}%`;
+                        document.getElementById('upload-progress-text').textContent = `${percentage}%`;
                     });
-                    if (!res.ok) {
-                        const err = await res.json();
-                        throw new Error(err.error || 'レッスン作成に失敗しました');
-                    }
                     showAlert('レッスンを作成しました', 'success');
                     document.getElementById('create-lesson-form').reset();
                     document.getElementById('video-file-input').style.display = 'block';
                     document.getElementById('video-url-input').style.display  = 'none';
                     document.getElementById('upload-progress').style.display  = 'none';
+                    document.getElementById('upload-progress-bar').style.width = '0%';
+                    document.getElementById('upload-progress-text').textContent = '0%';
+                    createButton.disabled = false;
+                    createButton.textContent = '✅ レッスン作成';
                     loadLessons();
                 } catch (e) {
                     showAlert(e.message, 'error');
                     document.getElementById('upload-progress').style.display = 'none';
+                    const createButton = document.getElementById('create-lesson-btn');
+                    createButton.disabled = false;
+                    createButton.textContent = '✅ レッスン作成';
                 }
             });
         });
@@ -747,9 +862,14 @@
         }
 
         // ===== ユーティリティ =====
+        function escHtml(value) {
+            return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
         function showAlert(message, type) {
             const el = document.getElementById('alert-container');
-            el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${escHtml(message)}</div>`;
             setTimeout(() => el.innerHTML = '', 5000);
         }
         function logout() { localStorage.removeItem('token'); window.location.href = '/'; }

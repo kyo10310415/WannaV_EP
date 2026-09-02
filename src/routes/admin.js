@@ -13,6 +13,11 @@ const { generateThumbnail } = require('../utils/thumbnail');
 // 動画アップロード設定
 // UPLOAD_DIR は server.js で global に設定される（Render Disk 対応）
 const getUploadDir = () => global.UPLOAD_DIR || require('path').join(__dirname, '../../uploads');
+const configuredUploadLimitMb = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_MB || '2048', 10);
+const MAX_VIDEO_UPLOAD_MB = Number.isFinite(configuredUploadLimitMb) && configuredUploadLimitMb > 0
+  ? configuredUploadLimitMb
+  : 2048;
+const MAX_VIDEO_UPLOAD_BYTES = MAX_VIDEO_UPLOAD_MB * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -26,11 +31,18 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB制限
+  limits: { fileSize: MAX_VIDEO_UPLOAD_BYTES },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /mp4|mov|avi|mkv/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const allowedExtensions = new Set(['.mp4', '.mov', '.avi', '.mkv']);
+    const allowedMimeTypes = new Set([
+      'video/mp4',
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/x-matroska',
+      'application/octet-stream',
+    ]);
+    const extname = allowedExtensions.has(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedMimeTypes.has(file.mimetype);
     
     if (extname && mimetype) {
       return cb(null, true);
@@ -39,6 +51,21 @@ const upload = multer({
     }
   }
 });
+
+const handleVideoUpload = (req, res, next) => {
+  upload.single('video')(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        error: `動画ファイルは最大${MAX_VIDEO_UPLOAD_MB}MBまでアップロードできます`,
+      });
+    }
+    if (error.message === '動画ファイルのみアップロード可能です') {
+      return res.status(400).json({ error: error.message });
+    }
+    return next(error);
+  });
+};
 
 // ===== ユーザー管理 =====
 
@@ -183,8 +210,24 @@ router.get('/courses', auth, checkRole('管理者', 'クルー'), async (req, re
 
 // ===== レッスン管理 =====
 
+// 現在の動画アップロード上限
+router.get('/upload-config', auth, checkRole('管理者'), (req, res) => {
+  res.json({ maxVideoUploadMb: MAX_VIDEO_UPLOAD_MB });
+});
+
+// 自由科目の動画別・生徒別視聴回数
+router.get('/lessons/free-subject/view-analytics', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    const lessons = await Progress.getFreeSubjectViewAnalytics();
+    res.json({ lessons });
+  } catch (error) {
+    console.error('Get free subject view analytics error:', error);
+    res.status(500).json({ error: '自由科目の視聴回数取得に失敗しました' });
+  }
+});
+
 // レッスン作成
-router.post('/lessons', auth, checkRole('管理者'), upload.single('video'), async (req, res) => {
+router.post('/lessons', auth, checkRole('管理者'), handleVideoUpload, async (req, res) => {
   try {
     const { courseId, title, description, duration, orderIndex, externalVideoUrl } = req.body;
 
@@ -238,7 +281,7 @@ router.get('/lessons', auth, checkRole('管理者', 'クルー'), async (req, re
 });
 
 // レッスン更新
-router.patch('/lessons/:id', auth, checkRole('管理者'), upload.single('video'), async (req, res) => {
+router.patch('/lessons/:id', auth, checkRole('管理者'), handleVideoUpload, async (req, res) => {
   try {
     const { title, description, duration, orderIndex, externalVideoUrl, courseId } = req.body;
     const lesson = await Lesson.findById(req.params.id);

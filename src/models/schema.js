@@ -72,6 +72,7 @@ const createTables = async () => {
         completed_at TIMESTAMP,
         quiz_attempts INTEGER DEFAULT 0,
         watch_percent INTEGER DEFAULT 0,
+        view_count INTEGER NOT NULL DEFAULT 0,
         UNIQUE(user_id, lesson_id)
       )
     `);
@@ -79,6 +80,11 @@ const createTables = async () => {
     // watch_percent カラムが既存テーブルに存在しない場合は追加（マイグレーション）
     await db.query(`
       ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS watch_percent INTEGER DEFAULT 0
+    `);
+
+    // 動画視聴回数（レッスン画面を開いた回数）
+    await db.query(`
+      ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0
     `);
 
     // thumbnail_url カラムが既存テーブルに存在しない場合は追加（マイグレーション）
