@@ -60,9 +60,13 @@ router.get('/:id', auth, async (req, res) => {
 // 視聴記録
 router.post('/:id/view', auth, async (req, res) => {
   try {
+    // 管理画面からの確認などは生徒の視聴回数に含めない。
+    if (req.user.role !== '生徒') {
+      return res.json({ success: true, recorded: false });
+    }
     const lessonId = req.params.id;
     await Progress.recordView(req.user.id, lessonId);
-    res.json({ success: true });
+    res.json({ success: true, recorded: true });
   } catch (error) {
     console.error('Record view error:', error);
     res.status(500).json({ error: '視聴記録に失敗しました' });

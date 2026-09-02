@@ -3,10 +3,12 @@ const db = require('../config/database');
 class Progress {
   static async recordView(userId, lessonId) {
     const result = await db.query(`
-      INSERT INTO user_progress (user_id, lesson_id, last_watched_at)
-      VALUES ($1, $2, CURRENT_TIMESTAMP)
+      INSERT INTO user_progress (user_id, lesson_id, view_count, last_watched_at)
+      VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, lesson_id) 
-      DO UPDATE SET last_watched_at = CURRENT_TIMESTAMP
+      DO UPDATE SET
+        view_count = user_progress.view_count + 1,
+        last_watched_at = CURRENT_TIMESTAMP
       RETURNING *
     `, [userId, lessonId]);
     return result.rows[0];
@@ -92,6 +94,60 @@ class Progress {
       LEFT JOIN user_progress up ON l.id = up.lesson_id AND up.user_id = $1
     `, [userId]);
     return result.rows[0];
+  }
+
+  static async getCourseProgressStats(userId) {
+    const result = await db.query(`
+      SELECT
+        c.id AS course_id,
+        c.title AS course_title,
+        COUNT(l.id)::integer AS total_lessons,
+        COUNT(l.id) FILTER (WHERE COALESCE(up.completed, false))::integer AS completed_lessons,
+        ROUND(
+          COUNT(l.id) FILTER (WHERE COALESCE(up.completed, false))::numeric /
+          NULLIF(COUNT(l.id), 0) * 100,
+          2
+        ) AS completion_percentage
+      FROM courses c
+      JOIN lessons l ON l.course_id = c.id
+      LEFT JOIN user_progress up ON up.lesson_id = l.id AND up.user_id = $1
+      GROUP BY c.id, c.title, c.order_index
+      ORDER BY c.order_index, c.id
+    `, [userId]);
+    return result.rows;
+  }
+
+  static async getFreeSubjectViewAnalytics() {
+    const result = await db.query(`
+      SELECT
+        l.id AS lesson_id,
+        l.title AS lesson_title,
+        l.order_index,
+        COALESCE(
+          SUM(COALESCE(up.view_count, 0)) FILTER (WHERE u.role = '生徒'),
+          0
+        )::integer AS total_views,
+        COALESCE(
+          JSONB_AGG(
+            JSONB_BUILD_OBJECT(
+              'userId', u.id,
+              'studentNumber', u.username,
+              'studentName', u.name,
+              'viewCount', COALESCE(up.view_count, 0)
+            )
+            ORDER BY u.name, u.username
+          ) FILTER (WHERE u.role = '生徒' AND COALESCE(up.view_count, 0) > 0),
+          '[]'::jsonb
+        ) AS student_views
+      FROM lessons l
+      JOIN courses c ON c.id = l.course_id
+      LEFT JOIN user_progress up ON up.lesson_id = l.id
+      LEFT JOIN users u ON u.id = up.user_id
+      WHERE c.title = '自由科目'
+      GROUP BY l.id, l.title, l.order_index
+      ORDER BY l.order_index, l.id
+    `);
+    return result.rows;
   }
 
   static async getAllUsersProgress({ limit = 50, offset = 0 } = {}) {

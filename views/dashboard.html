@@ -31,6 +31,14 @@
         .character-preview-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; }
         .character-preview-name { min-width:0; color:var(--gray-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .character-preview-actions { display:flex; gap:10px; flex-shrink:0; }
+        .course-section { padding: 22px 0 30px; border-top: 1px solid rgba(74,144,217,.22); }
+        .course-section:first-child { border-top: 0; padding-top: 0; }
+        .course-section:last-child { padding-bottom: 0; }
+        .course-section-header { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:12px; }
+        .course-section-title { color:var(--primary-blue-light); font-size:20px; }
+        .course-progress-meta { color:var(--gray-text); font-size:13px; white-space:nowrap; }
+        .course-progress-bar { height:18px; margin-bottom:20px; }
+        .course-progress-bar .progress-text { font-size:11px; }
         @media (max-width:600px) {
             .character-modal { padding:8px; }
             .character-modal-box { padding:16px; max-height:96vh; }
@@ -39,6 +47,7 @@
             .character-preview-image { max-height:calc(96vh - 245px); }
             .character-preview-footer { align-items:stretch; flex-direction:column; }
             .character-preview-actions { display:grid; grid-template-columns:1fr 1fr; }
+            .course-section-header { align-items:flex-start; flex-direction:column; gap:6px; }
         }
     </style>
 </head>
@@ -117,18 +126,9 @@
             </div>
         </div>
 
-        <!-- 進捗バー -->
+        <!-- コース別レッスン・進捗 -->
         <div class="card">
-            <h2 style="margin-bottom: 20px;">🎯 全体の進捗</h2>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
-                <span class="progress-text" id="progress-text">0%</span>
-            </div>
-        </div>
-
-        <!-- レッスン一覧 -->
-        <div class="card">
-            <h2 style="margin-bottom: 30px;">📚 レッスン一覧</h2>
+            <h2 style="margin-bottom: 30px;">📚 コース別レッスン</h2>
             <div id="lessons-container">
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
@@ -326,29 +326,26 @@
             const token = localStorage.getItem('token');
 
             try {
-                // 進捗統計
-                const progressRes = await fetch(`${API_URL}/progress`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const [progressRes, lessonsRes] = await Promise.all([
+                    fetch(`${API_URL}/progress`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_URL}/lessons`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                ]);
+                if (!progressRes.ok || !lessonsRes.ok) throw new Error('データ取得に失敗しました');
+
                 const progressData = await progressRes.json();
                 const stats = progressData.stats;
+                const lessons = await lessonsRes.json();
 
                 document.getElementById('completion-rate').textContent = 
                     Math.round(stats.completion_percentage || 0) + '%';
                 document.getElementById('completed-lessons').textContent = stats.completed_lessons || 0;
                 document.getElementById('total-lessons').textContent = stats.total_lessons || 0;
 
-                const percentage = Math.round(stats.completion_percentage || 0);
-                document.getElementById('progress-fill').style.width = percentage + '%';
-                document.getElementById('progress-text').textContent = percentage + '%';
-
-                // レッスン一覧
-                const lessonsRes = await fetch(`${API_URL}/lessons`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const lessons = await lessonsRes.json();
-
-                renderLessons(lessons, currentUser.role);
+                renderLessons(lessons, currentUser.role, progressData.courseStats || []);
             } catch (error) {
                 console.error('データ読み込みエラー:', error);
                 document.getElementById('lessons-container').innerHTML = 
@@ -357,7 +354,7 @@
         }
 
         // レッスン描画
-        function renderLessons(lessons, userRole) {
+        function renderLessons(lessons, userRole, courseStats) {
             const container = document.getElementById('lessons-container');
             const isAdmin = userRole === '管理者';
             
@@ -366,91 +363,123 @@
                 return;
             }
 
-            let html = '<div class="lessons-grid">';
-            
-            lessons.forEach((lesson, index) => {
-                const isCompleted = lesson.completed;
-                // 管理者は全レッスンをロックなしで開放
-                const isLocked = isAdmin ? false : (index > 0 && !lessons[index - 1].completed);
-                const canAccess = isAdmin ? true : (index === 0 || lessons[index - 1].completed);
-
-                // サムネイル生成
-                const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url);
-
-                // カテゴリタグの色
-                const tagColor = getCourseTagColor(lesson.course_title);
-
-                const cardClass = 'lesson-card' +
-                    (isCompleted ? ' completed' : '') +
-                    (isLocked   ? ' locked'    : '');
-
-                const overlayIcon = isCompleted ? '✅' : isLocked ? '🔒' : '▶';
-                const overlayClass = isCompleted ? 'thumb-overlay completed' : isLocked ? 'thumb-overlay locked' : 'thumb-overlay play';
-
-                const linkStart = canAccess ? `<a href="/lesson/${lesson.id}" class="lesson-card-link">` : `<div class="lesson-card-link no-pointer">`;
-                const linkEnd   = canAccess ? `</a>` : `</div>`;
-
-                const wp = lesson.watch_percent || 0;
-                // 視聴進捗バー: 完了・未完了・未視聴・ロック中すべて表示
-                // ロック中は表示しない、完了はグリーン100%、それ以外は実際の進捗
-                let watchBarHtml = '';
-                if (!isLocked) {
-                    if (isCompleted) {
-                        watchBarHtml = `
-                            <div class="lesson-watch-bar-wrap">
-                                <div class="lesson-watch-bar-header">
-                                    <span>視聴進捗</span><span class="lesson-watch-bar-pct done">100%</span>
-                                </div>
-                                <div class="lesson-watch-bar-bg">
-                                    <div class="lesson-watch-bar-fill done" style="width:100%;"></div>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        const pctColor = wp >= 95 ? 'near' : wp >= 50 ? 'mid' : 'low';
-                        watchBarHtml = `
-                            <div class="lesson-watch-bar-wrap">
-                                <div class="lesson-watch-bar-header">
-                                    <span>視聴進捗</span><span class="lesson-watch-bar-pct ${pctColor}">${wp}%</span>
-                                </div>
-                                <div class="lesson-watch-bar-bg">
-                                    <div class="lesson-watch-bar-fill ${pctColor}" style="width:${wp}%;"></div>
-                                </div>
-                            </div>
-                        `;
-                    }
+            const groupedCourses = [];
+            const groupMap = new Map();
+            lessons.forEach(lesson => {
+                const key = String(lesson.course_id ?? lesson.course_title ?? 'uncategorized');
+                if (!groupMap.has(key)) {
+                    const group = {
+                        key,
+                        courseId: lesson.course_id,
+                        title: lesson.course_title || 'コース未設定',
+                        lessons: []
+                    };
+                    groupMap.set(key, group);
+                    groupedCourses.push(group);
                 }
-
-                html += `
-                    ${linkStart}
-                    <div class="${cardClass}">
-                        <!-- サムネイル -->
-                        <div class="lesson-thumb-wrap">
-                            ${thumb.type === 'img'
-                                ? `<img src="${thumb.src}" alt="${lesson.title}" class="lesson-thumb-img" loading="lazy">`
-                                : `<div class="lesson-thumb-placeholder"><span>${thumb.emoji}</span></div>`
-                            }
-                            <div class="${overlayClass}">
-                                <span class="overlay-icon">${overlayIcon}</span>
-                            </div>
-                            ${isCompleted ? '<div class="thumb-badge-done">✅ 完了</div>' : ''}
-                        </div>
-                        <!-- 情報 -->
-                        <div class="lesson-card-body">
-                            <div class="lesson-card-title">${lesson.title}</div>
-                            <div class="lesson-card-meta">
-                                <span class="lesson-tag" style="background:${tagColor.bg}; color:${tagColor.text};">${lesson.course_title || 'コース'}</span>
-                                ${isCompleted ? '<span class="lesson-tag-done">✅ 学習済み</span>' : ''}
-                                ${isLocked ? '<span class="lesson-tag-locked">🔒 ロック中</span>' : ''}
-                            </div>
-                            ${watchBarHtml}
-                        </div>
-                    </div>
-                    ${linkEnd}
-                `;
+                groupMap.get(key).lessons.push(lesson);
             });
 
-            html += '</div>';
+            const statsMap = new Map((courseStats || []).map(stat => [String(stat.course_id), stat]));
+            let html = '';
+
+            groupedCourses.forEach(group => {
+                const courseStat = statsMap.get(String(group.courseId));
+                const totalLessons = Number(courseStat?.total_lessons ?? group.lessons.length);
+                const completedLessons = Number(courseStat?.completed_lessons ?? group.lessons.filter(item => item.completed).length);
+                const percentage = Math.round(Number(courseStat?.completion_percentage) || (totalLessons ? completedLessons / totalLessons * 100 : 0));
+
+                html += `
+                    <section class="course-section">
+                        <div class="course-section-header">
+                            <h3 class="course-section-title">📘 ${escHtml(group.title)}</h3>
+                            <span class="course-progress-meta">${completedLessons} / ${totalLessons} レッスン完了</span>
+                        </div>
+                        <div class="progress-bar course-progress-bar" aria-label="${escHtml(group.title)}の進捗 ${percentage}%">
+                            <div class="progress-fill" style="width:${percentage}%"></div>
+                            <span class="progress-text">${percentage}%</span>
+                        </div>
+                        <div class="lessons-grid">`;
+
+                group.lessons.forEach((lesson, index) => {
+                    const isCompleted = lesson.completed;
+                    // アンロック判定はコース内の並びごとに行う。
+                    const previousLesson = group.lessons[index - 1];
+                    const isLocked = isAdmin ? false : (index > 0 && !previousLesson.completed);
+                    const canAccess = isAdmin || index === 0 || previousLesson.completed;
+
+                    // サムネイル生成
+                    const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url);
+
+                    // カテゴリタグの色
+                    const tagColor = getCourseTagColor(lesson.course_title);
+
+                    const cardClass = 'lesson-card' +
+                        (isCompleted ? ' completed' : '') +
+                        (isLocked   ? ' locked'    : '');
+
+                    const overlayIcon = isCompleted ? '✅' : isLocked ? '🔒' : '▶';
+                    const overlayClass = isCompleted ? 'thumb-overlay completed' : isLocked ? 'thumb-overlay locked' : 'thumb-overlay play';
+
+                    const linkStart = canAccess ? `<a href="/lesson/${Number(lesson.id)}" class="lesson-card-link">` : `<div class="lesson-card-link no-pointer">`;
+                    const linkEnd   = canAccess ? `</a>` : `</div>`;
+
+                    const wp = Math.min(100, Math.max(0, Number(lesson.watch_percent) || 0));
+                    let watchBarHtml = '';
+                    if (!isLocked) {
+                        if (isCompleted) {
+                            watchBarHtml = `
+                                <div class="lesson-watch-bar-wrap">
+                                    <div class="lesson-watch-bar-header">
+                                        <span>視聴進捗</span><span class="lesson-watch-bar-pct done">100%</span>
+                                    </div>
+                                    <div class="lesson-watch-bar-bg">
+                                        <div class="lesson-watch-bar-fill done" style="width:100%;"></div>
+                                    </div>
+                                </div>`;
+                        } else {
+                            const pctColor = wp >= 95 ? 'near' : wp >= 50 ? 'mid' : 'low';
+                            watchBarHtml = `
+                                <div class="lesson-watch-bar-wrap">
+                                    <div class="lesson-watch-bar-header">
+                                        <span>視聴進捗</span><span class="lesson-watch-bar-pct ${pctColor}">${wp}%</span>
+                                    </div>
+                                    <div class="lesson-watch-bar-bg">
+                                        <div class="lesson-watch-bar-fill ${pctColor}" style="width:${wp}%;"></div>
+                                    </div>
+                                </div>`;
+                        }
+                    }
+
+                    html += `
+                        ${linkStart}
+                        <div class="${cardClass}">
+                            <div class="lesson-thumb-wrap">
+                                ${thumb.type === 'img'
+                                    ? `<img src="${escHtml(thumb.src)}" alt="${escHtml(lesson.title)}" class="lesson-thumb-img" loading="lazy">`
+                                    : `<div class="lesson-thumb-placeholder"><span>${thumb.emoji}</span></div>`
+                                }
+                                <div class="${overlayClass}">
+                                    <span class="overlay-icon">${overlayIcon}</span>
+                                </div>
+                                ${isCompleted ? '<div class="thumb-badge-done">✅ 完了</div>' : ''}
+                            </div>
+                            <div class="lesson-card-body">
+                                <div class="lesson-card-title">${escHtml(lesson.title)}</div>
+                                <div class="lesson-card-meta">
+                                    <span class="lesson-tag" style="background:${tagColor.bg}; color:${tagColor.text};">${escHtml(lesson.course_title || 'コース')}</span>
+                                    ${isCompleted ? '<span class="lesson-tag-done">✅ 学習済み</span>' : ''}
+                                    ${isLocked ? '<span class="lesson-tag-locked">🔒 ロック中</span>' : ''}
+                                </div>
+                                ${watchBarHtml}
+                            </div>
+                        </div>
+                        ${linkEnd}`;
+                });
+
+                html += '</div></section>';
+            });
+
             container.innerHTML = html;
         }
 
