@@ -125,3 +125,43 @@ test('管理者がコースを並べ替えてダッシュボードのセクシ�
   assert.match(adminRoutes, /client\.query\('COMMIT'\)/);
   assert.match(lessonModel, /ORDER BY c\.order_index, c\.id, l\.order_index, l\.id/);
 });
+
+test('コースごとの順次解禁設定に基づいてレッスンアクセスを判定する', async () => {
+  const originalQuery = db.query;
+  let capturedSql = '';
+  let capturedParams = [];
+  db.query = async (sql, params) => {
+    capturedSql = sql;
+    capturedParams = params;
+    return { rows: [{ can_access: true }] };
+  };
+
+  try {
+    assert.equal(await Progress.canAccessLesson(12, 34), true);
+    assert.match(capturedSql, /current\.sequential_unlock = false THEN true/);
+    assert.match(capturedSql, /previous\.id IS NULL THEN true/);
+    assert.match(capturedSql, /up\.lesson_id = previous\.id/);
+    assert.match(capturedSql, /ORDER BY previous\.order_index DESC, previous\.id DESC/);
+    assert.deepEqual(capturedParams, [12, 34]);
+  } finally {
+    db.query = originalQuery;
+  }
+});
+
+test('管理画面でコース名と動画解禁方法を変更できる', () => {
+  const schema = fs.readFileSync(path.join(root, 'src', 'models', 'schema.js'), 'utf8');
+  const adminRoutes = fs.readFileSync(path.join(root, 'src', 'routes', 'admin.js'), 'utf8');
+  const adminPage = fs.readFileSync(path.join(root, 'views', 'admin-contents.html'), 'utf8');
+  const dashboard = fs.readFileSync(path.join(root, 'views', 'dashboard.html'), 'utf8');
+
+  assert.match(schema, /sequential_unlock BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(schema, /ALTER TABLE courses ADD COLUMN IF NOT EXISTS sequential_unlock/);
+  assert.match(adminRoutes, /UPDATE courses[\s\S]*title = \$1[\s\S]*sequential_unlock = \$3/);
+  assert.ok(adminRoutes.indexOf("router.patch('/courses/order'") < adminRoutes.indexOf("router.patch('/courses/:id'"));
+  assert.match(adminPage, /コース設定/);
+  assert.match(adminPage, /course-edit-title/);
+  assert.match(adminPage, /course-edit-sequential-unlock/);
+  assert.match(adminPage, /sequentialUnlock: document\.getElementById\('course-edit-sequential-unlock'\)\.checked/);
+  assert.match(dashboard, /group\.sequentialUnlock && index > 0/);
+  assert.match(dashboard, /!group\.sequentialUnlock \|\| index === 0/);
+});

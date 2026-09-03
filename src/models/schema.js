@@ -25,9 +25,15 @@ const createTables = async () => {
         title VARCHAR(255) NOT NULL,
         description TEXT,
         order_index INTEGER NOT NULL DEFAULT 0,
+        sequential_unlock BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // コースごとに「前の動画完了後に次を解禁」を切り替える
+    await db.query(`
+      ALTER TABLE courses ADD COLUMN IF NOT EXISTS sequential_unlock BOOLEAN NOT NULL DEFAULT FALSE
     `);
 
     // Lessons table (動画レッスン)

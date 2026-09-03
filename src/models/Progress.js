@@ -248,25 +248,37 @@ class Progress {
   }
 
   static async canAccessLesson(userId, lessonId) {
-    // 最初のレッスンは常にアクセス可能
-    const isFirstLesson = await db.query(`
-      SELECT 1 FROM lessons 
-      WHERE id = $1 
-      AND order_index = (SELECT MIN(order_index) FROM lessons WHERE course_id = (SELECT course_id FROM lessons WHERE id = $1))
-    `, [lessonId]);
-    
-    if (isFirstLesson.rows.length > 0) return true;
-
-    // 前のレッスンが完了しているかチェック
     const result = await db.query(`
-      SELECT 1 FROM user_progress up
-      JOIN lessons l ON up.lesson_id = l.id
-      WHERE up.user_id = $1
-      AND l.order_index = (SELECT order_index - 1 FROM lessons WHERE id = $2)
-      AND up.completed = true
+      WITH current_lesson AS (
+        SELECT l.id, l.course_id, l.order_index, c.sequential_unlock
+        FROM lessons l
+        JOIN courses c ON c.id = l.course_id
+        WHERE l.id = $2
+      ), previous_lesson AS (
+        SELECT previous.id
+        FROM lessons previous
+        JOIN current_lesson current ON current.course_id = previous.course_id
+        WHERE previous.order_index < current.order_index
+           OR (previous.order_index = current.order_index AND previous.id < current.id)
+        ORDER BY previous.order_index DESC, previous.id DESC
+        LIMIT 1
+      )
+      SELECT CASE
+        WHEN current.sequential_unlock = false THEN true
+        WHEN previous.id IS NULL THEN true
+        ELSE EXISTS (
+          SELECT 1
+          FROM user_progress up
+          WHERE up.user_id = $1
+            AND up.lesson_id = previous.id
+            AND up.completed = true
+        )
+      END AS can_access
+      FROM current_lesson current
+      LEFT JOIN previous_lesson previous ON true
     `, [userId, lessonId]);
 
-    return result.rows.length > 0;
+    return result.rows[0]?.can_access === true;
   }
 }
 
