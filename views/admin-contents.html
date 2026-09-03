@@ -93,6 +93,16 @@
         .view-total { flex-shrink: 0; color: var(--accent-cyan); font-size: 18px; }
         .student-view-table { padding: 0 18px 18px; overflow-x: auto; }
         .student-view-empty { color: var(--gray-text); padding: 0 18px 18px; font-size: 13px; }
+        .course-order-list { display:grid; gap:10px; margin-bottom:18px; }
+        .course-order-item { display:flex; align-items:center; gap:14px; padding:13px 16px; border:1px solid rgba(74,144,217,.25); border-radius:12px; background:rgba(7,16,24,.38); }
+        .course-order-number { width:32px; height:32px; display:grid; place-items:center; flex-shrink:0; border-radius:50%; background:rgba(74,144,217,.2); color:var(--primary-blue-light); font-weight:700; }
+        .course-order-title { flex:1; min-width:0; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .course-order-actions { display:flex; gap:8px; }
+        .course-order-actions .btn { padding:7px 12px; min-width:42px; }
+        @media (max-width:600px) {
+            .course-order-item { gap:9px; padding:11px; }
+            .course-order-actions .btn { padding:7px 9px; min-width:36px; }
+        }
     </style>
 </head>
 <body>
@@ -131,6 +141,16 @@
                 </div>
                 <button type="submit" class="btn btn-success">✅ コース作成</button>
             </form>
+        </div>
+
+        <!-- コース表示順 -->
+        <div class="card">
+            <h2 style="margin-bottom: 10px;">↕️ ダッシュボードのセクション順</h2>
+            <p style="color:var(--gray-text);font-size:13px;margin-bottom:22px;">上下ボタンで並べ替え、「この順番で保存」を押すと生徒のダッシュボードへ反映されます。</p>
+            <div id="course-order-list" class="course-order-list">
+                <div class="loading" style="margin:25px auto;"></div>
+            </div>
+            <button type="button" id="save-course-order-btn" class="btn btn-primary" onclick="saveCourseOrder()" disabled>💾 この順番で保存</button>
         </div>
 
         <!-- レッスン作成 -->
@@ -437,7 +457,60 @@
                 courses.forEach(c => {
                     editSel.innerHTML += `<option value="${c.id}">${c.title}</option>`;
                 });
+                renderCourseOrder();
             } catch (e) { console.error(e); }
+        }
+
+        function renderCourseOrder() {
+            const container = document.getElementById('course-order-list');
+            const saveButton = document.getElementById('save-course-order-btn');
+            saveButton.disabled = true;
+            if (courses.length === 0) {
+                container.innerHTML = '<p style="color:var(--gray-text);">コースがありません</p>';
+                return;
+            }
+            container.innerHTML = courses.map((course, index) => `
+                <div class="course-order-item">
+                    <span class="course-order-number">${index + 1}</span>
+                    <span class="course-order-title">${escHtml(course.title)}</span>
+                    <div class="course-order-actions">
+                        <button type="button" class="btn btn-secondary" onclick="moveCourse(${index}, -1)" aria-label="${escHtml(course.title)}を上へ" ${index === 0 ? 'disabled' : ''}>↑</button>
+                        <button type="button" class="btn btn-secondary" onclick="moveCourse(${index}, 1)" aria-label="${escHtml(course.title)}を下へ" ${index === courses.length - 1 ? 'disabled' : ''}>↓</button>
+                    </div>
+                </div>`).join('');
+        }
+
+        function moveCourse(index, direction) {
+            const destination = index + direction;
+            if (destination < 0 || destination >= courses.length) return;
+            [courses[index], courses[destination]] = [courses[destination], courses[index]];
+            renderCourseOrder();
+            document.getElementById('save-course-order-btn').disabled = false;
+        }
+
+        async function saveCourseOrder() {
+            const saveButton = document.getElementById('save-course-order-btn');
+            saveButton.disabled = true;
+            saveButton.textContent = '保存中...';
+            try {
+                const res = await fetch(`${API_URL}/admin/courses/order`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ courseIds: courses.map(course => Number(course.id)) })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '表示順の保存に失敗しました');
+                showAlert('ダッシュボードのセクション順を保存しました', 'success');
+                await loadCourses();
+            } catch (error) {
+                showAlert(error.message, 'error');
+                saveButton.disabled = false;
+            } finally {
+                saveButton.textContent = '💾 この順番で保存';
+            }
         }
 
         // ===== レッスン読み込み =====

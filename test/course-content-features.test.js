@@ -109,3 +109,19 @@ test('視聴回数カラムを既存DBにも追加し管理者閲覧を除外す
   assert.match(lessonsRoute, /req\.user\.role !== '生徒'/);
   assert.match(lessonsRoute, /recorded: false/);
 });
+
+test('管理者がコースを並べ替えてダッシュボードのセクション順を保存できる', () => {
+  const adminRoutes = fs.readFileSync(path.join(root, 'src', 'routes', 'admin.js'), 'utf8');
+  const adminPage = fs.readFileSync(path.join(root, 'views', 'admin-contents.html'), 'utf8');
+  const lessonModel = fs.readFileSync(path.join(root, 'src', 'models', 'Lesson.js'), 'utf8');
+
+  assert.match(adminPage, /ダッシュボードのセクション順/);
+  assert.match(adminPage, /function moveCourse\(index, direction\)/);
+  assert.match(adminPage, /function saveCourseOrder\(\)/);
+  assert.match(adminPage, /body: JSON\.stringify\(\{ courseIds:/);
+  assert.match(adminRoutes, /router\.patch\('\/courses\/order'/);
+  assert.match(adminRoutes, /new Set\(courseIds\)\.size === courseIds\.length/);
+  assert.match(adminRoutes, /UNNEST\(\$1::integer\[\]\) WITH ORDINALITY/);
+  assert.match(adminRoutes, /client\.query\('COMMIT'\)/);
+  assert.match(lessonModel, /ORDER BY c\.order_index, c\.id, l\.order_index, l\.id/);
+});
