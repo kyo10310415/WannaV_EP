@@ -25,7 +25,7 @@ class Lesson {
 
   static async getAll() {
     const result = await db.query(`
-      SELECT l.*, c.title as course_title 
+      SELECT l.*, c.title as course_title, c.sequential_unlock
       FROM lessons l
       LEFT JOIN courses c ON l.course_id = c.id
       ORDER BY c.order_index, c.id, l.order_index, l.id
@@ -56,6 +56,7 @@ class Lesson {
       SELECT 
         l.*,
         c.title as course_title,
+        c.sequential_unlock,
         COALESCE(up.completed, false) as completed,
         COALESCE(up.quiz_passed, false) as quiz_passed,
         COALESCE(up.watch_percent, 0) as watch_percent,

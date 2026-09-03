@@ -99,8 +99,17 @@
         .course-order-title { flex:1; min-width:0; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .course-order-actions { display:flex; gap:8px; }
         .course-order-actions .btn { padding:7px 12px; min-width:42px; }
+        .course-setting-badge { display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
+        .course-setting-badge.sequential { color:#F7C55B; background:rgba(243,156,18,.18); }
+        .course-setting-badge.open { color:#6AEBB7; background:rgba(46,204,113,.16); }
+        .checkbox-setting { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:1px solid rgba(74,144,217,.3); border-radius:12px; background:rgba(7,16,24,.32); cursor:pointer; }
+        .checkbox-setting input { width:auto; min-height:auto; margin-top:3px; }
+        .checkbox-setting strong { display:block; margin-bottom:3px; }
+        .checkbox-setting span { display:block; color:var(--gray-text); font-size:12px; line-height:1.5; }
         @media (max-width:600px) {
-            .course-order-item { gap:9px; padding:11px; }
+            .course-order-item { gap:9px; padding:11px; flex-wrap:wrap; }
+            .course-order-title { flex:1 1 calc(100% - 50px); }
+            .course-order-actions { width:100%; justify-content:flex-end; }
             .course-order-actions .btn { padding:7px 9px; min-width:36px; }
         }
     </style>
@@ -138,6 +147,12 @@
                 <div class="form-group">
                     <label class="form-label">説明</label>
                     <textarea class="form-textarea" id="course-description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-setting">
+                        <input type="checkbox" id="course-sequential-unlock">
+                        <span><strong>動画を順番に解禁する</strong>ONにすると、前の動画を完了するまで次の動画を開けません。OFFの場合は最初から全動画を閲覧できます。</span>
+                    </label>
                 </div>
                 <button type="submit" class="btn btn-success">✅ コース作成</button>
             </form>
@@ -253,6 +268,32 @@
         </div>
     </div>
 
+    <!-- ===== コース設定モーダル ===== -->
+    <div class="modal-overlay" id="course-edit-modal">
+        <div class="modal-box" style="max-width:620px;">
+            <button class="modal-close" onclick="closeCourseEditModal()">✕</button>
+            <div class="modal-title">⚙️ コース設定</div>
+            <div class="form-group">
+                <label class="form-label">コース名</label>
+                <input type="text" class="form-input" id="course-edit-title" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">説明</label>
+                <textarea class="form-textarea" id="course-edit-description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="checkbox-setting">
+                    <input type="checkbox" id="course-edit-sequential-unlock">
+                    <span><strong>動画を順番に解禁する</strong>ONにすると、前の動画を完了した生徒だけが次の動画を開けます。OFFの場合は全動画を最初から閲覧できます。</span>
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="course-edit-save-btn" class="btn btn-success" style="flex:1;" onclick="saveCourseSettings()">💾 保存する</button>
+                <button type="button" class="btn btn-secondary" onclick="closeCourseEditModal()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== レッスン編集モーダル ===== -->
     <div class="modal-overlay" id="edit-modal">
         <div class="modal-box">
@@ -343,6 +384,7 @@
         let lessons = [];
         let quizQuestions = [];
         let editingLesson = null; // 現在編集中のレッスンオブジェクト
+        let editingCourse = null;
         let maxVideoUploadMb = 2048;
 
         // ===== 新規作成フォームの動画切替 =====
@@ -473,7 +515,9 @@
                 <div class="course-order-item">
                     <span class="course-order-number">${index + 1}</span>
                     <span class="course-order-title">${escHtml(course.title)}</span>
+                    <span class="course-setting-badge ${course.sequential_unlock ? 'sequential' : 'open'}">${course.sequential_unlock ? '🔒 順次解禁' : '🔓 全動画公開'}</span>
                     <div class="course-order-actions">
+                        <button type="button" class="btn btn-primary" onclick="openCourseEditModal(${Number(course.id)})">編集</button>
                         <button type="button" class="btn btn-secondary" onclick="moveCourse(${index}, -1)" aria-label="${escHtml(course.title)}を上へ" ${index === 0 ? 'disabled' : ''}>↑</button>
                         <button type="button" class="btn btn-secondary" onclick="moveCourse(${index}, 1)" aria-label="${escHtml(course.title)}を下へ" ${index === courses.length - 1 ? 'disabled' : ''}>↓</button>
                     </div>
@@ -486,6 +530,58 @@
             [courses[index], courses[destination]] = [courses[destination], courses[index]];
             renderCourseOrder();
             document.getElementById('save-course-order-btn').disabled = false;
+        }
+
+        function openCourseEditModal(courseId) {
+            editingCourse = courses.find(course => Number(course.id) === Number(courseId));
+            if (!editingCourse) return;
+            document.getElementById('course-edit-title').value = editingCourse.title || '';
+            document.getElementById('course-edit-description').value = editingCourse.description || '';
+            document.getElementById('course-edit-sequential-unlock').checked = editingCourse.sequential_unlock === true;
+            document.getElementById('course-edit-save-btn').disabled = false;
+            document.getElementById('course-edit-save-btn').textContent = '💾 保存する';
+            document.getElementById('course-edit-modal').classList.add('open');
+            document.getElementById('course-edit-title').focus();
+        }
+
+        function closeCourseEditModal() {
+            document.getElementById('course-edit-modal').classList.remove('open');
+            editingCourse = null;
+        }
+
+        async function saveCourseSettings() {
+            if (!editingCourse) return;
+            const title = document.getElementById('course-edit-title').value.trim();
+            if (!title) {
+                showAlert('コース名を入力してください', 'error');
+                return;
+            }
+            const saveButton = document.getElementById('course-edit-save-btn');
+            saveButton.disabled = true;
+            saveButton.textContent = '保存中...';
+            try {
+                const res = await fetch(`${API_URL}/admin/courses/${Number(editingCourse.id)}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title,
+                        description: document.getElementById('course-edit-description').value,
+                        sequentialUnlock: document.getElementById('course-edit-sequential-unlock').checked
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'コース設定の保存に失敗しました');
+                closeCourseEditModal();
+                showAlert('コース設定を更新しました', 'success');
+                await Promise.all([loadCourses(), loadLessons()]);
+            } catch (error) {
+                showAlert(error.message, 'error');
+                saveButton.disabled = false;
+                saveButton.textContent = '💾 保存する';
+            }
         }
 
         async function saveCourseOrder() {
@@ -695,9 +791,15 @@
         document.getElementById('edit-modal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('edit-modal')) closeEditModal();
         });
+        document.getElementById('course-edit-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('course-edit-modal')) closeCourseEditModal();
+        });
         // ESCキーで閉じる
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeEditModal();
+            if (e.key === 'Escape') {
+                closeEditModal();
+                closeCourseEditModal();
+            }
         });
 
         // ===== 編集保存 =====
@@ -766,7 +868,8 @@
                         body: JSON.stringify({
                             title:       document.getElementById('course-title').value,
                             description: document.getElementById('course-description').value,
-                            orderIndex:  document.getElementById('course-order').value
+                            orderIndex:  document.getElementById('course-order').value,
+                            sequentialUnlock: document.getElementById('course-sequential-unlock').checked
                         })
                     });
                     if (!res.ok) throw new Error('コース作成に失敗しました');

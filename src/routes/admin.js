@@ -185,10 +185,14 @@ router.patch('/users/:id/password', auth, checkRole('管理者'), async (req, re
 // コース作成
 router.post('/courses', auth, checkRole('管理者'), async (req, res) => {
   try {
-    const { title, description, orderIndex } = req.body;
+    const { title, description, orderIndex, sequentialUnlock } = req.body;
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: 'コース名を入力してください' });
+    }
     const result = await db.query(
-      'INSERT INTO courses (title, description, order_index) VALUES ($1, $2, $3) RETURNING *',
-      [title, description, orderIndex || 0]
+      `INSERT INTO courses (title, description, order_index, sequential_unlock)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [String(title).trim(), description || null, orderIndex || 0, sequentialUnlock === true]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -252,6 +256,40 @@ router.patch('/courses/order', auth, checkRole('管理者'), async (req, res) =>
     res.status(500).json({ error: 'コースの表示順更新に失敗しました' });
   } finally {
     if (client) client.release();
+  }
+});
+
+// コース名・説明・動画の解禁方法を更新
+router.patch('/courses/:id', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    const courseId = Number(req.params.id);
+    const { title, description, sequentialUnlock } = req.body;
+    if (!Number.isInteger(courseId) || courseId <= 0) {
+      return res.status(400).json({ error: 'コースを正しく指定してください' });
+    }
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: 'コース名を入力してください' });
+    }
+    if (typeof sequentialUnlock !== 'boolean') {
+      return res.status(400).json({ error: '動画の解禁方法を正しく指定してください' });
+    }
+
+    const result = await db.query(`
+      UPDATE courses
+      SET title = $1,
+          description = $2,
+          sequential_unlock = $3,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+      RETURNING *
+    `, [String(title).trim(), description || null, sequentialUnlock, courseId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'コースが見つかりません' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update course error:', error);
+    res.status(500).json({ error: 'コース設定の更新に失敗しました' });
   }
 });
 
