@@ -200,11 +200,58 @@ router.post('/courses', auth, checkRole('管理者'), async (req, res) => {
 // 全コース取得
 router.get('/courses', auth, checkRole('管理者', 'クルー'), async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM courses ORDER BY order_index');
+    const result = await db.query('SELECT * FROM courses ORDER BY order_index, id');
     res.json(result.rows);
   } catch (error) {
     console.error('Get courses error:', error);
     res.status(500).json({ error: 'コースの取得に失敗しました' });
+  }
+});
+
+// ダッシュボードに表示するコースセクションの順序を一括更新
+router.patch('/courses/order', auth, checkRole('管理者'), async (req, res) => {
+  const courseIds = Array.isArray(req.body.courseIds)
+    ? req.body.courseIds.map(Number)
+    : [];
+  const isValid = courseIds.length > 0
+    && courseIds.every(Number.isInteger)
+    && courseIds.every(id => id > 0)
+    && new Set(courseIds).size === courseIds.length;
+
+  if (!isValid) {
+    return res.status(400).json({ error: '並べ替えるコースを正しく指定してください' });
+  }
+
+  let client;
+  try {
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+    const existing = await client.query('SELECT id FROM courses ORDER BY order_index, id FOR UPDATE');
+    const existingIds = existing.rows.map(row => Number(row.id));
+    if (existingIds.length !== courseIds.length
+      || existingIds.some(id => !courseIds.includes(id))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'コース一覧が更新されています。再読み込みしてやり直してください' });
+    }
+
+    await client.query(`
+      UPDATE courses AS c
+      SET order_index = ordered.position,
+          updated_at = CURRENT_TIMESTAMP
+      FROM (
+        SELECT id, (position - 1)::integer AS position
+        FROM UNNEST($1::integer[]) WITH ORDINALITY AS item(id, position)
+      ) AS ordered
+      WHERE c.id = ordered.id
+    `, [courseIds]);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    console.error('Update course order error:', error);
+    res.status(500).json({ error: 'コースの表示順更新に失敗しました' });
+  } finally {
+    if (client) client.release();
   }
 });
 

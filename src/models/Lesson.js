@@ -28,7 +28,7 @@ class Lesson {
       SELECT l.*, c.title as course_title 
       FROM lessons l
       LEFT JOIN courses c ON l.course_id = c.id
-      ORDER BY c.order_index, l.order_index
+      ORDER BY c.order_index, c.id, l.order_index, l.id
     `);
     return result.rows;
   }
@@ -63,7 +63,7 @@ class Lesson {
       FROM lessons l
       LEFT JOIN courses c ON l.course_id = c.id
       LEFT JOIN user_progress up ON l.id = up.lesson_id AND up.user_id = $1
-      ORDER BY c.order_index, l.order_index
+      ORDER BY c.order_index, c.id, l.order_index, l.id
     `, [userId]);
     return result.rows;
   }
