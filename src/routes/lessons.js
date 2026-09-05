@@ -16,13 +16,24 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// スペシャルコンテンツ対象レッスン取得（進捗付き）
+router.get('/special', auth, async (req, res) => {
+  try {
+    const lessons = await Lesson.getWithProgress(req.user.id, true);
+    res.json(lessons);
+  } catch (error) {
+    console.error('Get special lessons error:', error);
+    res.status(500).json({ error: 'スペシャルコンテンツの取得に失敗しました' });
+  }
+});
+
 // レッスン詳細取得
 router.get('/:id', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
 
-    // 管理者は全レッスンに無条件アクセス可。それ以外はアンロック判定
-    if (req.user.role !== '管理者') {
+    // 順番解禁の制約は生徒のみに適用する。管理側の全権限は内容を確認できる。
+    if (req.user.role === '生徒') {
       const canAccess = await Progress.canAccessLesson(req.user.id, lessonId);
       if (!canAccess) {
         return res.status(403).json({ error: '前のレッスンを完了してください' });

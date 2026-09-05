@@ -26,6 +26,7 @@ const createTables = async () => {
         description TEXT,
         order_index INTEGER NOT NULL DEFAULT 0,
         sequential_unlock BOOLEAN NOT NULL DEFAULT FALSE,
+        is_special_content BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -35,6 +36,9 @@ const createTables = async () => {
     await db.query(`
       ALTER TABLE courses ADD COLUMN IF NOT EXISTS sequential_unlock BOOLEAN NOT NULL DEFAULT FALSE
     `);
+    await db.query(`
+      ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_special_content BOOLEAN NOT NULL DEFAULT FALSE
+    `);
 
     // Lessons table (動画レッスン)
     await db.query(`
@@ -43,12 +47,36 @@ const createTables = async () => {
         course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
         title VARCHAR(255) NOT NULL,
         description TEXT,
-        video_filename VARCHAR(255) NOT NULL,
+        video_filename VARCHAR(255),
         video_url TEXT,
         thumbnail_url TEXT,
+        content_type VARCHAR(20) NOT NULL DEFAULT 'video'
+          CHECK (content_type IN ('video', 'image', 'link')),
+        image_filename VARCHAR(255),
+        image_url TEXT,
+        external_link_url TEXT,
         duration INTEGER,
         order_index INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 動画・画像・外部リンクの教材形式に対応
+    await db.query(`ALTER TABLE lessons ALTER COLUMN video_filename DROP NOT NULL`);
+    await db.query(`
+      ALTER TABLE lessons ADD COLUMN IF NOT EXISTS content_type VARCHAR(20) NOT NULL DEFAULT 'video'
+        CHECK (content_type IN ('video', 'image', 'link'))
+    `);
+    await db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS image_filename VARCHAR(255)`);
+    await db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS image_url TEXT`);
+    await db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS external_link_url TEXT`);
+
+    // ダッシュボードの外部リンク設定
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS portal_settings (
+        setting_key VARCHAR(100) PRIMARY KEY,
+        setting_value TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

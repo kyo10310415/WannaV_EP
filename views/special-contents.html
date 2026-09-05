@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スペシャルコンテンツ - WannaV ポータル</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .special-hero { position:relative; overflow:hidden; padding:38px; background:linear-gradient(135deg,rgba(155,89,182,.28),rgba(52,200,232,.18)); border-color:rgba(203,135,255,.45); }
+        .special-hero::after { content:'✨'; position:absolute; right:35px; top:15px; font-size:92px; opacity:.14; }
+        .special-hero h2 { font-size:30px; margin-bottom:9px; }
+        .special-hero p { color:var(--gray-text); }
+        .special-course { padding:25px 0 32px; border-top:1px solid rgba(155,89,182,.28); }
+        .special-course:first-child { border-top:0; padding-top:0; }
+        .special-course:last-child { padding-bottom:0; }
+        .special-course-header { display:flex; align-items:center; justify-content:space-between; gap:15px; flex-wrap:wrap; margin-bottom:18px; }
+        .special-course-title { color:#dcb5f1; font-size:21px; }
+        .special-rule { color:var(--gray-text); font-size:12px; padding:5px 11px; border-radius:999px; background:rgba(155,89,182,.13); }
+        .content-type-badge { font-size:11px; font-weight:700; color:var(--accent-cyan); }
+        @media (max-width:600px) { .special-hero { padding:28px 22px; } .special-hero::after { font-size:65px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1 class="logo">✨ WannaV ポータル</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <span class="user-role" id="user-role"></span>
+                <button onclick="logout()" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <main class="container">
+        <div id="page-nav" class="nav"></div>
+        <section class="card special-hero">
+            <h2>✨ スペシャルコンテンツ</h2>
+            <p>限定コンテンツをコースごとにご覧いただけます。</p>
+        </section>
+        <section class="card">
+            <div id="special-lessons"><div class="loading" style="margin:50px auto;"></div></div>
+        </section>
+    </main>
+
+    <script>
+        const API_URL = '/api';
+        let currentUser = null;
+
+        async function checkAuth() {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = '/'; return; }
+            try {
+                const [authRes, lessonRes] = await Promise.all([
+                    fetch(`${API_URL}/auth/me`, { headers:{ Authorization:`Bearer ${token}` } }),
+                    fetch(`${API_URL}/lessons/special`, { headers:{ Authorization:`Bearer ${token}` } })
+                ]);
+                if (!authRes.ok) throw new Error('認証に失敗しました');
+                currentUser = await authRes.json();
+                document.getElementById('user-name').textContent = currentUser.name;
+                document.getElementById('user-role').textContent = currentUser.role;
+                buildNav('page-nav', currentUser.role, '/special-contents');
+                if (!lessonRes.ok) throw new Error('スペシャルコンテンツを取得できませんでした');
+                renderLessons(await lessonRes.json());
+            } catch (error) {
+                if (!currentUser) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/';
+                    return;
+                }
+                document.getElementById('special-lessons').innerHTML = `<p style="color:var(--danger)">${escHtml(error.message)}</p>`;
+            }
+        }
+
+        function renderLessons(lessons) {
+            const container = document.getElementById('special-lessons');
+            if (!lessons.length) {
+                container.innerHTML = '<p style="color:var(--gray-text);text-align:center;padding:35px 0;">現在公開中のスペシャルコンテンツはありません</p>';
+                return;
+            }
+            const groups = [];
+            const groupMap = new Map();
+            lessons.forEach(lesson => {
+                const key = String(lesson.course_id);
+                if (!groupMap.has(key)) {
+                    const group = { title:lesson.course_title || 'コース未設定', sequential:lesson.sequential_unlock === true, lessons:[] };
+                    groupMap.set(key, group);
+                    groups.push(group);
+                }
+                groupMap.get(key).lessons.push(lesson);
+            });
+            const isStudent = currentUser.role === '生徒';
+            container.innerHTML = groups.map(group => `
+                <section class="special-course">
+                    <div class="special-course-header">
+                        <h3 class="special-course-title">✨ ${escHtml(group.title)}</h3>
+                        <span class="special-rule">${group.sequential ? '🔒 順次解禁' : '🔓 すべて閲覧可能'}</span>
+                    </div>
+                    <div class="lessons-grid">${group.lessons.map((lesson,index) => {
+                        const previous = group.lessons[index - 1];
+                        const locked = isStudent && group.sequential && index > 0 && !previous.completed;
+                        const thumbnail = getThumbnail(lesson);
+                        const typeLabel = lesson.content_type === 'image' ? '🖼️ 画像' : lesson.content_type === 'link' ? '🔗 外部リンク' : '🎬 動画';
+                        const wrapperStart = locked ? '<div class="lesson-card-link no-pointer">' : `<a href="/lesson/${Number(lesson.id)}" class="lesson-card-link">`;
+                        const wrapperEnd = locked ? '</div>' : '</a>';
+                        return `${wrapperStart}<article class="lesson-card${lesson.completed ? ' completed' : ''}${locked ? ' locked' : ''}">
+                            <div class="lesson-thumb-wrap">
+                                ${thumbnail.src ? `<img src="${escHtml(thumbnail.src)}" alt="${escHtml(lesson.title)}" class="lesson-thumb-img" loading="lazy">` : `<div class="lesson-thumb-placeholder"><span>${thumbnail.emoji}</span></div>`}
+                                <div class="${lesson.completed ? 'thumb-overlay completed' : locked ? 'thumb-overlay locked' : 'thumb-overlay play'}"><span class="overlay-icon">${lesson.completed ? '✅' : locked ? '🔒' : '▶'}</span></div>
+                                ${lesson.completed ? '<div class="thumb-badge-done">✅ 完了</div>' : ''}
+                            </div>
+                            <div class="lesson-card-body">
+                                <div class="lesson-card-title">${escHtml(lesson.title)}</div>
+                                <div class="lesson-card-meta"><span class="content-type-badge">${typeLabel}</span>${locked ? '<span class="lesson-tag-locked">🔒 ロック中</span>' : ''}</div>
+                            </div>
+                        </article>${wrapperEnd}`;
+                    }).join('')}</div>
+                </section>`).join('');
+        }
+
+        function getThumbnail(lesson) {
+            if (lesson.thumbnail_url) return { src:lesson.thumbnail_url };
+            if (lesson.content_type === 'image' && lesson.image_url) return { src:lesson.image_url };
+            if (lesson.content_type === 'link') return { emoji:'🔗' };
+            const match = String(lesson.video_url || '').match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            if (match) return { src:`https://img.youtube.com/vi/${match[1]}/mqdefault.jpg` };
+            return { emoji:'🎬' };
+        }
+
+        function escHtml(value) {
+            return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+        }
+
+        function buildNav(elementId, role, activePath) {
+            const links = [
+                { href:'/dashboard', label:'📊 ダッシュボード', roles:['管理者','クルー','セールス','生徒'] },
+                { href:'/special-contents', label:'✨ スペシャルコンテンツ', roles:['管理者','クルー','セールス','生徒'] },
+                { href:'/admin/student-management', label:'👥 生徒管理', roles:['管理者','クルー','セールス'] },
+                { href:'/admin/characters', label:'🎭 キャラクター管理', roles:['管理者','セールス'] },
+                { href:'/admin/contents', label:'📹 コンテンツ管理', roles:['管理者'] }
+            ];
+            document.getElementById(elementId).innerHTML = links.filter(item => item.roles.includes(role))
+                .map(item => `<a href="${item.href}" class="nav-link${item.href === activePath ? ' active' : ''}">${item.label}</a>`).join('');
+        }
+
+        function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+        checkAuth();
+    </script>
+</body>
+</html>

@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { auth, checkRole } = require('../middleware/auth');
 const User = require('../models/User');
 const Lesson = require('../models/Lesson');
 const Quiz = require('../models/Quiz');
 const Progress = require('../models/Progress');
+const PortalSetting = require('../models/PortalSetting');
 const db = require('../config/database');
 const { generateThumbnail } = require('../utils/thumbnail');
 
@@ -18,6 +20,8 @@ const MAX_VIDEO_UPLOAD_MB = Number.isFinite(configuredUploadLimitMb) && configur
   ? configuredUploadLimitMb
   : 2048;
 const MAX_VIDEO_UPLOAD_BYTES = MAX_VIDEO_UPLOAD_MB * 1024 * 1024;
+const MAX_IMAGE_UPLOAD_MB = 20;
+const MAX_IMAGE_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_MB * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -25,7 +29,8 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'video-' + uniqueSuffix + path.extname(file.originalname));
+    const prefix = file.fieldname === 'image' ? 'lesson-image-' : 'video-';
+    cb(null, prefix + uniqueSuffix + path.extname(file.originalname).toLowerCase());
   }
 });
 
@@ -33,39 +38,63 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: MAX_VIDEO_UPLOAD_BYTES },
   fileFilter: (req, file, cb) => {
-    const allowedExtensions = new Set(['.mp4', '.mov', '.avi', '.mkv']);
-    const allowedMimeTypes = new Set([
+    const videoExtensions = new Set(['.mp4', '.mov', '.avi', '.mkv']);
+    const videoMimeTypes = new Set([
       'video/mp4',
       'video/quicktime',
       'video/x-msvideo',
       'video/x-matroska',
       'application/octet-stream',
     ]);
-    const extname = allowedExtensions.has(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedMimeTypes.has(file.mimetype);
-    
-    if (extname && mimetype) {
+    const imageExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+    const imageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+    const extension = path.extname(file.originalname).toLowerCase();
+
+    if (file.fieldname === 'video' && videoExtensions.has(extension) && videoMimeTypes.has(file.mimetype)) {
       return cb(null, true);
-    } else {
-      cb(new Error('動画ファイルのみアップロード可能です'));
     }
+    if (file.fieldname === 'image' && imageExtensions.has(extension) && imageMimeTypes.has(file.mimetype)) {
+      return cb(null, true);
+    }
+    cb(new Error('対応していないファイル形式です'));
   }
 });
 
-const handleVideoUpload = (req, res, next) => {
-  upload.single('video')(req, res, (error) => {
+const handleContentUpload = (req, res, next) => {
+  upload.fields([{ name: 'video', maxCount: 1 }, { name: 'image', maxCount: 1 }])(req, res, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({
         error: `動画ファイルは最大${MAX_VIDEO_UPLOAD_MB}MBまでアップロードできます`,
       });
     }
-    if (error.message === '動画ファイルのみアップロード可能です') {
+    if (error.message === '対応していないファイル形式です') {
       return res.status(400).json({ error: error.message });
     }
     return next(error);
   });
 };
+
+const uploadedFile = (req, fieldName) => req.files?.[fieldName]?.[0] || null;
+
+async function removeUploadedFile(file) {
+  if (!file?.path) return;
+  await fs.promises.unlink(file.path).catch(() => {});
+}
+
+function validExternalUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function validOptionalExternalUrl(value) {
+  return !String(value || '').trim() || validExternalUrl(value);
+}
 
 // ===== ユーザー管理 =====
 
@@ -185,14 +214,14 @@ router.patch('/users/:id/password', auth, checkRole('管理者'), async (req, re
 // コース作成
 router.post('/courses', auth, checkRole('管理者'), async (req, res) => {
   try {
-    const { title, description, orderIndex, sequentialUnlock } = req.body;
+    const { title, description, orderIndex, sequentialUnlock, isSpecialContent } = req.body;
     if (!title || !String(title).trim()) {
       return res.status(400).json({ error: 'コース名を入力してください' });
     }
     const result = await db.query(
-      `INSERT INTO courses (title, description, order_index, sequential_unlock)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [String(title).trim(), description || null, orderIndex || 0, sequentialUnlock === true]
+      `INSERT INTO courses (title, description, order_index, sequential_unlock, is_special_content)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [String(title).trim(), description || null, orderIndex || 0, sequentialUnlock === true, isSpecialContent === true]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -263,7 +292,7 @@ router.patch('/courses/order', auth, checkRole('管理者'), async (req, res) =>
 router.patch('/courses/:id', auth, checkRole('管理者'), async (req, res) => {
   try {
     const courseId = Number(req.params.id);
-    const { title, description, sequentialUnlock } = req.body;
+    const { title, description, sequentialUnlock, isSpecialContent } = req.body;
     if (!Number.isInteger(courseId) || courseId <= 0) {
       return res.status(400).json({ error: 'コースを正しく指定してください' });
     }
@@ -273,16 +302,20 @@ router.patch('/courses/:id', auth, checkRole('管理者'), async (req, res) => {
     if (typeof sequentialUnlock !== 'boolean') {
       return res.status(400).json({ error: '動画の解禁方法を正しく指定してください' });
     }
+    if (typeof isSpecialContent !== 'boolean') {
+      return res.status(400).json({ error: 'スペシャルコンテンツ設定を正しく指定してください' });
+    }
 
     const result = await db.query(`
       UPDATE courses
       SET title = $1,
           description = $2,
           sequential_unlock = $3,
+          is_special_content = $4,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
+      WHERE id = $5
       RETURNING *
-    `, [String(title).trim(), description || null, sequentialUnlock, courseId]);
+    `, [String(title).trim(), description || null, sequentialUnlock, isSpecialContent, courseId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'コースが見つかりません' });
     }
@@ -295,9 +328,39 @@ router.patch('/courses/:id', auth, checkRole('管理者'), async (req, res) => {
 
 // ===== レッスン管理 =====
 
+// ダッシュボードに表示する外部リンク設定
+router.get('/portal-links', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    res.json(await PortalSetting.getLinks());
+  } catch (error) {
+    console.error('Get portal links error:', error);
+    res.status(500).json({ error: '外部リンク設定の取得に失敗しました' });
+  }
+});
+
+router.put('/portal-links', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    const { bucchakeVtuberUrl = '', classLessonUrl = '' } = req.body;
+    if (!validOptionalExternalUrl(bucchakeVtuberUrl) || !validOptionalExternalUrl(classLessonUrl)) {
+      return res.status(400).json({ error: 'URLはhttp://またはhttps://から始まる形式で入力してください' });
+    }
+    const links = await PortalSetting.updateLinks({
+      bucchakeVtuberUrl: String(bucchakeVtuberUrl).trim(),
+      classLessonUrl: String(classLessonUrl).trim(),
+    });
+    res.json(links);
+  } catch (error) {
+    console.error('Update portal links error:', error);
+    res.status(500).json({ error: '外部リンク設定の保存に失敗しました' });
+  }
+});
+
 // 現在の動画アップロード上限
 router.get('/upload-config', auth, checkRole('管理者'), (req, res) => {
-  res.json({ maxVideoUploadMb: MAX_VIDEO_UPLOAD_MB });
+  res.json({
+    maxVideoUploadMb: MAX_VIDEO_UPLOAD_MB,
+    maxImageUploadMb: MAX_IMAGE_UPLOAD_MB,
+  });
 });
 
 // 自由科目の動画別・生徒別視聴回数
@@ -312,40 +375,68 @@ router.get('/lessons/free-subject/view-analytics', auth, checkRole('管理者'),
 });
 
 // レッスン作成
-router.post('/lessons', auth, checkRole('管理者'), handleVideoUpload, async (req, res) => {
+router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async (req, res) => {
   try {
-    const { courseId, title, description, duration, orderIndex, externalVideoUrl } = req.body;
+    const {
+      courseId, title, description, duration, orderIndex,
+      contentMode, externalVideoUrl, externalLinkUrl,
+    } = req.body;
+    const videoFile = uploadedFile(req, 'video');
+    const imageFile = uploadedFile(req, 'image');
+    const mode = contentMode || (videoFile ? 'video-file' : 'video-url');
 
+    let contentType = 'video';
     let videoFilename = null;
     let videoUrl = null;
     let thumbnailUrl = null;
+    let imageFilename = null;
+    let imageUrl = null;
+    let linkUrl = null;
 
-    if (req.file) {
-      // ファイルアップロード優先
-      videoFilename = req.file.filename;
-      videoUrl = `/uploads/${req.file.filename}`;
+    if (imageFile && imageFile.size > MAX_IMAGE_UPLOAD_BYTES) {
+      await Promise.all([removeUploadedFile(imageFile), removeUploadedFile(videoFile)]);
+      return res.status(413).json({ error: `画像ファイルは最大${MAX_IMAGE_UPLOAD_MB}MBまでアップロードできます` });
+    }
+
+    if (mode === 'video-file' && videoFile) {
+      videoFilename = videoFile.filename;
+      videoUrl = `/uploads/${videoFile.filename}`;
       // MP4サムネイル自動生成（非同期・失敗しても続行）
-      thumbnailUrl = await generateThumbnail(req.file.path, req.file.filename);
-    } else if (externalVideoUrl && externalVideoUrl.trim()) {
-      // 外部URL（YouTube等）
+      thumbnailUrl = await generateThumbnail(videoFile.path, videoFile.filename);
+      await removeUploadedFile(imageFile);
+    } else if (mode === 'video-url' && validExternalUrl(externalVideoUrl)) {
       videoFilename = 'external';
       videoUrl = externalVideoUrl.trim();
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
+    } else if (mode === 'image' && imageFile) {
+      contentType = 'image';
+      imageFilename = imageFile.filename;
+      imageUrl = `/uploads/${imageFile.filename}`;
+      thumbnailUrl = imageUrl;
+      await removeUploadedFile(videoFile);
+    } else if (mode === 'link' && validExternalUrl(externalLinkUrl)) {
+      contentType = 'link';
+      linkUrl = externalLinkUrl.trim();
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
+    } else {
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
+      return res.status(400).json({ error: '選択した教材形式に必要なファイルまたはURLを指定してください' });
     }
 
-    if (!videoUrl) {
-      return res.status(400).json({ error: '動画ファイルまたは動画URLを指定してください' });
-    }
-
-    const lesson = await Lesson.create(
+    const lesson = await Lesson.create({
       courseId,
       title,
       description,
+      contentType,
       videoFilename,
       videoUrl,
+      imageFilename,
+      imageUrl,
+      externalLinkUrl: linkUrl,
       duration,
-      orderIndex || 0,
-      thumbnailUrl
-    );
+      orderIndex: orderIndex || 0,
+      thumbnailUrl,
+    });
 
     res.status(201).json(lesson);
   } catch (error) {
@@ -366,34 +457,85 @@ router.get('/lessons', auth, checkRole('管理者', 'クルー'), async (req, re
 });
 
 // レッスン更新
-router.patch('/lessons/:id', auth, checkRole('管理者'), handleVideoUpload, async (req, res) => {
+router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, async (req, res) => {
   try {
-    const { title, description, duration, orderIndex, externalVideoUrl, courseId } = req.body;
+    const {
+      title, description, duration, orderIndex, externalVideoUrl,
+      externalLinkUrl, courseId, contentMode = 'keep',
+    } = req.body;
     const lesson = await Lesson.findById(req.params.id);
+    const videoFile = uploadedFile(req, 'video');
+    const imageFile = uploadedFile(req, 'image');
     
     if (!lesson) {
       return res.status(404).json({ error: 'レッスンが見つかりません' });
     }
 
+    let contentType   = lesson.content_type || 'video';
     let videoFilename = lesson.video_filename;
     let videoUrl      = lesson.video_url;
     let thumbnailUrl  = lesson.thumbnail_url || null;
+    let imageFilename = lesson.image_filename || null;
+    let imageUrl      = lesson.image_url || null;
+    let linkUrl       = lesson.external_link_url || null;
 
-    if (req.file) {
-      videoFilename = req.file.filename;
-      videoUrl      = `/uploads/${req.file.filename}`;
-      thumbnailUrl  = await generateThumbnail(req.file.path, req.file.filename);
-    } else if (externalVideoUrl && externalVideoUrl.trim()) {
+    if (imageFile && imageFile.size > MAX_IMAGE_UPLOAD_BYTES) {
+      await Promise.all([removeUploadedFile(imageFile), removeUploadedFile(videoFile)]);
+      return res.status(413).json({ error: `画像ファイルは最大${MAX_IMAGE_UPLOAD_MB}MBまでアップロードできます` });
+    }
+
+    if (contentMode === 'video-file' && videoFile) {
+      contentType = 'video';
+      videoFilename = videoFile.filename;
+      videoUrl      = `/uploads/${videoFile.filename}`;
+      thumbnailUrl  = await generateThumbnail(videoFile.path, videoFile.filename);
+      imageFilename = null;
+      imageUrl = null;
+      linkUrl = null;
+      await removeUploadedFile(imageFile);
+    } else if (contentMode === 'video-url' && validExternalUrl(externalVideoUrl)) {
+      contentType = 'video';
       videoFilename = 'external';
       videoUrl      = externalVideoUrl.trim();
       thumbnailUrl  = null;
+      imageFilename = null;
+      imageUrl = null;
+      linkUrl = null;
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
+    } else if (contentMode === 'image' && imageFile) {
+      contentType = 'image';
+      videoFilename = null;
+      videoUrl = null;
+      imageFilename = imageFile.filename;
+      imageUrl = `/uploads/${imageFile.filename}`;
+      thumbnailUrl = imageUrl;
+      linkUrl = null;
+      await removeUploadedFile(videoFile);
+    } else if (contentMode === 'link' && validExternalUrl(externalLinkUrl)) {
+      contentType = 'link';
+      videoFilename = null;
+      videoUrl = null;
+      imageFilename = null;
+      imageUrl = null;
+      thumbnailUrl = null;
+      linkUrl = externalLinkUrl.trim();
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
+    } else if (contentMode !== 'keep') {
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
+      return res.status(400).json({ error: '選択した教材形式に必要なファイルまたはURLを指定してください' });
+    } else {
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
     }
 
     const updated = await Lesson.update(req.params.id, {
       title,
       description,
+      contentType,
       videoFilename,
       videoUrl,
+      imageFilename,
+      imageUrl,
+      externalLinkUrl: linkUrl,
       thumbnailUrl,
       duration,
       orderIndex,
