@@ -408,11 +408,12 @@ router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async
       videoFilename = 'external';
       videoUrl = externalVideoUrl.trim();
       await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
-    } else if (mode === 'image' && imageFile) {
+    } else if (mode === 'image' && imageFile && validOptionalExternalUrl(externalLinkUrl)) {
       contentType = 'image';
       imageFilename = imageFile.filename;
       imageUrl = `/uploads/${imageFile.filename}`;
       thumbnailUrl = imageUrl;
+      linkUrl = String(externalLinkUrl || '').trim() || null;
       await removeUploadedFile(videoFile);
     } else if (mode === 'link' && validExternalUrl(externalLinkUrl)) {
       contentType = 'link';
@@ -502,14 +503,20 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
       imageUrl = null;
       linkUrl = null;
       await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
-    } else if (contentMode === 'image' && imageFile) {
+    } else if (
+      contentMode === 'image'
+      && (imageFile || (lesson.content_type === 'image' && lesson.image_url))
+      && validOptionalExternalUrl(externalLinkUrl)
+    ) {
       contentType = 'image';
       videoFilename = null;
       videoUrl = null;
-      imageFilename = imageFile.filename;
-      imageUrl = `/uploads/${imageFile.filename}`;
+      if (imageFile) {
+        imageFilename = imageFile.filename;
+        imageUrl = `/uploads/${imageFile.filename}`;
+      }
       thumbnailUrl = imageUrl;
-      linkUrl = null;
+      linkUrl = String(externalLinkUrl || '').trim() || null;
       await removeUploadedFile(videoFile);
     } else if (contentMode === 'link' && validExternalUrl(externalLinkUrl)) {
       contentType = 'link';

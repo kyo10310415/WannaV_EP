@@ -229,7 +229,7 @@
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
                             <input type="radio" name="lesson-content-mode" value="image" onchange="toggleContentInput()" style="width:auto;min-height:auto;">
-                            🖼️ 画像のみ
+                            🖼️ 画像＋説明・リンク
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
                             <input type="radio" name="lesson-content-mode" value="link" onchange="toggleContentInput()" style="width:auto;min-height:auto;">
@@ -255,9 +255,9 @@
                         <input type="file" class="form-input" id="lesson-image" accept="image/jpeg,image/png,image/webp,image/gif">
                     </div>
                     <div id="external-link-input" style="display:none;">
-                        <label class="form-label">外部リンクURL</label>
+                        <label class="form-label" id="external-link-label">外部リンクURL</label>
                         <input type="url" class="form-input" id="lesson-external-link" placeholder="https://...">
-                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">生徒がクリックすると新しいタブで開きます。</p>
+                        <p id="external-link-help" style="font-size:12px; color:var(--gray-text); margin-top:6px;">生徒がクリックすると新しいタブで開きます。</p>
                     </div>
                 </div>
                 <button type="submit" class="btn btn-success" id="create-lesson-btn">✅ レッスン作成</button>
@@ -413,10 +413,12 @@
                     </div>
                     <div id="edit-image-file-input" style="display:none;">
                         <input type="file" class="form-input" id="edit-image-file" accept="image/jpeg,image/png,image/webp,image/gif">
-                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">JPG / PNG / WebP / GIF（<span id="edit-image-upload-limit">最大20MB</span>）</p>
+                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">JPG / PNG / WebP / GIF（<span id="edit-image-upload-limit">最大20MB</span>）。現在の画像を変更しない場合は未選択のままで構いません。</p>
                     </div>
                     <div id="edit-external-link-input" style="display:none;">
+                        <label class="form-label" id="edit-external-link-label">外部リンクURL</label>
                         <input type="url" class="form-input" id="edit-external-link" placeholder="https://...">
+                        <p id="edit-external-link-help" style="font-size:12px;color:var(--gray-text);margin-top:6px;"></p>
                     </div>
                 </div>
             </details>
@@ -456,7 +458,11 @@
             document.getElementById('video-file-input').style.display = mode === 'video-file' ? 'block' : 'none';
             document.getElementById('video-url-input').style.display = mode === 'video-url' ? 'block' : 'none';
             document.getElementById('image-file-input').style.display = mode === 'image' ? 'block' : 'none';
-            document.getElementById('external-link-input').style.display = mode === 'link' ? 'block' : 'none';
+            document.getElementById('external-link-input').style.display = (mode === 'image' || mode === 'link') ? 'block' : 'none';
+            document.getElementById('external-link-label').textContent = mode === 'image' ? '外部リンクURL（任意）' : '外部リンクURL';
+            document.getElementById('external-link-help').textContent = mode === 'image'
+                ? '画像と説明の下に表示します。不要な場合は空欄にしてください。'
+                : '生徒がクリックすると新しいタブで開きます。';
         }
 
         // ===== 編集モーダルの教材切替 =====
@@ -465,7 +471,11 @@
             document.getElementById('edit-video-file-input').style.display = mode === 'video-file' ? 'block' : 'none';
             document.getElementById('edit-video-url-input').style.display = mode === 'video-url' ? 'block' : 'none';
             document.getElementById('edit-image-file-input').style.display = mode === 'image' ? 'block' : 'none';
-            document.getElementById('edit-external-link-input').style.display = mode === 'link' ? 'block' : 'none';
+            document.getElementById('edit-external-link-input').style.display = (mode === 'image' || mode === 'link') ? 'block' : 'none';
+            document.getElementById('edit-external-link-label').textContent = mode === 'image' ? '外部リンクURL（任意）' : '外部リンクURL';
+            document.getElementById('edit-external-link-help').textContent = mode === 'image'
+                ? '空欄で保存すると画像教材から外部リンクを外します。'
+                : '必須項目です。';
         }
 
         // ===== 認証チェック =====
@@ -794,7 +804,9 @@
                     ? `<img src="${escHtml(lesson.thumbnail_url)}" style="width:80px;height:45px;object-fit:cover;border-radius:6px;">`
                     : `<div style="width:80px;height:45px;background:rgba(74,144,217,0.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">${contentType === 'link' ? '🔗' : contentType === 'image' ? '🖼️' : '📹'}</div>`;
                 const isLocal = contentType === 'video' && lesson.video_filename && lesson.video_filename !== 'external';
-                const typeLabel = contentType === 'image' ? '🖼️ 画像' : contentType === 'link' ? '🔗 外部リンク' : '🎬 動画';
+                const typeLabel = contentType === 'image'
+                    ? (lesson.external_link_url ? '🖼️ 画像＋リンク' : '🖼️ 画像')
+                    : contentType === 'link' ? '🔗 外部リンク' : '🎬 動画';
 
                 // タイトル内のシングルクォートをエスケープ
                 const safeTitle = lesson.title.replace(/'/g, "\\'");
@@ -932,9 +944,10 @@
                 formData.append('externalVideoUrl', url);
             } else if (contentMode === 'image') {
                 const file = document.getElementById('edit-image-file').files[0];
-                if (!file) { showAlert('差し替える画像を選択してください', 'error'); return; }
+                if (!file && editingLesson.content_type !== 'image') { showAlert('画像ファイルを選択してください', 'error'); return; }
                 if (!validateImageFileSize(file)) return;
-                formData.append('image', file);
+                if (file) formData.append('image', file);
+                formData.append('externalLinkUrl', document.getElementById('edit-external-link').value.trim());
             } else if (contentMode === 'link') {
                 const url = document.getElementById('edit-external-link').value.trim();
                 if (!url) { showAlert('外部リンクURLを入力してください', 'error'); return; }
@@ -1045,7 +1058,10 @@
                 formData.append('contentMode', contentMode);
                 if (contentMode === 'video-file') formData.append('video', videoFile);
                 else if (contentMode === 'video-url') formData.append('externalVideoUrl', videoUrl);
-                else if (contentMode === 'image') formData.append('image', imageFile);
+                else if (contentMode === 'image') {
+                    formData.append('image', imageFile);
+                    formData.append('externalLinkUrl', externalLinkUrl);
+                }
                 else if (contentMode === 'link') formData.append('externalLinkUrl', externalLinkUrl);
 
                 try {
