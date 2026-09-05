@@ -102,6 +102,7 @@
         .course-setting-badge { display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
         .course-setting-badge.sequential { color:#F7C55B; background:rgba(243,156,18,.18); }
         .course-setting-badge.open { color:#6AEBB7; background:rgba(46,204,113,.16); }
+        .course-setting-badge.special { color:#f5b8ff; background:rgba(180,80,220,.18); }
         .checkbox-setting { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:1px solid rgba(74,144,217,.3); border-radius:12px; background:rgba(7,16,24,.32); cursor:pointer; }
         .checkbox-setting input { width:auto; min-height:auto; margin-top:3px; }
         .checkbox-setting strong { display:block; margin-bottom:3px; }
@@ -151,10 +152,33 @@
                 <div class="form-group">
                     <label class="checkbox-setting">
                         <input type="checkbox" id="course-sequential-unlock">
-                        <span><strong>動画を順番に解禁する</strong>ONにすると、前の動画を完了するまで次の動画を開けません。OFFの場合は最初から全動画を閲覧できます。</span>
+                        <span><strong>レッスンを順番に解禁する</strong>ONにすると、前のレッスンを完了するまで次のレッスンを開けません。OFFの場合は最初から全レッスンを閲覧できます。</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-setting">
+                        <input type="checkbox" id="course-special-content">
+                        <span><strong>スペシャルコンテンツに表示する</strong>ONにしたコースは通常のダッシュボードではなく「スペシャルコンテンツ」ページに表示されます。</span>
                     </label>
                 </div>
                 <button type="submit" class="btn btn-success">✅ コース作成</button>
+            </form>
+        </div>
+
+        <!-- ダッシュボード外部リンク -->
+        <div class="card">
+            <h2 style="margin-bottom:10px;">🔗 ダッシュボード外部リンク</h2>
+            <p style="color:var(--gray-text);font-size:13px;margin-bottom:22px;">空欄で保存すると、ダッシュボードでは「URL未設定」と表示されます。</p>
+            <form id="portal-links-form">
+                <div class="form-group">
+                    <label class="form-label" for="bucchake-vtuber-url">ぶっちゃけVtuber URL</label>
+                    <input type="url" class="form-input" id="bucchake-vtuber-url" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="class-lesson-url">クラスレッスン URL</label>
+                    <input type="url" class="form-input" id="class-lesson-url" placeholder="https://...">
+                </div>
+                <button type="submit" class="btn btn-success" id="portal-links-save-btn">💾 URLを保存</button>
             </form>
         </div>
 
@@ -193,15 +217,23 @@
                     <textarea class="form-textarea" id="lesson-description" rows="3"></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">動画の入力方法を選択</label>
-                    <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                    <label class="form-label">教材の形式を選択</label>
+                    <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap:wrap;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
-                            <input type="radio" name="video-input-type" value="file" id="video-type-file" checked onchange="toggleVideoInput()" style="width:auto;min-height:auto;">
-                            📁 ファイルアップロード
+                            <input type="radio" name="lesson-content-mode" value="video-file" checked onchange="toggleContentInput()" style="width:auto;min-height:auto;">
+                            🎬 動画ファイル
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
-                            <input type="radio" name="video-input-type" value="url" id="video-type-url" onchange="toggleVideoInput()" style="width:auto;min-height:auto;">
-                            🔗 URL指定（YouTube等）
+                            <input type="radio" name="lesson-content-mode" value="video-url" onchange="toggleContentInput()" style="width:auto;min-height:auto;">
+                            🎬 動画URL
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
+                            <input type="radio" name="lesson-content-mode" value="image" onchange="toggleContentInput()" style="width:auto;min-height:auto;">
+                            🖼️ 画像のみ
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 20px; border: 1px solid rgba(74,144,217,0.4); border-radius: 12px; font-weight: 600; transition: all 0.2s;">
+                            <input type="radio" name="lesson-content-mode" value="link" onchange="toggleContentInput()" style="width:auto;min-height:auto;">
+                            🔗 外部リンクのみ
                         </label>
                     </div>
                     <div id="video-file-input">
@@ -217,6 +249,15 @@
                         <p style="font-size:12px; color: var(--warning); margin-top: 4px;">
                             ⚠️ Googleドライブを使用する場合は、ファイルの共有設定を「<strong>リンクを知っている全員が閲覧可</strong>」に変更してください
                         </p>
+                    </div>
+                    <div id="image-file-input" style="display:none;">
+                        <label class="form-label">画像ファイル（JPG, PNG, WebP, GIF - <span id="create-image-upload-limit">最大20MB</span>）</label>
+                        <input type="file" class="form-input" id="lesson-image" accept="image/jpeg,image/png,image/webp,image/gif">
+                    </div>
+                    <div id="external-link-input" style="display:none;">
+                        <label class="form-label">外部リンクURL</label>
+                        <input type="url" class="form-input" id="lesson-external-link" placeholder="https://...">
+                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">生徒がクリックすると新しいタブで開きます。</p>
                     </div>
                 </div>
                 <button type="submit" class="btn btn-success" id="create-lesson-btn">✅ レッスン作成</button>
@@ -284,7 +325,13 @@
             <div class="form-group">
                 <label class="checkbox-setting">
                     <input type="checkbox" id="course-edit-sequential-unlock">
-                    <span><strong>動画を順番に解禁する</strong>ONにすると、前の動画を完了した生徒だけが次の動画を開けます。OFFの場合は全動画を最初から閲覧できます。</span>
+                    <span><strong>レッスンを順番に解禁する</strong>ONにすると、前のレッスンを完了した生徒だけが次のレッスンを開けます。OFFの場合は全レッスンを最初から閲覧できます。</span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="checkbox-setting">
+                    <input type="checkbox" id="course-edit-special-content">
+                    <span><strong>スペシャルコンテンツに表示する</strong>ONにしたコースを専用ページに表示します。</span>
                 </label>
             </div>
             <div class="modal-footer">
@@ -323,29 +370,37 @@
                 <textarea class="form-textarea" id="edit-description" rows="3"></textarea>
             </div>
 
-            <div class="modal-section-label">動画</div>
+            <div class="modal-section-label">教材</div>
 
-            <!-- 現在の動画情報 -->
+            <!-- 現在の教材情報 -->
             <div id="edit-current-video" style="margin-bottom:14px; padding:12px 16px; background:rgba(74,144,217,0.08); border-radius:10px; font-size:13px; color:var(--gray-text); word-break:break-all;"></div>
 
-            <!-- 動画変更（任意） -->
+            <!-- 教材変更（任意） -->
             <details style="margin-bottom: 8px;">
                 <summary style="cursor:pointer; font-size:13px; font-weight:600; color:var(--primary-blue-light); user-select:none; outline:none; padding:6px 0;">
-                    🔄 動画を差し替える（変更しない場合は不要）
+                    🔄 教材を差し替える（変更しない場合は不要）
                 </summary>
                 <div style="margin-top:14px;">
                     <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap:wrap;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
-                            <input type="radio" name="edit-video-type" value="keep" id="edit-type-keep" checked onchange="toggleEditVideoInput()" style="width:auto;min-height:auto;">
+                            <input type="radio" name="edit-content-mode" value="keep" id="edit-type-keep" checked onchange="toggleEditContentInput()" style="width:auto;min-height:auto;">
                             変更しない
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
-                            <input type="radio" name="edit-video-type" value="file" id="edit-type-file" onchange="toggleEditVideoInput()" style="width:auto;min-height:auto;">
-                            📁 ファイル
+                            <input type="radio" name="edit-content-mode" value="video-file" onchange="toggleEditContentInput()" style="width:auto;min-height:auto;">
+                            🎬 動画ファイル
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
-                            <input type="radio" name="edit-video-type" value="url" id="edit-type-url" onchange="toggleEditVideoInput()" style="width:auto;min-height:auto;">
-                            🔗 URL
+                            <input type="radio" name="edit-content-mode" value="video-url" onchange="toggleEditContentInput()" style="width:auto;min-height:auto;">
+                            🎬 動画URL
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
+                            <input type="radio" name="edit-content-mode" value="image" onchange="toggleEditContentInput()" style="width:auto;min-height:auto;">
+                            🖼️ 画像
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 16px; border: 1px solid rgba(74,144,217,0.4); border-radius: 10px; font-weight: 600; font-size:13px;">
+                            <input type="radio" name="edit-content-mode" value="link" onchange="toggleEditContentInput()" style="width:auto;min-height:auto;">
+                            🔗 外部リンク
                         </label>
                     </div>
                     <div id="edit-video-file-input" style="display:none;">
@@ -355,6 +410,13 @@
                     <div id="edit-video-url-input" style="display:none;">
                         <input type="url" class="form-input" id="edit-video-url" placeholder="https://drive.google.com/file/d/XXXXX/view">
                         <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">YouTube / Vimeo / Google ドライブ / MP4直接リンク</p>
+                    </div>
+                    <div id="edit-image-file-input" style="display:none;">
+                        <input type="file" class="form-input" id="edit-image-file" accept="image/jpeg,image/png,image/webp,image/gif">
+                        <p style="font-size:12px; color:var(--gray-text); margin-top:6px;">JPG / PNG / WebP / GIF（<span id="edit-image-upload-limit">最大20MB</span>）</p>
+                    </div>
+                    <div id="edit-external-link-input" style="display:none;">
+                        <input type="url" class="form-input" id="edit-external-link" placeholder="https://...">
                     </div>
                 </div>
             </details>
@@ -386,19 +448,24 @@
         let editingLesson = null; // 現在編集中のレッスンオブジェクト
         let editingCourse = null;
         let maxVideoUploadMb = 2048;
+        let maxImageUploadMb = 20;
 
-        // ===== 新規作成フォームの動画切替 =====
-        function toggleVideoInput() {
-            const isFile = document.getElementById('video-type-file').checked;
-            document.getElementById('video-file-input').style.display = isFile ? 'block' : 'none';
-            document.getElementById('video-url-input').style.display = isFile ? 'none' : 'block';
+        // ===== 新規作成フォームの教材切替 =====
+        function toggleContentInput() {
+            const mode = document.querySelector('input[name="lesson-content-mode"]:checked').value;
+            document.getElementById('video-file-input').style.display = mode === 'video-file' ? 'block' : 'none';
+            document.getElementById('video-url-input').style.display = mode === 'video-url' ? 'block' : 'none';
+            document.getElementById('image-file-input').style.display = mode === 'image' ? 'block' : 'none';
+            document.getElementById('external-link-input').style.display = mode === 'link' ? 'block' : 'none';
         }
 
-        // ===== 編集モーダルの動画切替 =====
-        function toggleEditVideoInput() {
-            const val = document.querySelector('input[name="edit-video-type"]:checked').value;
-            document.getElementById('edit-video-file-input').style.display = val === 'file' ? 'block' : 'none';
-            document.getElementById('edit-video-url-input').style.display  = val === 'url'  ? 'block' : 'none';
+        // ===== 編集モーダルの教材切替 =====
+        function toggleEditContentInput() {
+            const mode = document.querySelector('input[name="edit-content-mode"]:checked').value;
+            document.getElementById('edit-video-file-input').style.display = mode === 'video-file' ? 'block' : 'none';
+            document.getElementById('edit-video-url-input').style.display = mode === 'video-url' ? 'block' : 'none';
+            document.getElementById('edit-image-file-input').style.display = mode === 'image' ? 'block' : 'none';
+            document.getElementById('edit-external-link-input').style.display = mode === 'link' ? 'block' : 'none';
         }
 
         // ===== 認証チェック =====
@@ -418,7 +485,7 @@
                     return;
                 }
                 buildNav('admin-nav', user.role, '/admin/contents');
-                await Promise.all([loadUploadConfig(), loadCourses(), loadLessons()]);
+                await Promise.all([loadUploadConfig(), loadPortalLinks(), loadCourses(), loadLessons()]);
             } catch {
                 localStorage.removeItem('token');
                 window.location.href = '/';
@@ -434,12 +501,16 @@
                 if (!res.ok) throw new Error('アップロード設定の取得に失敗しました');
                 const data = await res.json();
                 maxVideoUploadMb = Number(data.maxVideoUploadMb) || 2048;
+                maxImageUploadMb = Number(data.maxImageUploadMb) || 20;
             } catch (error) {
                 console.error(error);
             }
             const text = `最大${formatUploadLimit(maxVideoUploadMb)}`;
             document.getElementById('create-upload-limit').textContent = text;
             document.getElementById('edit-upload-limit').textContent = text;
+            const imageText = `最大${formatUploadLimit(maxImageUploadMb)}`;
+            document.getElementById('create-image-upload-limit').textContent = imageText;
+            document.getElementById('edit-image-upload-limit').textContent = imageText;
         }
 
         function formatUploadLimit(megabytes) {
@@ -453,6 +524,24 @@
             if (file.size <= maxBytes) return true;
             showAlert(`動画ファイルは最大${formatUploadLimit(maxVideoUploadMb)}までです`, 'error');
             return false;
+        }
+
+        function validateImageFileSize(file) {
+            if (!file) return true;
+            const maxBytes = maxImageUploadMb * 1024 * 1024;
+            if (file.size <= maxBytes) return true;
+            showAlert(`画像ファイルは最大${formatUploadLimit(maxImageUploadMb)}までです`, 'error');
+            return false;
+        }
+
+        async function loadPortalLinks() {
+            const res = await fetch(`${API_URL}/admin/portal-links`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!res.ok) throw new Error('外部リンク設定の取得に失敗しました');
+            const links = await res.json();
+            document.getElementById('bucchake-vtuber-url').value = links.bucchakeVtuberUrl || '';
+            document.getElementById('class-lesson-url').value = links.classLessonUrl || '';
         }
 
         function uploadForm(url, method, formData, onProgress) {
@@ -515,7 +604,8 @@
                 <div class="course-order-item">
                     <span class="course-order-number">${index + 1}</span>
                     <span class="course-order-title">${escHtml(course.title)}</span>
-                    <span class="course-setting-badge ${course.sequential_unlock ? 'sequential' : 'open'}">${course.sequential_unlock ? '🔒 順次解禁' : '🔓 全動画公開'}</span>
+                    ${course.is_special_content ? '<span class="course-setting-badge special">✨ スペシャル</span>' : ''}
+                    <span class="course-setting-badge ${course.sequential_unlock ? 'sequential' : 'open'}">${course.sequential_unlock ? '🔒 順次解禁' : '🔓 全レッスン公開'}</span>
                     <div class="course-order-actions">
                         <button type="button" class="btn btn-primary" onclick="openCourseEditModal(${Number(course.id)})">編集</button>
                         <button type="button" class="btn btn-secondary" onclick="moveCourse(${index}, -1)" aria-label="${escHtml(course.title)}を上へ" ${index === 0 ? 'disabled' : ''}>↑</button>
@@ -538,6 +628,7 @@
             document.getElementById('course-edit-title').value = editingCourse.title || '';
             document.getElementById('course-edit-description').value = editingCourse.description || '';
             document.getElementById('course-edit-sequential-unlock').checked = editingCourse.sequential_unlock === true;
+            document.getElementById('course-edit-special-content').checked = editingCourse.is_special_content === true;
             document.getElementById('course-edit-save-btn').disabled = false;
             document.getElementById('course-edit-save-btn').textContent = '💾 保存する';
             document.getElementById('course-edit-modal').classList.add('open');
@@ -569,7 +660,8 @@
                     body: JSON.stringify({
                         title,
                         description: document.getElementById('course-edit-description').value,
-                        sequentialUnlock: document.getElementById('course-edit-sequential-unlock').checked
+                        sequentialUnlock: document.getElementById('course-edit-sequential-unlock').checked,
+                        isSpecialContent: document.getElementById('course-edit-special-content').checked
                     })
                 });
                 const data = await res.json();
@@ -697,10 +789,12 @@
                     <tbody>
             `;
             lessons.forEach(lesson => {
+                const contentType = lesson.content_type || 'video';
                 const thumbHtml = lesson.thumbnail_url
-                    ? `<img src="${lesson.thumbnail_url}" style="width:80px;height:45px;object-fit:cover;border-radius:6px;">`
-                    : `<div style="width:80px;height:45px;background:rgba(74,144,217,0.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">📹</div>`;
-                const isLocal = lesson.video_filename && lesson.video_filename !== 'external';
+                    ? `<img src="${escHtml(lesson.thumbnail_url)}" style="width:80px;height:45px;object-fit:cover;border-radius:6px;">`
+                    : `<div style="width:80px;height:45px;background:rgba(74,144,217,0.15);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">${contentType === 'link' ? '🔗' : contentType === 'image' ? '🖼️' : '📹'}</div>`;
+                const isLocal = contentType === 'video' && lesson.video_filename && lesson.video_filename !== 'external';
+                const typeLabel = contentType === 'image' ? '🖼️ 画像' : contentType === 'link' ? '🔗 外部リンク' : '🎬 動画';
 
                 // タイトル内のシングルクォートをエスケープ
                 const safeTitle = lesson.title.replace(/'/g, "\\'");
@@ -708,8 +802,8 @@
                 html += `
                     <tr>
                         <td>${thumbHtml}</td>
-                        <td style="font-weight:600;">${lesson.title}</td>
-                        <td style="color:var(--gray-text);">${lesson.course_title || 'なし'}</td>
+                        <td style="font-weight:600;">${escHtml(lesson.title)}<div style="font-size:11px;color:var(--gray-text);margin-top:4px;">${typeLabel}</div></td>
+                        <td style="color:var(--gray-text);">${escHtml(lesson.course_title || 'なし')}</td>
                         <td style="text-align:center;">${lesson.order_index}</td>
                         <td>
                             <div class="action-btns">
@@ -748,28 +842,36 @@
             // サムネイルプレビュー
             const thumbArea = document.getElementById('modal-thumb-area');
             if (editingLesson.thumbnail_url) {
-                thumbArea.innerHTML = `<img src="${editingLesson.thumbnail_url}" class="modal-thumb-preview" alt="サムネイル">`;
+                thumbArea.innerHTML = `<img src="${escHtml(editingLesson.thumbnail_url)}" class="modal-thumb-preview" alt="サムネイル">`;
             } else {
-                const emoji = editingLesson.video_filename === 'external' ? '🔗' : '📹';
+                const emoji = editingLesson.content_type === 'link' ? '🔗' : editingLesson.content_type === 'image' ? '🖼️' : '📹';
                 thumbArea.innerHTML = `<div class="modal-thumb-placeholder">${emoji}</div>`;
             }
 
-            // 現在の動画情報
+            // 現在の教材情報
             const videoInfoEl = document.getElementById('edit-current-video');
-            if (editingLesson.video_filename === 'external') {
-                videoInfoEl.innerHTML = `🔗 現在の動画URL:<br><span style="color:var(--primary-blue-light);">${editingLesson.video_url || '—'}</span>`;
+            if (editingLesson.content_type === 'image') {
+                videoInfoEl.innerHTML = `🖼️ 現在の画像: <span style="color:var(--primary-blue-light);">${escHtml(editingLesson.image_filename || '—')}</span>`;
+            } else if (editingLesson.content_type === 'link') {
+                videoInfoEl.innerHTML = `🔗 現在の外部リンク:<br><span style="color:var(--primary-blue-light);">${escHtml(editingLesson.external_link_url || '—')}</span>`;
+            } else if (editingLesson.video_filename === 'external') {
+                videoInfoEl.innerHTML = `🎬 現在の動画URL:<br><span style="color:var(--primary-blue-light);">${escHtml(editingLesson.video_url || '—')}</span>`;
             } else if (editingLesson.video_filename) {
-                videoInfoEl.innerHTML = `📁 現在のファイル: <span style="color:var(--primary-blue-light);">${editingLesson.video_filename}</span>`;
+                videoInfoEl.innerHTML = `🎬 現在の動画ファイル: <span style="color:var(--primary-blue-light);">${escHtml(editingLesson.video_filename)}</span>`;
             } else {
-                videoInfoEl.innerHTML = `<span style="color:var(--gray-text);">動画未設定</span>`;
+                videoInfoEl.innerHTML = `<span style="color:var(--gray-text);">教材未設定</span>`;
             }
 
             // 動画差し替えラジオをリセット
             document.getElementById('edit-type-keep').checked = true;
             document.getElementById('edit-video-file-input').style.display = 'none';
             document.getElementById('edit-video-url-input').style.display  = 'none';
+            document.getElementById('edit-image-file-input').style.display = 'none';
+            document.getElementById('edit-external-link-input').style.display = 'none';
             document.getElementById('edit-video-file').value = '';
+            document.getElementById('edit-image-file').value = '';
             document.getElementById('edit-video-url').value  = editingLesson.video_url || '';
+            document.getElementById('edit-external-link').value = editingLesson.external_link_url || '';
 
             // プログレスリセット
             document.getElementById('edit-upload-progress').style.display = 'none';
@@ -809,7 +911,7 @@
             const title = document.getElementById('edit-title').value.trim();
             if (!title) { showAlert('レッスン名を入力してください', 'error'); return; }
 
-            const videoType = document.querySelector('input[name="edit-video-type"]:checked').value;
+            const contentMode = document.querySelector('input[name="edit-content-mode"]:checked').value;
             const formData  = new FormData();
 
             formData.append('title',       title);
@@ -817,23 +919,33 @@
             formData.append('orderIndex',  document.getElementById('edit-order').value);
             formData.append('courseId',    document.getElementById('edit-course').value);
             formData.append('duration',    editingLesson.duration || 0);
+            formData.append('contentMode', contentMode);
 
-            if (videoType === 'file') {
+            if (contentMode === 'video-file') {
                 const file = document.getElementById('edit-video-file').files[0];
                 if (!file) { showAlert('差し替えるファイルを選択してください', 'error'); return; }
                 if (!validateVideoFileSize(file)) return;
                 formData.append('video', file);
-            } else if (videoType === 'url') {
+            } else if (contentMode === 'video-url') {
                 const url = document.getElementById('edit-video-url').value.trim();
-                if (!url) { showAlert('URLを入力してください', 'error'); return; }
+                if (!url) { showAlert('動画URLを入力してください', 'error'); return; }
                 formData.append('externalVideoUrl', url);
+            } else if (contentMode === 'image') {
+                const file = document.getElementById('edit-image-file').files[0];
+                if (!file) { showAlert('差し替える画像を選択してください', 'error'); return; }
+                if (!validateImageFileSize(file)) return;
+                formData.append('image', file);
+            } else if (contentMode === 'link') {
+                const url = document.getElementById('edit-external-link').value.trim();
+                if (!url) { showAlert('外部リンクURLを入力してください', 'error'); return; }
+                formData.append('externalLinkUrl', url);
             }
-            // videoType === 'keep' の場合はファイル/URL何も送らない（サーバー側で現在値を維持）
+            // contentMode === 'keep' の場合は現在の教材を維持
 
             const saveBtn = document.getElementById('edit-save-btn');
             saveBtn.disabled = true;
             saveBtn.textContent = '保存中...';
-            if (videoType === 'file') {
+            if (contentMode === 'video-file' || contentMode === 'image') {
                 document.getElementById('edit-upload-progress').style.display = 'block';
             }
 
@@ -855,6 +967,34 @@
 
         // ===== コース作成 =====
         document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('portal-links-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const saveButton = document.getElementById('portal-links-save-btn');
+                saveButton.disabled = true;
+                saveButton.textContent = '保存中...';
+                try {
+                    const res = await fetch(`${API_URL}/admin/portal-links`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            bucchakeVtuberUrl: document.getElementById('bucchake-vtuber-url').value.trim(),
+                            classLessonUrl: document.getElementById('class-lesson-url').value.trim()
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'URLの保存に失敗しました');
+                    showAlert('ダッシュボードのURLを保存しました', 'success');
+                } catch (error) {
+                    showAlert(error.message, 'error');
+                } finally {
+                    saveButton.disabled = false;
+                    saveButton.textContent = '💾 URLを保存';
+                }
+            });
+
             document.getElementById('create-course-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const token = localStorage.getItem('token');
@@ -869,7 +1009,8 @@
                             title:       document.getElementById('course-title').value,
                             description: document.getElementById('course-description').value,
                             orderIndex:  document.getElementById('course-order').value,
-                            sequentialUnlock: document.getElementById('course-sequential-unlock').checked
+                            sequentialUnlock: document.getElementById('course-sequential-unlock').checked,
+                            isSpecialContent: document.getElementById('course-special-content').checked
                         })
                     });
                     if (!res.ok) throw new Error('コース作成に失敗しました');
@@ -882,13 +1023,18 @@
             // ===== レッスン作成 =====
             document.getElementById('create-lesson-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const isFileMode = document.getElementById('video-type-file').checked;
+                const contentMode = document.querySelector('input[name="lesson-content-mode"]:checked').value;
                 const videoFile  = document.getElementById('lesson-video').files[0];
                 const videoUrl   = document.getElementById('lesson-video-url').value.trim();
+                const imageFile = document.getElementById('lesson-image').files[0];
+                const externalLinkUrl = document.getElementById('lesson-external-link').value.trim();
 
-                if (isFileMode && !videoFile) { showAlert('動画ファイルを選択してください', 'error'); return; }
-                if (isFileMode && !validateVideoFileSize(videoFile)) return;
-                if (!isFileMode && !videoUrl) { showAlert('動画URLを入力してください', 'error'); return; }
+                if (contentMode === 'video-file' && !videoFile) { showAlert('動画ファイルを選択してください', 'error'); return; }
+                if (contentMode === 'video-file' && !validateVideoFileSize(videoFile)) return;
+                if (contentMode === 'video-url' && !videoUrl) { showAlert('動画URLを入力してください', 'error'); return; }
+                if (contentMode === 'image' && !imageFile) { showAlert('画像ファイルを選択してください', 'error'); return; }
+                if (contentMode === 'image' && !validateImageFileSize(imageFile)) return;
+                if (contentMode === 'link' && !externalLinkUrl) { showAlert('外部リンクURLを入力してください', 'error'); return; }
 
                 const formData = new FormData();
                 formData.append('courseId',    document.getElementById('lesson-course').value);
@@ -896,8 +1042,11 @@
                 formData.append('description', document.getElementById('lesson-description').value);
                 formData.append('orderIndex',  document.getElementById('lesson-order').value);
                 formData.append('duration',    0);
-                if (isFileMode && videoFile)  formData.append('video', videoFile);
-                else if (!isFileMode && videoUrl) formData.append('externalVideoUrl', videoUrl);
+                formData.append('contentMode', contentMode);
+                if (contentMode === 'video-file') formData.append('video', videoFile);
+                else if (contentMode === 'video-url') formData.append('externalVideoUrl', videoUrl);
+                else if (contentMode === 'image') formData.append('image', imageFile);
+                else if (contentMode === 'link') formData.append('externalLinkUrl', externalLinkUrl);
 
                 try {
                     const createButton = document.getElementById('create-lesson-btn');
@@ -910,8 +1059,7 @@
                     });
                     showAlert('レッスンを作成しました', 'success');
                     document.getElementById('create-lesson-form').reset();
-                    document.getElementById('video-file-input').style.display = 'block';
-                    document.getElementById('video-url-input').style.display  = 'none';
+                    toggleContentInput();
                     document.getElementById('upload-progress').style.display  = 'none';
                     document.getElementById('upload-progress-bar').style.width = '0%';
                     document.getElementById('upload-progress-text').textContent = '0%';
@@ -1054,6 +1202,7 @@
         function buildNav(elementId, role, activePath) {
             const links = [
                 { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
+                { href:'/special-contents',         label:'✨ スペシャルコンテンツ',roles:['管理者','クルー','セールス','生徒'] },
                 { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
                 { href:'/admin/characters',         label:'🎭 キャラクター管理',     roles:['管理者','セールス'] },
                 { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },

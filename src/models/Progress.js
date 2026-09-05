@@ -76,6 +76,7 @@ class Progress {
       JOIN lessons l ON up.lesson_id = l.id
       JOIN courses c ON l.course_id = c.id
       WHERE up.user_id = $1
+        AND COALESCE(c.is_special_content, false) = false
       ORDER BY c.order_index, l.order_index
     `, [userId]);
     return result.rows;
@@ -91,7 +92,9 @@ class Progress {
           NULLIF(COUNT(DISTINCT l.id), 0) * 100, 2
         ) as completion_percentage
       FROM lessons l
+      JOIN courses c ON c.id = l.course_id
       LEFT JOIN user_progress up ON l.id = up.lesson_id AND up.user_id = $1
+      WHERE COALESCE(c.is_special_content, false) = false
     `, [userId]);
     return result.rows[0];
   }
@@ -111,6 +114,7 @@ class Progress {
       FROM courses c
       JOIN lessons l ON l.course_id = c.id
       LEFT JOIN user_progress up ON up.lesson_id = l.id AND up.user_id = $1
+      WHERE COALESCE(c.is_special_content, false) = false
       GROUP BY c.id, c.title, c.order_index
       ORDER BY c.order_index, c.id
     `, [userId]);
@@ -144,6 +148,7 @@ class Progress {
       LEFT JOIN user_progress up ON up.lesson_id = l.id
       LEFT JOIN users u ON u.id = up.user_id
       WHERE c.title = '自由科目'
+        AND COALESCE(l.content_type, 'video') = 'video'
       GROUP BY l.id, l.title, l.order_index
       ORDER BY l.order_index, l.id
     `);
@@ -155,14 +160,22 @@ class Progress {
     const safeOffset = Math.max(0, Number(offset) || 0);
     const result = await db.query(`
       WITH lesson_total AS (
-        SELECT COUNT(*)::integer AS total_lessons FROM lessons
+        SELECT COUNT(*)::integer AS total_lessons
+        FROM lessons l
+        JOIN courses c ON c.id = l.course_id
+        WHERE COALESCE(c.is_special_content, false) = false
       ), progress_by_user AS (
         SELECT
-          user_id,
-          COUNT(*) FILTER (WHERE completed = true)::integer AS completed_lessons,
-          MAX(last_watched_at) AS last_activity
-        FROM user_progress
-        GROUP BY user_id
+          up.user_id,
+          COUNT(*) FILTER (
+            WHERE up.completed = true
+              AND COALESCE(c.is_special_content, false) = false
+          )::integer AS completed_lessons,
+          MAX(up.last_watched_at) AS last_activity
+        FROM user_progress up
+        JOIN lessons l ON l.id = up.lesson_id
+        JOIN courses c ON c.id = l.course_id
+        GROUP BY up.user_id
       ), student_progress AS (
         SELECT
           u.id,
@@ -206,13 +219,21 @@ class Progress {
     const result = await db.query(`
       WITH progress_by_user AS (
         SELECT
-          user_id,
-          COUNT(*) FILTER (WHERE completed = true)::integer AS completed_lessons,
-          MAX(last_watched_at) AS last_activity
-        FROM user_progress
-        GROUP BY user_id
+          up.user_id,
+          COUNT(*) FILTER (
+            WHERE up.completed = true
+              AND COALESCE(c.is_special_content, false) = false
+          )::integer AS completed_lessons,
+          MAX(up.last_watched_at) AS last_activity
+        FROM user_progress up
+        JOIN lessons l ON l.id = up.lesson_id
+        JOIN courses c ON c.id = l.course_id
+        GROUP BY up.user_id
       ), lesson_total AS (
-        SELECT COUNT(*)::integer AS total_lessons FROM lessons
+        SELECT COUNT(*)::integer AS total_lessons
+        FROM lessons l
+        JOIN courses c ON c.id = l.course_id
+        WHERE COALESCE(c.is_special_content, false) = false
       )
       SELECT
         COUNT(*)::integer AS total_students,

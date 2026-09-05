@@ -5,14 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>レッスン - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .resource-image-card { text-align:center; padding:24px; }
+        .resource-image-button { display:block; width:100%; border:0; padding:0; background:transparent; cursor:zoom-in; }
+        .resource-image { display:block; width:100%; max-height:72vh; object-fit:contain; border-radius:14px; background:#fff; }
+        .external-resource { text-align:center; padding:50px 24px; border:1px solid rgba(52,200,232,.35); border-radius:18px; background:linear-gradient(135deg,rgba(74,144,217,.18),rgba(155,89,182,.14)); }
+        .external-resource-icon { font-size:62px; margin-bottom:16px; }
+        .image-lightbox { display:none; position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,.92); padding:24px; align-items:center; justify-content:center; }
+        .image-lightbox.open { display:flex; }
+        .image-lightbox img { max-width:96vw; max-height:94vh; object-fit:contain; background:#fff; border-radius:12px; }
+        .image-lightbox-close { position:fixed; top:18px; right:22px; z-index:1; border:0; background:rgba(7,16,24,.75); color:#fff; border-radius:50%; width:46px; height:46px; font-size:26px; cursor:pointer; }
+    </style>
 </head>
 <body>
+    <div id="image-lightbox" class="image-lightbox" onclick="closeImageLightbox(event)" aria-hidden="true">
+        <button class="image-lightbox-close" onclick="closeImageLightbox(event, true)" aria-label="拡大画像を閉じる">×</button>
+        <img id="lightbox-image" alt="教材画像の拡大表示">
+    </div>
     <div class="header">
         <div class="header-content">
             <h1 class="logo">✨ WannaV ポータル</h1>
             <div class="user-info">
                 <span class="user-name" id="user-name"></span>
-                <a href="/dashboard" class="btn btn-secondary">📊 ダッシュボードへ</a>
+                <a id="lesson-back-link" href="/dashboard" class="btn btn-secondary">📊 ダッシュボードへ</a>
             </div>
         </div>
     </div>
@@ -48,10 +63,10 @@
         <!-- ===== iframe用: 手動完了ボタン ===== -->
         <div id="manual-complete-section" style="display:none;">
             <div class="card" style="text-align:center; padding: 28px;">
-                <p style="color:var(--gray-text); margin-bottom:20px; font-size:15px;">
+                <p id="manual-complete-message" style="color:var(--gray-text); margin-bottom:20px; font-size:15px;">
                     動画の視聴が終わったら「視聴完了」ボタンを押してください
                 </p>
-                <button onclick="manualComplete()" class="btn btn-primary" style="font-size:17px; padding: 16px 50px;">
+                <button id="manual-complete-button" onclick="manualComplete()" class="btn btn-primary" style="font-size:17px; padding: 16px 50px;">
                     ✅ 視聴完了にする
                 </button>
             </div>
@@ -77,7 +92,7 @@
             <p style="color: var(--gray-text); margin-bottom: 40px;">
                 この調子でどんどん成長していきましょう！
             </p>
-            <a href="/dashboard" class="btn btn-primary" style="font-size: 20px; padding: 20px 50px;">
+            <a id="completion-back-link" href="/dashboard" class="btn btn-primary" style="font-size: 20px; padding: 20px 50px;">
                 📚 次のレッスンへ
             </a>
         </div>
@@ -147,6 +162,13 @@
             document.getElementById('lesson-description').textContent =
                 currentLesson.description || '';
 
+            const returnPath = currentLesson.is_special_content ? '/special-contents' : '/dashboard';
+            const returnLabel = currentLesson.is_special_content ? '✨ スペシャルコンテンツへ' : '📊 ダッシュボードへ';
+            document.getElementById('lesson-back-link').href = returnPath;
+            document.getElementById('lesson-back-link').textContent = returnLabel;
+            document.getElementById('completion-back-link').href = returnPath;
+            document.getElementById('completion-back-link').textContent = currentLesson.is_special_content ? '✨ 一覧へ戻る' : '📚 次のレッスンへ';
+
             const videoUrl = currentLesson.video_url;
             const container = document.getElementById('video-container');
 
@@ -156,7 +178,20 @@
                 // 動画は引き続き視聴できるよう描画する（以下で実施）
             }
 
-            if (isYouTubeUrl(videoUrl)) {
+            if (currentLesson.content_type === 'image') {
+                container.className = 'card resource-image-card';
+                container.innerHTML = `<button class="resource-image-button" onclick="openImageLightbox()" aria-label="教材画像を拡大表示">
+                    <img class="resource-image" src="${escHtml(currentLesson.image_url)}" alt="${escHtml(currentLesson.title)}">
+                </button><p style="color:var(--gray-text);font-size:13px;margin-top:14px;">画像をクリックすると拡大表示します</p>`;
+                showManualCompleteControls('画像の確認が終わったら「確認完了」ボタンを押してください', '✅ 確認完了にする');
+            } else if (currentLesson.content_type === 'link') {
+                container.className = 'card external-resource';
+                container.innerHTML = `<div class="external-resource-icon">🔗</div>
+                    <h2 style="margin-bottom:10px;">外部コンテンツ</h2>
+                    <p style="color:var(--gray-text);margin-bottom:24px;">ボタンを押すと新しいタブで外部ページを開きます。</p>
+                    <a class="btn btn-primary" href="${escHtml(currentLesson.external_link_url)}" target="_blank" rel="noopener noreferrer" style="font-size:17px;padding:16px 32px;">外部ページを開く ↗</a>`;
+                showManualCompleteControls('外部ページの確認が終わったら「確認完了」ボタンを押してください', '✅ 確認完了にする');
+            } else if (isYouTubeUrl(videoUrl)) {
                 buildIframe(container, getYouTubeEmbedUrl(videoUrl),
                     'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
                 showIframeControls();
@@ -196,11 +231,17 @@
 
         // ===== iframe用コントロール =====
         function showIframeControls() {
+            showManualCompleteControls('動画の視聴が終わったら「視聴完了」ボタンを押してください', '✅ 視聴完了にする');
+        }
+
+        function showManualCompleteControls(message, buttonLabel) {
             // 既に完了済みなら手動ボタンは不要
             if (currentLesson.completed) {
                 document.getElementById('manual-complete-section').style.display = 'none';
                 return;
             }
+            document.getElementById('manual-complete-message').textContent = message;
+            document.getElementById('manual-complete-button').textContent = buttonLabel;
             document.getElementById('manual-complete-section').style.display = 'block';
             // クイズがある場合もボタン表示（視聴後に手動でクイズへ）
             if (questions.length > 0) {
@@ -216,6 +257,21 @@
                 };
                 document.getElementById('manual-complete-section').after(btn);
             }
+        }
+
+        function openImageLightbox() {
+            const lightbox = document.getElementById('image-lightbox');
+            document.getElementById('lightbox-image').src = currentLesson.image_url;
+            lightbox.classList.add('open');
+            lightbox.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeImageLightbox(event, force = false) {
+            if (!force && event.target.id !== 'image-lightbox') return;
+            const lightbox = document.getElementById('image-lightbox');
+            lightbox.classList.remove('open');
+            lightbox.setAttribute('aria-hidden', 'true');
+            document.getElementById('lightbox-image').removeAttribute('src');
         }
 
         // ===== MP4プレーヤー初期化 =====
@@ -400,6 +456,11 @@
             const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
             if (match2) return `https://drive.google.com/file/d/${match2[1]}/preview`;
             return url;
+        }
+
+        function escHtml(value) {
+            return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         // ===== クイズ =====

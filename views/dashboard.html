@@ -41,6 +41,15 @@
         .course-access-rule { padding:3px 9px; border-radius:999px; color:var(--gray-text); background:rgba(74,144,217,.12); font-size:11px; font-weight:700; white-space:nowrap; }
         .course-progress-bar { height:18px; margin-bottom:20px; }
         .course-progress-bar .progress-text { font-size:11px; }
+        .portal-links-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-bottom:24px; }
+        .portal-link-card { position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:20px; padding:24px; border:1px solid rgba(52,200,232,.45); border-radius:18px; background:linear-gradient(135deg,rgba(74,144,217,.24),rgba(155,89,182,.18)); box-shadow:0 8px 26px rgba(0,0,0,.18); }
+        .portal-link-card::after { content:''; position:absolute; width:130px; height:130px; right:-55px; top:-55px; border-radius:50%; background:rgba(52,200,232,.12); }
+        .portal-link-copy { min-width:0; position:relative; z-index:1; }
+        .portal-link-title { color:var(--light-text); font-size:20px; margin-bottom:7px; }
+        .portal-link-schedule { color:var(--gray-text); font-size:13px; }
+        .portal-link-next { color:var(--accent-cyan); font-size:15px; font-weight:700; margin-top:7px; }
+        .portal-link-action { flex-shrink:0; position:relative; z-index:1; }
+        .portal-link-action.disabled { opacity:.55; pointer-events:none; }
         @media (max-width:600px) {
             .character-modal { padding:8px; }
             .character-modal-box { padding:16px; max-height:96vh; }
@@ -51,6 +60,8 @@
             .character-preview-actions { display:grid; grid-template-columns:1fr 1fr; }
             .course-section-header { align-items:flex-start; flex-direction:column; gap:6px; }
             .course-section-status { justify-content:flex-start; }
+            .portal-links-grid { grid-template-columns:1fr; }
+            .portal-link-card { align-items:flex-start; flex-direction:column; }
         }
     </style>
 </head>
@@ -107,6 +118,12 @@
     <div class="container">
         <!-- 管理者メニュー（権限に応じて動的生成） -->
         <div id="admin-menu" class="nav" style="display: none;"></div>
+
+        <!-- 定期イベントへの外部リンク -->
+        <div id="portal-links" class="portal-links-grid" aria-label="定期イベント">
+            <div class="portal-link-card"><div class="loading" style="margin:auto;"></div></div>
+            <div class="portal-link-card"><div class="loading" style="margin:auto;"></div></div>
+        </div>
 
         <!-- 生徒キャラクター選択 -->
         <div id="student-character-panel" class="card" style="display:none">
@@ -166,10 +183,7 @@
                 document.getElementById('user-name').textContent = currentUser.name;
                 document.getElementById('user-role').textContent = currentUser.role;
 
-                // 管理者メニュー表示
-                if (currentUser.role === '管理者' || currentUser.role === 'クルー' || currentUser.role === 'セールス') {
-                    buildNav('admin-menu', currentUser.role, '/dashboard');
-                }
+                buildNav('admin-menu', currentUser.role, '/dashboard');
                 if (currentUser.role === '生徒') loadCharacterStatus();
 
                 loadDashboard();
@@ -329,11 +343,14 @@
             const token = localStorage.getItem('token');
 
             try {
-                const [progressRes, lessonsRes] = await Promise.all([
+                const [progressRes, lessonsRes, portalLinksRes] = await Promise.all([
                     fetch(`${API_URL}/progress`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     }),
                     fetch(`${API_URL}/lessons`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_URL}/portal/links`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     })
                 ]);
@@ -342,12 +359,15 @@
                 const progressData = await progressRes.json();
                 const stats = progressData.stats;
                 const lessons = await lessonsRes.json();
+                const portalLinks = portalLinksRes.ok ? await portalLinksRes.json() : null;
 
                 document.getElementById('completion-rate').textContent = 
                     Math.round(stats.completion_percentage || 0) + '%';
                 document.getElementById('completed-lessons').textContent = stats.completed_lessons || 0;
                 document.getElementById('total-lessons').textContent = stats.total_lessons || 0;
 
+                if (portalLinks) renderPortalLinks(portalLinks);
+                else document.getElementById('portal-links').innerHTML = '<div class="portal-link-card" style="grid-column:1/-1;color:var(--gray-text);">定期イベント情報を取得できませんでした</div>';
                 renderLessons(lessons, currentUser.role, progressData.courseStats || []);
             } catch (error) {
                 console.error('データ読み込みエラー:', error);
@@ -356,10 +376,29 @@
             }
         }
 
+        function renderPortalLinks(data) {
+            const entries = [data.bucchakeVtuber, data.classLesson].filter(Boolean);
+            document.getElementById('portal-links').innerHTML = entries.map(item => {
+                const nextDate = new Intl.DateTimeFormat('ja-JP', {
+                    timeZone: 'Asia/Tokyo', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
+                }).format(new Date(`${item.nextDate}T00:00:00+09:00`));
+                const action = item.url
+                    ? `<a class="btn btn-primary portal-link-action" href="${escHtml(item.url)}" target="_blank" rel="noopener noreferrer">ページを開く ↗</a>`
+                    : '<span class="btn btn-secondary portal-link-action disabled">URL未設定</span>';
+                return `<article class="portal-link-card">
+                    <div class="portal-link-copy">
+                        <h2 class="portal-link-title">${escHtml(item.title)}</h2>
+                        <p class="portal-link-schedule">${escHtml(item.schedule)}</p>
+                        <p class="portal-link-next">次回：${escHtml(nextDate)} 22:00〜</p>
+                    </div>${action}
+                </article>`;
+            }).join('');
+        }
+
         // レッスン描画
         function renderLessons(lessons, userRole, courseStats) {
             const container = document.getElementById('lessons-container');
-            const isAdmin = userRole === '管理者';
+            const isStudent = userRole === '生徒';
             
             if (lessons.length === 0) {
                 container.innerHTML = '<p style="color: var(--gray-text);">レッスンがまだありません</p>';
@@ -398,7 +437,7 @@
                         <div class="course-section-header">
                             <h3 class="course-section-title">📘 ${escHtml(group.title)}</h3>
                             <div class="course-section-status">
-                                <span class="course-access-rule">${group.sequentialUnlock ? '🔒 順次解禁' : '🔓 全動画公開'}</span>
+                                <span class="course-access-rule">${group.sequentialUnlock ? '🔒 順次解禁' : '🔓 全レッスン公開'}</span>
                                 <span class="course-progress-meta">${completedLessons} / ${totalLessons} レッスン完了</span>
                             </div>
                         </div>
@@ -412,11 +451,11 @@
                     const isCompleted = lesson.completed;
                     // アンロック判定はコース内の並びごとに行う。
                     const previousLesson = group.lessons[index - 1];
-                    const isLocked = !isAdmin && group.sequentialUnlock && index > 0 && !previousLesson.completed;
-                    const canAccess = isAdmin || !group.sequentialUnlock || index === 0 || previousLesson.completed;
+                    const isLocked = isStudent && group.sequentialUnlock && index > 0 && !previousLesson.completed;
+                    const canAccess = !isStudent || !group.sequentialUnlock || index === 0 || previousLesson.completed;
 
                     // サムネイル生成
-                    const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url);
+                    const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url, lesson.content_type);
 
                     // カテゴリタグの色
                     const tagColor = getCourseTagColor(lesson.course_title);
@@ -425,7 +464,7 @@
                         (isCompleted ? ' completed' : '') +
                         (isLocked   ? ' locked'    : '');
 
-                    const overlayIcon = isCompleted ? '✅' : isLocked ? '🔒' : '▶';
+                    const overlayIcon = isCompleted ? '✅' : isLocked ? '🔒' : lesson.content_type === 'link' ? '↗' : lesson.content_type === 'image' ? '🔍' : '▶';
                     const overlayClass = isCompleted ? 'thumb-overlay completed' : isLocked ? 'thumb-overlay locked' : 'thumb-overlay play';
 
                     const linkStart = canAccess ? `<a href="/lesson/${Number(lesson.id)}" class="lesson-card-link">` : `<div class="lesson-card-link no-pointer">`;
@@ -491,13 +530,13 @@
         }
 
         // サムネイル取得ロジック
-        function getThumbnail(videoUrl, thumbnailUrl) {
+        function getThumbnail(videoUrl, thumbnailUrl, contentType = 'video') {
             // 1. DBに保存されたサムネイル（MP4アップロード時に自動生成）
             if (thumbnailUrl) {
                 return { type: 'img', src: thumbnailUrl };
             }
 
-            if (!videoUrl) return { type: 'placeholder', emoji: '🎬' };
+            if (!videoUrl) return { type: 'placeholder', emoji: contentType === 'link' ? '🔗' : contentType === 'image' ? '🖼️' : '🎬' };
 
             // 2. YouTube: 動画IDからサムネイルURL自動生成
             const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -553,7 +592,8 @@
         function buildNav(elementId, role, activePath) {
             const isAdmin = role === '管理者';
             const links = [
-                { href: '/dashboard',                label: '📊 ダッシュボード',          roles: ['管理者', 'クルー', 'セールス'] },
+                { href: '/dashboard',                label: '📊 ダッシュボード',          roles: ['管理者', 'クルー', 'セールス', '生徒'] },
+                { href: '/special-contents',         label: '✨ スペシャルコンテンツ',    roles: ['管理者', 'クルー', 'セールス', '生徒'] },
                 { href: '/admin/student-management', label: '👥 生徒管理',                roles: ['管理者', 'クルー', 'セールス'] },
                 { href: '/admin/characters',         label: '🎭 キャラクター管理',        roles: ['管理者', 'セールス'] },
                 { href: '/admin/handovers',          label: '📋 引き継ぎ',                roles: ['管理者', 'クルー', 'セールス'] },

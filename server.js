@@ -41,6 +41,7 @@ app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/notion', require('./src/routes/notion'));
 app.use('/api/students', require('./src/routes/students'));
 app.use('/api/characters', require('./src/routes/characters'));
+app.use('/api/portal', require('./src/routes/portal'));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
@@ -53,6 +54,10 @@ app.get('/dashboard', (req, res) => {
 
 app.get('/lesson/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'lesson.html'));
+});
+
+app.get('/special-contents', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'special-contents.html'));
 });
 
 app.get('/admin/accounts', (req, res) => {
