@@ -9,6 +9,10 @@
         .resource-image-card { text-align:center; padding:24px; }
         .resource-image-button { display:block; width:100%; border:0; padding:0; background:transparent; cursor:zoom-in; }
         .resource-image { display:block; width:100%; max-height:72vh; object-fit:contain; border-radius:14px; background:#fff; }
+        .resource-copy { text-align:left; padding:34px 4px 6px; }
+        .resource-copy h1 { color:var(--light-text); margin-bottom:18px; }
+        .resource-description { color:var(--light-text); line-height:1.85; white-space:pre-wrap; margin-bottom:22px; }
+        .resource-external-link { display:inline-block; color:var(--primary-blue-light); font-size:16px; text-decoration:underline; word-break:break-all; }
         .external-resource { text-align:center; padding:50px 24px; border:1px solid rgba(52,200,232,.35); border-radius:18px; background:linear-gradient(135deg,rgba(74,144,217,.18),rgba(155,89,182,.14)); }
         .external-resource-icon { font-size:62px; margin-bottom:16px; }
         .image-lightbox { display:none; position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,.92); padding:24px; align-items:center; justify-content:center; }
@@ -36,7 +40,7 @@
         <div id="alert-container"></div>
 
         <!-- レッスン情報 -->
-        <div class="card">
+        <div class="card" id="lesson-info-card">
             <h1 id="lesson-title" style="color: var(--primary-blue-light); margin-bottom: 10px;">Loading...</h1>
             <p id="lesson-description" style="color: var(--gray-text);"></p>
         </div>
@@ -179,10 +183,19 @@
             }
 
             if (currentLesson.content_type === 'image') {
+                document.getElementById('lesson-info-card').style.display = 'none';
+                const externalLinkHtml = currentLesson.external_link_url
+                    ? `<a class="resource-external-link" href="${escHtml(currentLesson.external_link_url)}" target="_blank" rel="noopener noreferrer">${escHtml(currentLesson.external_link_url)} ↗</a>`
+                    : '';
                 container.className = 'card resource-image-card';
                 container.innerHTML = `<button class="resource-image-button" onclick="openImageLightbox()" aria-label="教材画像を拡大表示">
                     <img class="resource-image" src="${escHtml(currentLesson.image_url)}" alt="${escHtml(currentLesson.title)}">
-                </button><p style="color:var(--gray-text);font-size:13px;margin-top:14px;">画像をクリックすると拡大表示します</p>`;
+                </button><p style="color:var(--gray-text);font-size:13px;margin-top:14px;">画像をクリックすると拡大表示します</p>
+                <div class="resource-copy">
+                    <h1>${escHtml(currentLesson.title)}</h1>
+                    <p class="resource-description">${escHtml(currentLesson.description || '')}</p>
+                    ${externalLinkHtml}
+                </div>`;
                 showManualCompleteControls('画像の確認が終わったら「確認完了」ボタンを押してください', '✅ 確認完了にする');
             } else if (currentLesson.content_type === 'link') {
                 container.className = 'card external-resource';

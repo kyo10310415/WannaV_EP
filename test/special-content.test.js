@@ -73,6 +73,22 @@ test('画像・外部リンクのみのレッスンを作成・表示できる',
   assert.match(lessonPage, /target="_blank" rel="noopener noreferrer"/);
 });
 
+test('画像教材に説明と任意の外部リンクを組み合わせて登録・編集できる', () => {
+  const adminRoutes = read('src/routes/admin.js');
+  const adminPage = read('views/admin-contents.html');
+  const lessonPage = read('views/lesson.html');
+
+  assert.match(adminPage, /画像＋説明・リンク/);
+  assert.match(adminPage, /外部リンクURL（任意）/);
+  assert.match(adminPage, /contentMode === 'image'[\s\S]*formData\.append\('externalLinkUrl'/);
+  assert.match(adminRoutes, /mode === 'image'[\s\S]*validOptionalExternalUrl\(externalLinkUrl\)/);
+  assert.match(adminRoutes, /lesson\.content_type === 'image' && lesson\.image_url/);
+  assert.match(lessonPage, /class="resource-copy"/);
+  assert.match(lessonPage, /currentLesson\.description/);
+  assert.match(lessonPage, /currentLesson\.external_link_url/);
+  assert.match(lessonPage, /class="resource-external-link"[\s\S]*target="_blank"/);
+});
+
 test('管理画面で外部リンクを編集しダッシュボードに予定と直近日を表示する', () => {
   const adminRoutes = read('src/routes/admin.js');
   const adminPage = read('views/admin-contents.html');

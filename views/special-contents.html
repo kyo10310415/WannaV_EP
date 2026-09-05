@@ -100,7 +100,9 @@
                         const previous = group.lessons[index - 1];
                         const locked = isStudent && group.sequential && index > 0 && !previous.completed;
                         const thumbnail = getThumbnail(lesson);
-                        const typeLabel = lesson.content_type === 'image' ? '🖼️ 画像' : lesson.content_type === 'link' ? '🔗 外部リンク' : '🎬 動画';
+                        const typeLabel = lesson.content_type === 'image'
+                            ? (lesson.external_link_url ? '🖼️ 画像＋リンク' : '🖼️ 画像')
+                            : lesson.content_type === 'link' ? '🔗 外部リンク' : '🎬 動画';
                         const wrapperStart = locked ? '<div class="lesson-card-link no-pointer">' : `<a href="/lesson/${Number(lesson.id)}" class="lesson-card-link">`;
                         const wrapperEnd = locked ? '</div>' : '</a>';
                         return `${wrapperStart}<article class="lesson-card${lesson.completed ? ' completed' : ''}${locked ? ' locked' : ''}">
