@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../src/config/database');
 const Quiz = require('../src/models/Quiz');
+const Lesson = require('../src/models/Lesson');
 
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -80,4 +81,33 @@ test('DBの正解番号を管理画面用の項目名へ変換する', async () 
   } finally {
     db.query = originalQuery;
   }
+});
+
+test('レッスン一覧は小テスト数を一括集計して返す', async () => {
+  const originalQuery = db.query;
+  let capturedSql = '';
+  db.query = async (sql) => {
+    capturedSql = sql;
+    return { rows: [] };
+  };
+  try {
+    await Lesson.getAll();
+    assert.match(capturedSql, /COUNT\(\*\)::integer AS quiz_count/);
+    assert.match(capturedSql, /FROM quiz_questions/);
+    assert.match(capturedSql, /COALESCE\(q\.quiz_count, 0\)::integer AS quiz_count/);
+  } finally {
+    db.query = originalQuery;
+  }
+});
+
+test('レッスン一覧から設定状態と小テスト内容を確認できる', () => {
+  const page = read('views/admin-contents.html');
+  assert.match(page, /<th[^>]*>小テスト<\/th>/);
+  assert.match(page, /設定済み \$\{quizCount\}問/);
+  assert.match(page, /class="quiz-status-badge none">未設定/);
+  assert.match(page, /onclick="openQuizPreview/);
+  assert.match(page, /id="quiz-preview-modal"/);
+  assert.match(page, /function renderQuizPreview\(items\)/);
+  assert.match(page, />正解<\/strong>/);
+  assert.match(page, /この小テストを編集/);
 });

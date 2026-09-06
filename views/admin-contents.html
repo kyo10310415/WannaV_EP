@@ -103,6 +103,17 @@
         .course-setting-badge.sequential { color:#F7C55B; background:rgba(243,156,18,.18); }
         .course-setting-badge.open { color:#6AEBB7; background:rgba(46,204,113,.16); }
         .course-setting-badge.special { color:#f5b8ff; background:rgba(180,80,220,.18); }
+        .quiz-status-badge { display:inline-flex; align-items:center; justify-content:center; border-radius:999px; padding:7px 11px; border:1px solid transparent; font-size:12px; font-weight:700; white-space:nowrap; }
+        button.quiz-status-badge { cursor:pointer; font-family:inherit; }
+        .quiz-status-badge.configured { color:#6AEBB7; background:rgba(46,204,113,.14); border-color:rgba(46,204,113,.36); }
+        .quiz-status-badge.configured:hover { background:rgba(46,204,113,.24); transform:translateY(-1px); }
+        .quiz-status-badge.none { color:var(--gray-text); background:rgba(128,146,164,.1); border-color:rgba(128,146,164,.2); }
+        .quiz-preview-list { display:grid; gap:16px; }
+        .quiz-preview-item { padding:18px; border:1px solid rgba(74,144,217,.24); border-radius:14px; background:rgba(7,16,24,.36); }
+        .quiz-preview-question { color:var(--primary-blue-light); font-size:16px; font-weight:700; line-height:1.6; margin-bottom:12px; }
+        .quiz-preview-options { display:grid; gap:8px; }
+        .quiz-preview-option { display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:9px; color:var(--gray-text); background:rgba(74,144,217,.07); }
+        .quiz-preview-option.correct { color:#6AEBB7; background:rgba(46,204,113,.13); border:1px solid rgba(46,204,113,.26); }
         .checkbox-setting { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:1px solid rgba(74,144,217,.3); border-radius:12px; background:rgba(7,16,24,.32); cursor:pointer; }
         .checkbox-setting input { width:auto; min-height:auto; margin-top:3px; }
         .checkbox-setting strong { display:block; margin-bottom:3px; }
@@ -342,6 +353,19 @@
         </div>
     </div>
 
+    <!-- ===== 小テスト確認モーダル ===== -->
+    <div class="modal-overlay" id="quiz-preview-modal">
+        <div class="modal-box" style="max-width:760px;">
+            <button class="modal-close" onclick="closeQuizPreviewModal()">✕</button>
+            <div class="modal-title" id="quiz-preview-title">📝 小テスト内容</div>
+            <div id="quiz-preview-content"><div class="loading" style="margin:40px auto;"></div></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="quiz-preview-edit-btn" onclick="openQuizEditorFromPreview()">✏️ この小テストを編集</button>
+                <button type="button" class="btn btn-secondary" onclick="closeQuizPreviewModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== レッスン編集モーダル ===== -->
     <div class="modal-overlay" id="edit-modal">
         <div class="modal-box">
@@ -450,6 +474,7 @@
         let quizQuestions = [];
         let editingLesson = null; // 現在編集中のレッスンオブジェクト
         let editingCourse = null;
+        let previewQuizLessonId = null;
         let maxVideoUploadMb = 2048;
         let maxImageUploadMb = 20;
 
@@ -794,6 +819,7 @@
                             <th>タイトル</th>
                             <th>コース</th>
                             <th style="width:60px; text-align:center;">順序</th>
+                            <th style="width:120px; text-align:center;">小テスト</th>
                             <th style="width:220px;">操作</th>
                         </tr>
                     </thead>
@@ -808,6 +834,10 @@
                 const typeLabel = contentType === 'image'
                     ? (lesson.external_link_url ? '🖼️ 画像＋リンク' : '🖼️ 画像')
                     : contentType === 'link' ? '🔗 外部リンク' : '🎬 動画';
+                const quizCount = Number(lesson.quiz_count) || 0;
+                const quizStatus = quizCount > 0
+                    ? `<button type="button" class="quiz-status-badge configured" onclick="openQuizPreview(${Number(lesson.id)})" aria-label="${escHtml(lesson.title)}の小テスト内容を表示">✅ 設定済み ${quizCount}問</button>`
+                    : '<span class="quiz-status-badge none">未設定</span>';
 
                 // タイトル内のシングルクォートをエスケープ
                 const safeTitle = lesson.title.replace(/'/g, "\\'");
@@ -818,6 +848,7 @@
                         <td style="font-weight:600;">${escHtml(lesson.title)}<div style="font-size:11px;color:var(--gray-text);margin-top:4px;">${typeLabel}</div></td>
                         <td style="color:var(--gray-text);">${escHtml(lesson.course_title || 'なし')}</td>
                         <td style="text-align:center;">${lesson.order_index}</td>
+                        <td style="text-align:center;">${quizStatus}</td>
                         <td>
                             <div class="action-btns">
                                 <button onclick="openEditModal(${lesson.id})" class="btn btn-primary" style="padding:7px 16px; font-size:13px;">
@@ -836,6 +867,63 @@
             });
             html += '</tbody></table>';
             container.innerHTML = html;
+        }
+
+        async function openQuizPreview(lessonId) {
+            const lesson = lessons.find(item => Number(item.id) === Number(lessonId));
+            if (!lesson) return;
+            const requestedLessonId = Number(lessonId);
+            previewQuizLessonId = requestedLessonId;
+            document.getElementById('quiz-preview-title').textContent = `📝 ${lesson.title} — 小テスト内容`;
+            document.getElementById('quiz-preview-content').innerHTML = '<div class="loading" style="margin:40px auto;"></div>';
+            document.getElementById('quiz-preview-modal').classList.add('open');
+            try {
+                const res = await fetch(`${API_URL}/admin/lessons/${requestedLessonId}/quiz`, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                const data = await res.json().catch(() => ([]));
+                if (!res.ok) throw new Error(data.error || '小テストの取得に失敗しました');
+                if (previewQuizLessonId !== requestedLessonId) return;
+                renderQuizPreview(data);
+            } catch (error) {
+                if (previewQuizLessonId !== requestedLessonId) return;
+                document.getElementById('quiz-preview-content').innerHTML = `<p style="color:var(--danger);">${escHtml(error.message)}</p>`;
+            }
+        }
+
+        function renderQuizPreview(items) {
+            const container = document.getElementById('quiz-preview-content');
+            if (!Array.isArray(items) || items.length === 0) {
+                container.innerHTML = '<p style="color:var(--gray-text);">小テストは設定されていません。</p>';
+                return;
+            }
+            container.innerHTML = `<div class="quiz-preview-list">${items.map((item, questionIndex) => {
+                const correctAnswer = Number(item.correctAnswer ?? item.correct_answer);
+                const options = Array.isArray(item.options) ? item.options : [];
+                return `<section class="quiz-preview-item">
+                    <p class="quiz-preview-question">問題 ${questionIndex + 1}：${escHtml(item.question)}</p>
+                    <div class="quiz-preview-options">${options.map((option, optionIndex) => `
+                        <div class="quiz-preview-option${optionIndex === correctAnswer ? ' correct' : ''}">
+                            <span>${optionIndex === correctAnswer ? '✅' : '○'}</span>
+                            <span>${escHtml(option)}</span>
+                            ${optionIndex === correctAnswer ? '<strong style="margin-left:auto;">正解</strong>' : ''}
+                        </div>`).join('')}</div>
+                </section>`;
+            }).join('')}</div>`;
+        }
+
+        function closeQuizPreviewModal() {
+            document.getElementById('quiz-preview-modal').classList.remove('open');
+            previewQuizLessonId = null;
+        }
+
+        async function openQuizEditorFromPreview() {
+            const lessonId = previewQuizLessonId;
+            if (!lessonId) return;
+            closeQuizPreviewModal();
+            document.getElementById('quiz-lesson').value = String(lessonId);
+            await loadQuiz();
+            document.getElementById('quiz-editor').scrollIntoView({ behavior:'smooth', block:'start' });
         }
 
         // ===== 編集モーダルを開く =====
@@ -909,11 +997,15 @@
         document.getElementById('course-edit-modal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('course-edit-modal')) closeCourseEditModal();
         });
+        document.getElementById('quiz-preview-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('quiz-preview-modal')) closeQuizPreviewModal();
+        });
         // ESCキーで閉じる
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeEditModal();
                 closeCourseEditModal();
+                closeQuizPreviewModal();
             }
         });
 
@@ -1205,6 +1297,7 @@
                 if (!res.ok) throw new Error(data.error || 'クイズ保存に失敗しました');
                 setQuizSaveStatus(quizQuestions.length ? '✅ クイズを保存しました' : '✅ クイズを削除しました', 'success');
                 showAlert('クイズを保存しました', 'success');
+                await loadLessons();
             } catch (e) {
                 setQuizSaveStatus(e.message, 'error');
                 showAlert(e.message, 'error');
