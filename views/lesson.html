@@ -248,28 +248,31 @@
         }
 
         function showManualCompleteControls(message, buttonLabel) {
+            const existingQuizButton = document.getElementById('quiz-start-btn');
+            if (existingQuizButton) existingQuizButton.remove();
             // 既に完了済みなら手動ボタンは不要
             if (currentLesson.completed) {
                 document.getElementById('manual-complete-section').style.display = 'none';
                 return;
             }
-            document.getElementById('manual-complete-message').textContent = message;
-            document.getElementById('manual-complete-button').textContent = buttonLabel;
-            document.getElementById('manual-complete-section').style.display = 'block';
-            // クイズがある場合もボタン表示（視聴後に手動でクイズへ）
+            // 小テストがある場合は手動完了を許可せず、合格後のみ完了にする。
             if (questions.length > 0) {
+                document.getElementById('manual-complete-section').style.display = 'none';
                 const btn = document.createElement('button');
-                btn.id = 'quiz-skip-btn';
-                btn.textContent = '📝 クイズに進む';
+                btn.id = 'quiz-start-btn';
+                btn.textContent = '📝 小テストに進む';
                 btn.className = 'btn btn-primary';
                 btn.style.cssText = 'margin: 16px 0; display: block; width: 100%;';
                 btn.onclick = () => {
-                    document.getElementById('manual-complete-section').style.display = 'none';
                     btn.remove();
                     showQuiz();
                 };
                 document.getElementById('manual-complete-section').after(btn);
+                return;
             }
+            document.getElementById('manual-complete-message').textContent = message;
+            document.getElementById('manual-complete-button').textContent = buttonLabel;
+            document.getElementById('manual-complete-section').style.display = 'block';
         }
 
         function openImageLightbox() {
@@ -307,6 +310,16 @@
             if (savedPercent > 0) {
                 updateWatchBar(savedPercent);
             }
+            if (savedPercent >= 95) {
+                if (questions.length > 0) {
+                    showQuiz();
+                } else {
+                    showManualCompleteControls(
+                        '動画の視聴が終わりました。「視聴完了」を押すと次のレッスンが解放されます。',
+                        '✅ 視聴完了にする'
+                    );
+                }
+            }
 
             // timeupdate: 1秒ごとに視聴率を計算・表示
             video.addEventListener('timeupdate', () => {
@@ -329,7 +342,7 @@
             video.addEventListener('ended', () => {
                 currentWatchPercent = 100;
                 updateWatchBar(100);
-                saveWatchPercent(100, true); // auto_complete フラグ
+                saveWatchPercent(100);
             });
 
             // loadedmetadata: 動画時間が判明したときヒント更新
@@ -337,7 +350,7 @@
                 const min = Math.floor(video.duration / 60);
                 const sec = Math.floor(video.duration % 60);
                 document.getElementById('watch-progress-hint').textContent =
-                    `動画を95%以上視聴すると${questions.length > 0 ? 'クイズが表示' : '履修済みに自動変更'}されます（全${min}分${sec}秒）`;
+                    `動画を95%以上視聴すると${questions.length > 0 ? '小テストが表示され、合格すると次が解放' : '視聴完了ボタンが表示'}されます（全${min}分${sec}秒）`;
             });
         }
 
@@ -357,7 +370,7 @@
         }
 
         // ===== 視聴率をAPIに保存 =====
-        async function saveWatchPercent(percent, isEnd = false) {
+        async function saveWatchPercent(percent) {
             const token = localStorage.getItem('token');
             try {
                 const res = await fetch(`${API_URL}/lessons/${lessonId}/watch-progress`, {
@@ -370,21 +383,18 @@
                 });
                 const data = await res.json();
 
-                if (data.auto_completed) {
-                    // クイズなし・95%超で自動完了
-                    onLessonComplete(true);
-                } else if (data.show_quiz) {
+                if (data.show_quiz) {
                     // 95%超 & クイズあり → クイズへ
                     document.getElementById('watch-progress-hint').textContent =
                         '視聴完了！下のクイズに答えて履修を完了しましょう 🎉';
                     setTimeout(() => showQuiz(), 600);
-                } else if (isEnd && questions.length > 0) {
-                    // 100%視聴 & クイズあり → クイズへ（念のため）
+                } else if (data.ready_to_complete) {
                     document.getElementById('watch-progress-hint').textContent =
-                        '視聴完了！下のクイズに答えて履修を完了しましょう 🎉';
-                    setTimeout(() => showQuiz(), 800);
-                } else if (isEnd && questions.length === 0) {
-                    onLessonComplete(true);
+                        '視聴完了！「視聴完了」ボタンを押すと次のレッスンが解放されます。';
+                    showManualCompleteControls(
+                        '動画の視聴が終わりました。「視聴完了」を押すと次のレッスンが解放されます。',
+                        '✅ 視聴完了にする'
+                    );
                 }
             } catch (e) {
                 console.error('視聴率保存エラー:', e);
@@ -402,24 +412,28 @@
                         'Content-Type': 'application/json'
                     }
                 });
-                if (!res.ok) throw new Error();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    if (data.quiz_required) {
+                        document.getElementById('manual-complete-section').style.display = 'none';
+                        showQuiz();
+                        return;
+                    }
+                    throw new Error(data.error || '完了登録に失敗しました');
+                }
 
-                // クイズがある場合はクイズへ、ない場合は完了
                 if (questions.length > 0) {
-                    document.getElementById('manual-complete-section').style.display = 'none';
-                    const skipBtn = document.getElementById('quiz-skip-btn');
-                    if (skipBtn) skipBtn.remove();
                     showQuiz();
                 } else {
-                    onLessonComplete(false);
+                    onLessonComplete();
                 }
             } catch (e) {
-                showAlert('完了登録に失敗しました', 'error');
+                showAlert(e.message || '完了登録に失敗しました', 'error');
             }
         }
 
         // ===== 完了演出 =====
-        function onLessonComplete(autoCompleted) {
+        function onLessonComplete() {
             document.getElementById('watch-progress-section').style.display = 'none';
             document.getElementById('manual-complete-section').style.display = 'none';
             document.getElementById('quiz-section').style.display = 'none';
@@ -530,7 +544,7 @@
                 });
                 const result = await response.json();
                 if (result.passed) {
-                    onLessonComplete(false);
+                    onLessonComplete();
                 } else {
                     showAlert(
                         `残念！${result.correct}/${result.total}問正解でした。全問正解が必要です。もう一度チャレンジ！`,
