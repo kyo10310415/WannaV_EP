@@ -41,9 +41,19 @@ class Lesson {
 
   static async getAll() {
     const result = await db.query(`
-      SELECT l.*, c.title as course_title, c.sequential_unlock, c.is_special_content
+      SELECT
+        l.*,
+        c.title AS course_title,
+        c.sequential_unlock,
+        c.is_special_content,
+        COALESCE(q.quiz_count, 0)::integer AS quiz_count
       FROM lessons l
       LEFT JOIN courses c ON l.course_id = c.id
+      LEFT JOIN (
+        SELECT lesson_id, COUNT(*)::integer AS quiz_count
+        FROM quiz_questions
+        GROUP BY lesson_id
+      ) q ON q.lesson_id = l.id
       ORDER BY c.order_index, c.id, l.order_index, l.id
     `);
     return result.rows;
