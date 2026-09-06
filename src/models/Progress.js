@@ -53,7 +53,7 @@ class Progress {
         quiz_passed = $3,
         quiz_attempts = user_progress.quiz_attempts + 1,
         completed = $3,
-        completed_at = CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE user_progress.completed_at END,
+        completed_at = CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END,
         last_watched_at = CURRENT_TIMESTAMP
       RETURNING *
     `, [userId, lessonId, passed]);
@@ -293,6 +293,12 @@ class Progress {
           WHERE up.user_id = $1
             AND up.lesson_id = previous.id
             AND up.completed = true
+            AND (
+              NOT EXISTS (
+                SELECT 1 FROM quiz_questions qq WHERE qq.lesson_id = previous.id
+              )
+              OR up.quiz_passed = true
+            )
         )
       END AS can_access
       FROM current_lesson current

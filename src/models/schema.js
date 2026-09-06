@@ -93,6 +93,7 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quiz_questions_lesson ON quiz_questions(lesson_id)`);
 
     // User progress table
     await db.query(`
@@ -119,6 +120,18 @@ const createTables = async () => {
     // 動画視聴回数（レッスン画面を開いた回数）
     await db.query(`
       ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0
+    `);
+
+    // 過去の手動完了で、小テスト未合格のまま完了になった記録を補正する。
+    await db.query(`
+      UPDATE user_progress up
+      SET completed = false,
+          completed_at = NULL
+      WHERE up.completed = true
+        AND COALESCE(up.quiz_passed, false) = false
+        AND EXISTS (
+          SELECT 1 FROM quiz_questions qq WHERE qq.lesson_id = up.lesson_id
+        )
     `);
 
     // thumbnail_url カラムが既存テーブルに存在しない場合は追加（マイグレーション）

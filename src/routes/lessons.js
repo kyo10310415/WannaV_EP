@@ -96,14 +96,16 @@ router.post('/:id/watch-progress', auth, async (req, res) => {
 
     // 95%以上視聴した場合
     if (percent >= 95) {
-      const Quiz = require('../models/Quiz');
       const questions = await Quiz.getQuestionsByLesson(lessonId);
       if (questions.length === 0) {
-        // クイズなし → 自動完了
-        await Progress.completeByWatching(req.user.id, lessonId);
-        return res.json({ success: true, watch_percent: 100, auto_completed: true });
+        // クイズなし → 完了ボタンを表示（押すまでは次を解放しない）
+        return res.json({
+          success: true,
+          watch_percent: result.watch_percent,
+          ready_to_complete: true,
+        });
       } else {
-        // クイズあり → クイズへ誘導
+        // クイズあり → 合格するまで完了扱いにしない
         return res.json({ success: true, watch_percent: result.watch_percent, show_quiz: true });
       }
     }
@@ -114,10 +116,17 @@ router.post('/:id/watch-progress', auth, async (req, res) => {
   }
 });
 
-// 手動完了（iframe動画用 - Google Drive / YouTube）
+// 手動完了（クイズなしの動画・画像・外部リンク用）
 router.post('/:id/manual-complete', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
+    const questions = await Quiz.getQuestionsByLesson(lessonId);
+    if (questions.length > 0) {
+      return res.status(409).json({
+        error: '小テストに合格するとレッスン完了になります',
+        quiz_required: true,
+      });
+    }
     await Progress.completeByWatching(req.user.id, lessonId);
 
     // 完了通知
