@@ -280,15 +280,16 @@
                     <option value="">レッスンを選択...</option>
                 </select>
             </div>
-            <div id="quiz-editor" style="display: none;">
+            <form id="quiz-editor" style="display: none;" onsubmit="saveQuiz(event)">
                 <div id="quiz-questions-container"></div>
-                <button onclick="addQuestion()" class="btn btn-primary" style="margin: 20px 0;">
+                <button type="button" onclick="addQuestion()" class="btn btn-primary" style="margin: 20px 0;">
                     ➕ 問題を追加
                 </button>
-                <button onclick="saveQuiz()" class="btn btn-success" style="display: block; width: 100%;">
+                <button type="submit" id="quiz-save-btn" class="btn btn-success" style="display: block; width: 100%;">
                     ✅ クイズを保存
                 </button>
-            </div>
+                <p id="quiz-save-status" role="status" aria-live="polite" style="min-height:24px;margin-top:12px;text-align:center;font-size:14px;"></p>
+            </form>
         </div>
 
         <!-- レッスン一覧 -->
@@ -1097,17 +1098,32 @@
             const lessonId = document.getElementById('quiz-lesson').value;
             if (!lessonId) { document.getElementById('quiz-editor').style.display = 'none'; return; }
             const token = localStorage.getItem('token');
+            setQuizSaveStatus('クイズを読み込み中...', 'info');
             try {
                 const res = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                quizQuestions = await res.json();
+                const data = await res.json().catch(() => ([]));
+                if (!res.ok) throw new Error(data.error || 'クイズの読み込みに失敗しました');
+                quizQuestions = data.map((item, index) => ({
+                    question: item.question || '',
+                    options: Array.isArray(item.options) ? item.options : ['', '', ''],
+                    correctAnswer: Number(item.correctAnswer ?? item.correct_answer ?? 0),
+                    orderIndex: Number(item.orderIndex ?? item.order_index ?? index)
+                }));
                 if (quizQuestions.length === 0) {
                     quizQuestions = [{ question: '', options: ['', '', ''], correctAnswer: 0, orderIndex: 0 }];
                 }
                 document.getElementById('quiz-editor').style.display = 'block';
                 renderQuizEditor();
-            } catch (e) { console.error(e); }
+                setQuizSaveStatus('', 'info');
+            } catch (e) {
+                console.error(e);
+                quizQuestions = [];
+                document.getElementById('quiz-questions-container').innerHTML = '';
+                document.getElementById('quiz-editor').style.display = 'block';
+                setQuizSaveStatus(e.message, 'error');
+            }
         }
 
         function renderQuizEditor() {
@@ -1120,7 +1136,7 @@
                     <h3 style="color: var(--primary-blue-light); margin-bottom: 15px;">問題 ${index + 1}</h3>
                     <div class="form-group">
                         <label class="form-label">問題文</label>
-                        <input type="text" class="form-input" value="${q.question || ''}" onchange="updateQuestion(${index}, 'question', this.value)">
+                        <input type="text" class="form-input" value="${escHtml(q.question || '')}" oninput="updateQuestion(${index}, 'question', this.value)">
                     </div>
                     <div class="form-group">
                         <label class="form-label">選択肢（正解を選択）</label>
@@ -1129,12 +1145,12 @@
                                 <input type="radio" name="correct-${index}" value="${i}" ${q.correctAnswer === i ? 'checked' : ''}
                                     onchange="updateQuestion(${index}, 'correctAnswer', ${i})"
                                     style="width: auto; min-height: auto;">
-                                <input type="text" class="form-input" value="${q.options[i] || ''}"
-                                    onchange="updateQuestionOption(${index}, ${i}, this.value)">
+                                <input type="text" class="form-input" value="${escHtml(q.options[i] || '')}"
+                                    oninput="updateQuestionOption(${index}, ${i}, this.value)">
                             </div>
                         `).join('')}
                     </div>
-                    <button onclick="removeQuestion(${index})" class="btn btn-danger" style="margin-top: 10px;">🗑️ この問題を削除</button>
+                    <button type="button" onclick="removeQuestion(${index})" class="btn btn-danger" style="margin-top: 10px;">🗑️ この問題を削除</button>
                 `;
                 container.appendChild(div);
             });
@@ -1148,18 +1164,54 @@
         function updateQuestion(index, field, value) { quizQuestions[index][field] = value; }
         function updateQuestionOption(index, optionIndex, value) { quizQuestions[index].options[optionIndex] = value; }
 
-        async function saveQuiz() {
+        function setQuizSaveStatus(message, type) {
+            const status = document.getElementById('quiz-save-status');
+            status.textContent = message;
+            status.style.color = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--gray-text)';
+        }
+
+        async function saveQuiz(event) {
+            if (event) event.preventDefault();
             const lessonId = document.getElementById('quiz-lesson').value;
             const token    = localStorage.getItem('token');
+            const saveButton = document.getElementById('quiz-save-btn');
+            if (!lessonId) {
+                setQuizSaveStatus('レッスンを選択してください', 'error');
+                return;
+            }
+            const invalid = quizQuestions.some(item => (
+                !String(item.question || '').trim()
+                || !Array.isArray(item.options)
+                || item.options.length !== 3
+                || item.options.some(option => !String(option || '').trim())
+                || !Number.isInteger(Number(item.correctAnswer))
+                || Number(item.correctAnswer) < 0
+                || Number(item.correctAnswer) > 2
+            ));
+            if (invalid) {
+                setQuizSaveStatus('問題文・3つの選択肢・正解をすべて入力してください', 'error');
+                return;
+            }
+            saveButton.disabled = true;
+            saveButton.textContent = '保存中...';
+            setQuizSaveStatus('クイズを保存しています...', 'info');
             try {
                 const res = await fetch(`${API_URL}/admin/lessons/${lessonId}/quiz`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ questions: quizQuestions })
                 });
-                if (!res.ok) throw new Error('クイズ保存に失敗しました');
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'クイズ保存に失敗しました');
+                setQuizSaveStatus(quizQuestions.length ? '✅ クイズを保存しました' : '✅ クイズを削除しました', 'success');
                 showAlert('クイズを保存しました', 'success');
-            } catch (e) { showAlert(e.message, 'error'); }
+            } catch (e) {
+                setQuizSaveStatus(e.message, 'error');
+                showAlert(e.message, 'error');
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = '✅ クイズを保存';
+            }
         }
 
         // ===== レッスン削除 =====

@@ -627,25 +627,32 @@ router.post('/lessons/bulk-regenerate-thumbnails', auth, checkRole('管理者'),
 // クイズ作成
 router.post('/lessons/:lessonId/quiz', auth, checkRole('管理者'), async (req, res) => {
   try {
-    const { questions } = req.body; // [{question, options: [], correctAnswer, orderIndex}]
-    const lessonId = req.params.lessonId;
-
-    // 既存のクイズを削除
-    await Quiz.deleteByLesson(lessonId);
-
-    // 新しいクイズを作成
-    const created = [];
-    for (const q of questions) {
-      const question = await Quiz.createQuestion(
-        lessonId,
-        q.question,
-        q.options,
-        q.correctAnswer,
-        q.orderIndex || 0
-      );
-      created.push(question);
+    const lessonId = Number(req.params.lessonId);
+    const questions = req.body.questions;
+    if (!Number.isInteger(lessonId) || lessonId <= 0 || !Array.isArray(questions)) {
+      return res.status(400).json({ error: 'レッスンとクイズを正しく指定してください' });
     }
 
+    const normalized = questions.map((item, index) => ({
+      question: String(item.question || '').trim(),
+      options: Array.isArray(item.options) ? item.options.map(option => String(option || '').trim()) : [],
+      correctAnswer: Number(item.correctAnswer),
+      orderIndex: index,
+    }));
+    const invalid = normalized.some(item => (
+      !item.question
+      || item.options.length !== 3
+      || item.options.some(option => !option)
+      || !Number.isInteger(item.correctAnswer)
+      || item.correctAnswer < 0
+      || item.correctAnswer > 2
+    ));
+    if (invalid) {
+      return res.status(400).json({ error: '問題文・3つの選択肢・正解をすべて入力してください' });
+    }
+
+    const created = await Quiz.replaceByLesson(lessonId, normalized);
+    console.log(`✅ Quiz saved: lessonId=${lessonId}, questions=${created.length}`);
     res.status(201).json(created);
   } catch (error) {
     console.error('Create quiz error:', error);
