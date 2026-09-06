@@ -17,7 +17,9 @@ class Quiz {
     );
     return result.rows.map(row => ({
       ...row,
-      options: typeof row.options === 'string' ? JSON.parse(row.options) : row.options
+      options: typeof row.options === 'string' ? JSON.parse(row.options) : row.options,
+      correctAnswer: row.correct_answer,
+      orderIndex: row.order_index,
     }));
   }
 
@@ -37,6 +39,43 @@ class Quiz {
 
   static async deleteByLesson(lessonId) {
     await db.query('DELETE FROM quiz_questions WHERE lesson_id = $1', [lessonId]);
+  }
+
+  static async replaceByLesson(lessonId, questions) {
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM quiz_questions WHERE lesson_id = $1', [lessonId]);
+
+      const created = [];
+      for (const item of questions) {
+        const result = await client.query(
+          `INSERT INTO quiz_questions (lesson_id, question, options, correct_answer, order_index)
+           VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+          [lessonId, item.question, JSON.stringify(item.options), item.correctAnswer, item.orderIndex]
+        );
+        created.push(result.rows[0]);
+      }
+
+      // クイズを追加した時点で、未合格の完了記録は次レッスンの解放条件から外す。
+      if (questions.length > 0) {
+        await client.query(`
+          UPDATE user_progress
+          SET completed = false,
+              completed_at = NULL
+          WHERE lesson_id = $1
+            AND COALESCE(quiz_passed, false) = false
+        `, [lessonId]);
+      }
+
+      await client.query('COMMIT');
+      return created;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async verifyAnswers(lessonId, answers) {
