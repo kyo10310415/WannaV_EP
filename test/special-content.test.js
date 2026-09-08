@@ -89,19 +89,17 @@ test('画像教材に説明と任意の外部リンクを組み合わせて登�
   assert.match(lessonPage, /class="resource-external-link"[\s\S]*target="_blank"/);
 });
 
-test('管理画面で外部リンクを編集しダッシュボードに予定と直近日を表示する', () => {
+test('管理画面で外部リンクを編集しダッシュボードにはリンクだけ表示する', () => {
   const adminRoutes = read('src/routes/admin.js');
   const adminPage = read('views/admin-contents.html');
   const dashboard = read('views/dashboard.html');
-  const portalRoute = read('src/routes/portal.js');
 
   assert.match(adminRoutes, /router\.put\('\/portal-links'/);
   assert.match(adminPage, /ぶっちゃけVtuber URL/);
   assert.match(adminPage, /クラスレッスン URL/);
   assert.match(dashboard, /portal-links-grid/);
-  assert.match(dashboard, /次回：/);
-  assert.match(portalRoute, /第一、第三金曜日の22時から/);
-  assert.match(portalRoute, /第二、第四水曜日の22時から/);
+  assert.match(dashboard, /portal-link-action/);
+  assert.doesNotMatch(dashboard, /portal-link-schedule|portal-link-next|item\.schedule|item\.nextDate|次回：/);
 });
 
 test('スペシャルコンテンツは通常の進捗集計に含めない', () => {

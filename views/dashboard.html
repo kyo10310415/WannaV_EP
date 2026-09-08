@@ -45,9 +45,7 @@
         .portal-link-card { position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:20px; padding:24px; border:1px solid rgba(52,200,232,.45); border-radius:18px; background:linear-gradient(135deg,rgba(74,144,217,.24),rgba(155,89,182,.18)); box-shadow:0 8px 26px rgba(0,0,0,.18); }
         .portal-link-card::after { content:''; position:absolute; width:130px; height:130px; right:-55px; top:-55px; border-radius:50%; background:rgba(52,200,232,.12); }
         .portal-link-copy { min-width:0; position:relative; z-index:1; }
-        .portal-link-title { color:var(--light-text); font-size:20px; margin-bottom:7px; }
-        .portal-link-schedule { color:var(--gray-text); font-size:13px; }
-        .portal-link-next { color:var(--accent-cyan); font-size:15px; font-weight:700; margin-top:7px; }
+        .portal-link-title { color:var(--light-text); font-size:20px; }
         .portal-link-action { flex-shrink:0; position:relative; z-index:1; }
         .portal-link-action.disabled { opacity:.55; pointer-events:none; }
         @media (max-width:600px) {
@@ -379,17 +377,12 @@
         function renderPortalLinks(data) {
             const entries = [data.bucchakeVtuber, data.classLesson].filter(Boolean);
             document.getElementById('portal-links').innerHTML = entries.map(item => {
-                const nextDate = new Intl.DateTimeFormat('ja-JP', {
-                    timeZone: 'Asia/Tokyo', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
-                }).format(new Date(`${item.nextDate}T00:00:00+09:00`));
                 const action = item.url
                     ? `<a class="btn btn-primary portal-link-action" href="${escHtml(item.url)}" target="_blank" rel="noopener noreferrer">ページを開く ↗</a>`
                     : '<span class="btn btn-secondary portal-link-action disabled">URL未設定</span>';
                 return `<article class="portal-link-card">
                     <div class="portal-link-copy">
                         <h2 class="portal-link-title">${escHtml(item.title)}</h2>
-                        <p class="portal-link-schedule">${escHtml(item.schedule)}</p>
-                        <p class="portal-link-next">次回：${escHtml(nextDate)} 22:00〜</p>
                     </div>${action}
                 </article>`;
             }).join('');
