@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ユーザー進捗管理 - WannaV ポータル</title>
+    <title>ユーザー進捗・利用状況 - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -24,7 +24,7 @@
 
         <!-- ユーザー進捗一覧 -->
         <div class="card">
-            <h2 style="margin-bottom: 30px;">📊 全ユーザーの進捗状況</h2>
+            <h2 style="margin-bottom: 30px;">📊 生徒の進捗・利用状況</h2>
             <div id="progress-container">
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
@@ -97,7 +97,7 @@
                 return;
             }
 
-            let html = '<div style="overflow-x:auto"><table class="table"><thead><tr><th>生徒名</th><th>メール</th><th>契約ステータス</th><th>進捗率</th><th>完了 / 総数</th><th>最終活動</th><th>学習状況</th></tr></thead><tbody>';
+            let html = '<div style="overflow-x:auto"><table class="table"><thead><tr><th>生徒名</th><th>メール</th><th>契約ステータス</th><th>本日の利用</th><th>今月の利用</th><th>進捗率</th><th>完了 / 総数</th><th>最終活動</th><th>学習状況</th></tr></thead><tbody>';
 
             progressData.forEach(user => {
                 const percentage = Math.round(user.completion_percentage || 0);
@@ -112,6 +112,8 @@
                         <td><strong>${escHtml(user.name || '')}</strong></td>
                         <td>${escHtml(user.email || '')}</td>
                         <td><strong>${contract}</strong></td>
+                        <td><strong>${Number(user.daily_usage_count) || 0}回</strong></td>
+                        <td><strong>${Number(user.monthly_usage_count) || 0}回</strong></td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <div class="progress-bar" style="width: 150px; height: 25px;">
@@ -143,6 +145,14 @@
                     <div class="stat-card">
                         <div class="stat-value">${summaryData.total_students || 0}</div>
                         <div class="stat-label">総生徒数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--accent-cyan);">${Number(summaryData.daily_usage_count) || 0}</div>
+                        <div class="stat-label">本日の利用回数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--primary-blue-light);">${Number(summaryData.monthly_usage_count) || 0}</div>
+                        <div class="stat-label">今月の利用回数</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" style="color: var(--success);">${summaryData.contract_active_students || 0}</div>

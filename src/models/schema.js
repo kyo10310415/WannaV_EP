@@ -18,6 +18,17 @@ const createTables = async () => {
       )
     `);
 
+    // 生徒がアプリを開いた回数（日付は日本時間）
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS app_usage_daily (
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        usage_date DATE NOT NULL,
+        open_count INTEGER NOT NULL DEFAULT 0 CHECK (open_count >= 0),
+        last_opened_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, usage_date)
+      )
+    `);
+
     // Courses table (コース/カテゴリ)
     await db.query(`
       CREATE TABLE IF NOT EXISTS courses (
@@ -416,6 +427,7 @@ const createTables = async () => {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users(LOWER(username))`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email))`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_app_usage_daily_date_user ON app_usage_daily(usage_date, user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_lessons_course ON lessons(course_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_progress_user ON user_progress(user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_progress_lesson ON user_progress(lesson_id)`);
