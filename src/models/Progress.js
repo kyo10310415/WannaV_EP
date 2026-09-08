@@ -176,6 +176,18 @@ class Progress {
         JOIN lessons l ON l.id = up.lesson_id
         JOIN courses c ON c.id = l.course_id
         GROUP BY up.user_id
+      ), usage_by_user AS (
+        SELECT
+          user_id,
+          COALESCE(SUM(open_count) FILTER (
+            WHERE usage_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
+          ), 0)::integer AS daily_usage_count,
+          COALESCE(SUM(open_count), 0)::integer AS monthly_usage_count
+        FROM app_usage_daily
+        WHERE usage_date >= DATE_TRUNC(
+          'month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo'
+        )::date
+        GROUP BY user_id
       ), student_progress AS (
         SELECT
           u.id,
@@ -199,11 +211,14 @@ class Progress {
           CASE
             WHEN p.last_activity IS NULL THEN NULL
             ELSE GREATEST(0, CURRENT_DATE - p.last_activity::date)
-          END AS days_since_activity
+          END AS days_since_activity,
+          COALESCE(au.daily_usage_count, 0) AS daily_usage_count,
+          COALESCE(au.monthly_usage_count, 0) AS monthly_usage_count
         FROM users u
         LEFT JOIN student_profiles sp ON sp.user_id = u.id
         LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
         LEFT JOIN progress_by_user p ON p.user_id = u.id
+        LEFT JOIN usage_by_user au ON au.user_id = u.id
         CROSS JOIN lesson_total lt
         WHERE u.role = '生徒'
       )
@@ -234,9 +249,23 @@ class Progress {
         FROM lessons l
         JOIN courses c ON c.id = l.course_id
         WHERE COALESCE(c.is_special_content, false) = false
+      ), usage_totals AS (
+        SELECT
+          COALESCE(SUM(aud.open_count) FILTER (
+            WHERE aud.usage_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
+          ), 0)::integer AS daily_usage_count,
+          COALESCE(SUM(aud.open_count), 0)::integer AS monthly_usage_count
+        FROM app_usage_daily aud
+        JOIN users usage_user ON usage_user.id = aud.user_id
+        WHERE usage_user.role = '生徒'
+          AND aud.usage_date >= DATE_TRUNC(
+            'month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo'
+          )::date
       )
       SELECT
         COUNT(*)::integer AS total_students,
+        COALESCE(MAX(ut.daily_usage_count), 0)::integer AS daily_usage_count,
+        COALESCE(MAX(ut.monthly_usage_count), 0)::integer AS monthly_usage_count,
         COUNT(*) FILTER (
           WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
         )::integer AS contract_active_students,
@@ -263,6 +292,7 @@ class Progress {
       LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
       LEFT JOIN progress_by_user p ON p.user_id = u.id
       CROSS JOIN lesson_total lt
+      CROSS JOIN usage_totals ut
       WHERE u.role = '生徒'
     `);
     return result.rows[0];

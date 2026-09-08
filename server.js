@@ -42,6 +42,7 @@ app.use('/api/notion', require('./src/routes/notion'));
 app.use('/api/students', require('./src/routes/students'));
 app.use('/api/characters', require('./src/routes/characters'));
 app.use('/api/portal', require('./src/routes/portal'));
+app.use('/api/usage', require('./src/routes/usage'));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
