@@ -26,7 +26,8 @@ test('生徒のアプリ表示回数を日本時間の日単位で加算する',
     assert.match(capturedSql, /WHERE id = \$1 AND role = '生徒'/);
     assert.match(capturedSql, /ON CONFLICT \(user_id, usage_date\)/);
     assert.match(capturedSql, /open_count = app_usage_daily\.open_count \+ 1/);
-    assert.deepEqual(capturedParams, [42]);
+    assert.deepEqual(capturedParams, [42, 60]);
+    assert.match(capturedSql, /INSERT INTO portal_active_days/);
     assert.equal(result.open_count, 2);
   } finally {
     db.query = originalQuery;
@@ -40,15 +41,17 @@ test('利用回数テーブルと集計用インデックスを作成する', ()
   assert.match(schema, /idx_app_usage_daily_date_user/);
 });
 
-test('生徒のダッシュボード表示時だけ利用回数APIを呼び出す', () => {
+test('生徒の実操作イベントから共通visit記録を呼び出す', () => {
   const route = read('src/routes/usage.js');
   const server = read('server.js');
   const dashboard = read('views/dashboard.html');
 
   assert.match(route, /router\.post\('\/open', auth, checkRole\('生徒'\)/);
   assert.match(server, /app\.use\('\/api\/usage', require\('\.\/src\/routes\/usage'\)\)/);
-  assert.match(dashboard, /currentUser\.role === '生徒'[\s\S]*recordAppOpen\(\)/);
-  assert.match(dashboard, /fetch\(`\$\{API_URL\}\/usage\/open`/);
+  assert.match(dashboard, /PortalSession.start\(currentUser\)/);
+  const client = read('public/js/portal-session.js');
+  assert.match(client, /visibilityState !== 'visible'/);
+  assert.match(client, /\/api\/usage\/open/);
 });
 
 test('管理画面向けに本日・当月の合計と生徒別利用回数を集計する', async () => {
@@ -81,4 +84,24 @@ test('ユーザー進捗管理画面に全体と生徒別の利用回数を表�
   assert.match(page, /<th>今月の利用<\/th>/);
   assert.match(page, /user\.daily_usage_count/);
   assert.match(page, /user\.monthly_usage_count/);
+  assert.match(page, /user\.active_today/);
+  assert.match(page, /user\.monthly_active_days/);
+});
+
+test('Session境界は標準60分で設定変更でき、旧6時間設定を引き継がない', () => {
+  const { sessionMinutes } = require('../src/config/portal');
+  const previous = process.env.PORTAL_SESSION_INACTIVITY_MINUTES;
+  try {
+    delete process.env.PORTAL_SESSION_INACTIVITY_MINUTES;
+    assert.equal(sessionMinutes(), 60);
+    process.env.PORTAL_SESSION_INACTIVITY_MINUTES = '30';
+    assert.equal(sessionMinutes(), 30);
+    for (const value of ['0', '-1', 'invalid']) {
+      process.env.PORTAL_SESSION_INACTIVITY_MINUTES = value;
+      assert.equal(sessionMinutes(), 60);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PORTAL_SESSION_INACTIVITY_MINUTES;
+    else process.env.PORTAL_SESSION_INACTIVITY_MINUTES = previous;
+  }
 });

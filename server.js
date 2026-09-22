@@ -31,7 +31,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Static files
 app.use(express.static('public'));
-app.use('/uploads', express.static(UPLOAD_DIR));
+app.use('/uploads', require('./src/middleware/portalAccess').protectMedia, express.static(UPLOAD_DIR, {
+  setHeaders: res => {
+    if (require('./src/config/portal').paymentEnabled()) res.set('Cache-Control', 'private, no-store');
+  }
+}));
 
 // Routes
 app.use('/api/auth', require('./src/routes/auth'));
@@ -46,11 +50,18 @@ app.use('/api/usage', require('./src/routes/usage'));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
+  // Existing logout flows return here after removing the Bearer token.
+  res.clearCookie('portal_media', { path: '/', httpOnly: true, sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production' });
   res.sendFile(path.join(__dirname, 'views', 'login.html'));
 });
 
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
+});
+
+app.get('/access-restricted', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'access-restricted.html'));
 });
 
 app.get('/lesson/:id', (req, res) => {

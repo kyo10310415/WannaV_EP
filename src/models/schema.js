@@ -29,6 +29,50 @@ const createTables = async () => {
       )
     `);
 
+    // セッションの開始日とは独立して、実際に利用した日本時間の日付を保持する。
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS portal_active_days (
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        activity_date DATE NOT NULL,
+        PRIMARY KEY (user_id, activity_date)
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_portal_active_days_date_user ON portal_active_days(activity_date, user_id)`);
+
+    // 日次の既存回数は保持し、visitの重複判定だけを独立させる。
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS portal_visit_state (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        last_activity_at TIMESTAMPTZ NOT NULL,
+        visit_started_at TIMESTAMPTZ NOT NULL,
+        last_event_started_visit BOOLEAN NOT NULL
+      )
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS student_payment_status (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        student_number TEXT,
+        payment_month DATE NOT NULL,
+        payment_status TEXT NOT NULL,
+        is_paid BOOLEAN NOT NULL,
+        source_row INTEGER,
+        sync_error TEXT,
+        source_key TEXT NOT NULL,
+        synced_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, payment_month)
+      )
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS payment_sync_state (
+        source_key TEXT PRIMARY KEY,
+        payment_month DATE,
+        last_success_at TIMESTAMPTZ,
+        last_attempt_at TIMESTAMPTZ,
+        last_error TEXT,
+        issues JSONB NOT NULL DEFAULT '[]'::jsonb
+      )
+    `);
+
     // Courses table (コース/カテゴリ)
     await db.query(`
       CREATE TABLE IF NOT EXISTS courses (
@@ -124,6 +168,8 @@ const createTables = async () => {
     `);
 
     // watch_percent カラムが既存テーブルに存在しない場合は追加（マイグレーション）
+    // NULL means pre-migration attempts have no reliable outcome history.
+    await db.query('ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS quiz_failed_attempts INTEGER');
     await db.query(`
       ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS watch_percent INTEGER DEFAULT 0
     `);

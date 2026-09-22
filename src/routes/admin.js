@@ -98,6 +98,31 @@ function validOptionalExternalUrl(value) {
 
 // ===== ユーザー管理 =====
 
+router.get('/users/:id/analytics', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+  try {
+    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: '生徒IDが不正です' });
+    const student = await User.findById(req.params.id);
+    if (!student || student.role !== '生徒') return res.status(404).json({ error: '生徒が見つかりません' });
+    const [{ LearningAnalytics }, StudentPayment] = [
+      require('../models/LearningAnalytics'), require('../models/StudentPayment')
+    ];
+    const [learning, payment] = await Promise.all([
+      LearningAnalytics.forStudent(student.id), StudentPayment.getDetail(student.id)
+    ]);
+    res.set('Cache-Control', 'no-store');
+    res.json({ student: { id: student.id, name: student.name }, learning, payment });
+  } catch (_) {
+    res.status(500).json({ error: '学習・支払い状況の取得に失敗しました' });
+  }
+});
+
+router.get('/payment-sync', auth, checkRole('管理者', 'クルー'), async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await require('../models/StudentPayment').syncStatus());
+  } catch (_) { res.status(500).json({ error: '支払い同期状況の取得に失敗しました' }); }
+});
+
 // ユーザー取得（ページ用途に応じて生徒・生徒以外を分離）
 router.get('/users', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
   try {

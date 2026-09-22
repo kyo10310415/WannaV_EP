@@ -69,7 +69,7 @@ function handleStorageError(error, res) {
 }
 
 // 確定時にアプリ用ストレージへコピーした画像を配信する。
-router.get('/stored/:selectionId', async (req, res) => {
+router.get('/stored/:selectionId', require('../middleware/portalAccess').protectMedia, async (req, res) => {
   try {
     const selectionId = Number(req.params.selectionId);
     if (!Number.isInteger(selectionId) || selectionId <= 0) return res.status(400).end();
@@ -79,7 +79,8 @@ router.get('/stored/:selectionId', async (req, res) => {
     if (!storedPath) return res.status(404).end();
 
     res.type(selection.stored_image_mime_type || 'application/octet-stream');
-    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('Cache-Control', require('../config/portal').paymentEnabled()
+      ? 'private, no-store' : 'public, max-age=31536000, immutable');
     return res.sendFile(storedPath, error => {
       if (!error) return;
       console.error('Stored character image error:', error.message);
@@ -94,7 +95,7 @@ router.get('/stored/:selectionId', async (req, res) => {
 
 // 画像はGoogle Driveの許可フォルダ内に存在するIDだけを配信する。
 // <img>タグから利用できるよう、このルート自体にはBearer認証を要求しない。
-router.get('/images/:fileId', async (req, res) => {
+router.get('/images/:fileId', require('../middleware/portalAccess').protectMedia, async (req, res) => {
   try {
     if (!/^[A-Za-z0-9_-]+$/.test(req.params.fileId)) {
       return res.status(400).end();
@@ -111,7 +112,7 @@ router.get('/images/:fileId', async (req, res) => {
       res.set('Content-Type', thumbnail.response.headers['content-type']
         || thumbnail.image.mimeType
         || 'image/png');
-      res.set('Cache-Control', 'public, max-age=300');
+      res.set('Cache-Control', require('../config/portal').paymentEnabled() ? 'private, no-store' : 'public, max-age=300');
       thumbnail.response.data.pipe(res);
       return;
     }
@@ -119,7 +120,7 @@ router.get('/images/:fileId', async (req, res) => {
     const streamed = await streamImage(req.params.fileId);
     if (!streamed) return res.status(404).end();
     res.set('Content-Type', streamed.image.mimeType || 'image/png');
-    res.set('Cache-Control', 'public, max-age=300');
+    res.set('Cache-Control', require('../config/portal').paymentEnabled() ? 'private, no-store' : 'public, max-age=300');
     streamed.response.data.pipe(res);
   } catch (error) {
     console.error('Character image error:', error.response?.data || error.message);

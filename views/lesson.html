@@ -102,6 +102,7 @@
         </div>
     </div>
 
+    <script src="/js/portal-session.js"></script>
     <script>
         const API_URL = '/api';
         let currentLesson = null;
@@ -112,15 +113,16 @@
         let currentWatchPercent = 0; // 現在の視聴率（ページ離脱時に使用）
         const lessonId = window.location.pathname.split('/').pop();
 
-        // ページ離脱時に現在の視聴率を同期保存（navigator.sendBeacon 使用）
+        // ページ離脱時もBearer認証付きで視聴率を保存する。
         window.addEventListener('beforeunload', () => {
-            if (currentWatchPercent > lastSavedPercent && currentLesson && !currentLesson.completed) {
+            if (currentWatchPercent > lastSavedPercent && currentLesson) {
                 const token = localStorage.getItem('token');
                 const payload = JSON.stringify({ percent: currentWatchPercent });
-                navigator.sendBeacon(
+                fetch(
                     `${API_URL}/lessons/${lessonId}/watch-progress`,
-                    new Blob([payload], { type: 'application/json' })
-                );
+                    { method: 'POST', keepalive: true, body: payload,
+                      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+                ).catch(() => {});
             }
         });
 
@@ -134,6 +136,8 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const user = await userRes.json();
+                if (!userRes.ok) throw new Error('認証失敗');
+                PortalSession.start(user);
                 document.getElementById('user-name').textContent = user.name;
             } catch (e) { console.error(e); }
 
@@ -250,6 +254,7 @@
         function showManualCompleteControls(message, buttonLabel) {
             const existingQuizButton = document.getElementById('quiz-start-btn');
             if (existingQuizButton) existingQuizButton.remove();
+            if (questions.length > 0) showWatchConfirmation();
             // 既に完了済みなら手動ボタンは不要
             if (currentLesson.completed) {
                 document.getElementById('manual-complete-section').style.display = 'none';
@@ -282,6 +287,28 @@
             lightbox.setAttribute('aria-hidden', 'false');
         }
 
+        function showWatchConfirmation() {
+            if (currentLesson.content_type !== 'video' || document.getElementById('video-player')
+                || document.getElementById('watch-confirm-btn') || currentLesson.watch_percent >= 95) return;
+            const confirm = document.createElement('button');
+            confirm.id = 'watch-confirm-btn';
+            confirm.className = 'btn btn-secondary';
+            confirm.textContent = '視聴完了を記録（小テストとは別）';
+            confirm.onclick = async () => {
+                confirm.disabled = true;
+                try {
+                    const response = await fetch(`${API_URL}/lessons/${lessonId}/watch-progress`, {
+                        method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}`,
+                            'Content-Type': 'application/json' }, body: JSON.stringify({ percent: 100 })
+                    });
+                    if (!response.ok) throw new Error('視聴完了を保存できませんでした');
+                    currentLesson.watch_percent = 100;
+                    confirm.textContent = '視聴完了を記録しました';
+                } catch (error) { confirm.disabled = false; showAlert(error.message, 'error'); }
+            };
+            document.getElementById('manual-complete-section').after(confirm);
+        }
+
         function closeImageLightbox(event, force = false) {
             if (!force && event.target.id !== 'image-lightbox') return;
             const lightbox = document.getElementById('image-lightbox');
@@ -296,12 +323,7 @@
             const progressSection = document.getElementById('watch-progress-section');
 
             // 既に完了済みの場合: バーは非表示（完了画面を表示済み）
-            if (currentLesson.completed) {
-                progressSection.style.display = 'none';
-                return;
-            }
-
-            progressSection.style.display = 'block';
+            progressSection.style.display = currentLesson.completed ? 'none' : 'block';
 
             // 既存の視聴率を復元（ページ読み込み直後に即反映してリセットを防ぐ）
             const savedPercent = currentLesson.watch_percent || 0;
@@ -310,7 +332,7 @@
             if (savedPercent > 0) {
                 updateWatchBar(savedPercent);
             }
-            if (savedPercent >= 95) {
+            if (savedPercent >= 95 && !currentLesson.completed) {
                 if (questions.length > 0) {
                     showQuiz();
                 } else {
@@ -382,6 +404,8 @@
                     body: JSON.stringify({ percent })
                 });
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '視聴率を保存できませんでした');
+                if (currentLesson.completed) return;
 
                 if (data.show_quiz) {
                     // 95%超 & クイズあり → クイズへ

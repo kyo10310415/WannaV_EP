@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>利用状況の確認 - WannaV ポータル</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="container">
+    <section class="card" style="margin-top:60px">
+      <h1>現在ポータルをご利用いただけません。</h1>
+      <p id="access-message" style="margin:24px 0">お支払い状況をご確認ください。お支払い済みの場合は、時間をおいて再度お試しください。</p>
+      <a class="btn btn-primary" href="/dashboard">もう一度確認する</a>
+      <button class="btn btn-secondary" onclick="localStorage.removeItem('token');location.href='/'">ログアウト</button>
+    </section>
+  </main>
+  <script>
+    if (new URLSearchParams(location.search).get('reason') === 'unavailable') {
+      document.getElementById('access-message').textContent =
+        '現在、利用状況を確認できません。時間をおいて再度お試しください。';
+    }
+  </script>
+</body>
+</html>

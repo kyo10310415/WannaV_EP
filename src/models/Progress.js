@@ -46,12 +46,15 @@ class Progress {
 
   static async completeQuiz(userId, lessonId, passed) {
     const result = await db.query(`
-      INSERT INTO user_progress (user_id, lesson_id, quiz_passed, quiz_attempts, completed, completed_at)
-      VALUES ($1, $2, $3, 1, $3, CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END)
+      INSERT INTO user_progress (user_id, lesson_id, quiz_passed, quiz_attempts, completed, completed_at, quiz_failed_attempts)
+      VALUES ($1, $2, $3, 1, $3, CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END, CASE WHEN $3 THEN 0 ELSE 1 END)
       ON CONFLICT (user_id, lesson_id) 
       DO UPDATE SET 
         quiz_passed = $3,
         quiz_attempts = user_progress.quiz_attempts + 1,
+        quiz_failed_attempts = CASE
+          WHEN COALESCE(user_progress.quiz_attempts, 0) = 0 THEN CASE WHEN $3 THEN 0 ELSE 1 END
+          ELSE user_progress.quiz_failed_attempts + CASE WHEN $3 THEN 0 ELSE 1 END END,
         completed = $3,
         completed_at = CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END,
         last_watched_at = CURRENT_TIMESTAMP
@@ -176,6 +179,14 @@ class Progress {
         JOIN lessons l ON l.id = up.lesson_id
         JOIN courses c ON c.id = l.course_id
         GROUP BY up.user_id
+      ), active_days_by_user AS (
+        SELECT user_id,
+          BOOL_OR(activity_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date) AS active_today,
+          COUNT(*)::integer AS monthly_active_days
+        FROM portal_active_days
+        WHERE activity_date BETWEEN DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
+          AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
+        GROUP BY user_id
       ), usage_by_user AS (
         SELECT
           user_id,
@@ -213,12 +224,15 @@ class Progress {
             ELSE GREATEST(0, CURRENT_DATE - p.last_activity::date)
           END AS days_since_activity,
           COALESCE(au.daily_usage_count, 0) AS daily_usage_count,
-          COALESCE(au.monthly_usage_count, 0) AS monthly_usage_count
+          COALESCE(au.monthly_usage_count, 0) AS monthly_usage_count,
+          COALESCE(ad.active_today, false) AS active_today,
+          COALESCE(ad.monthly_active_days, 0) AS monthly_active_days
         FROM users u
         LEFT JOIN student_profiles sp ON sp.user_id = u.id
         LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
         LEFT JOIN progress_by_user p ON p.user_id = u.id
         LEFT JOIN usage_by_user au ON au.user_id = u.id
+        LEFT JOIN active_days_by_user ad ON ad.user_id = u.id
         CROSS JOIN lesson_total lt
         WHERE u.role = '生徒'
       )
@@ -249,6 +263,15 @@ class Progress {
         FROM lessons l
         JOIN courses c ON c.id = l.course_id
         WHERE COALESCE(c.is_special_content, false) = false
+      ), active_day_totals AS (
+        SELECT COUNT(*) FILTER (
+          WHERE ad.activity_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
+        )::integer AS daily_active_students,
+        COUNT(*)::integer AS monthly_active_student_days
+        FROM portal_active_days ad
+        JOIN users active_user ON active_user.id = ad.user_id AND active_user.role = '生徒'
+        WHERE ad.activity_date BETWEEN DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
+          AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
       ), usage_totals AS (
         SELECT
           COALESCE(SUM(aud.open_count) FILTER (
@@ -266,6 +289,8 @@ class Progress {
         COUNT(*)::integer AS total_students,
         COALESCE(MAX(ut.daily_usage_count), 0)::integer AS daily_usage_count,
         COALESCE(MAX(ut.monthly_usage_count), 0)::integer AS monthly_usage_count,
+        COALESCE(MAX(adt.daily_active_students), 0)::integer AS daily_active_students,
+        COALESCE(MAX(adt.monthly_active_student_days), 0)::integer AS monthly_active_student_days,
         COUNT(*) FILTER (
           WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
         )::integer AS contract_active_students,
@@ -293,6 +318,7 @@ class Progress {
       LEFT JOIN progress_by_user p ON p.user_id = u.id
       CROSS JOIN lesson_total lt
       CROSS JOIN usage_totals ut
+      CROSS JOIN active_day_totals adt
       WHERE u.role = '生徒'
     `);
     return result.rows[0];

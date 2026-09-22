@@ -9,7 +9,7 @@ router.post('/open', auth, checkRole('生徒'), async (req, res) => {
     if (!usage) {
       return res.status(403).json({ error: '生徒アカウントのみ利用回数を記録できます' });
     }
-    res.status(201).json({ success: true });
+    res.status(201).json({ success: true, recorded: usage.recorded });
   } catch (error) {
     console.error('Record app usage error:', error);
     res.status(500).json({ error: '利用回数の記録に失敗しました' });
