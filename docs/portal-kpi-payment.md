@@ -8,7 +8,7 @@
 - Google Driveはgoogle-auth-library/JWTとaxios、サービスアカウント認証を使用。Sheetsも同じ資格情報取得関数を再利用し、scope別の認証クライアントを作成。
 - users.id → student_profiles.user_id → student_profiles.notion_page_id → notion_students.notion_page_id。
 - 支払い照合番号はnotion_students.student_numberのみ。前後空白を除去し、氏名・username照合は行わない。
-- 開始日は既存の生徒一覧と同じCOALESCE(ns.lesson_start_month, sp.lesson_start_date)。Notionに月初日が登録されていればその日から判定する。
+- 支払い判定の開始日はCOALESCE(sp.lesson_start_date, ns.lesson_start_month)。具体的な開始日を優先し、NULLのときだけNotionの開始月を使用する。生徒一覧など他機能の優先順位は変更しない。
 - 「必須科目」の分類列は存在しない。sequential_unlockを必須科目だと推測せず、REQUIRED_COURSE_IDSで明示する。
 
 ## 2. 実装内容
@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS、ALTER TABLE ADD COLUMN IF NOT EXISTSを使用。
 - dashboard、lesson、special-contentsで初回表示、visibilitychange、pageshow、focus、pointerdown、keydown、scrollを利用。
 - hiddenでは送信しない。自動リロード・無操作のタイマー送信なし。手前では30秒の送信抑制と通信中ガードを設けるため、観測時刻には最大約30秒＋通信遅延の粒度がある。
 - 複数タブ・リクエストの最終重複防止はDBのユーザー主キーON CONFLICTによる原子的更新。同一SQLのCTEから新visitの場合だけapp_usage_dailyを加算。
+- MP4の5%刻みのwatch-progress通信で、表示中・再生中・シーク中でない場合にplaybackActive=trueを送る。再視聴でも同じ通信を使用。非表示・一時停止・離脱保存・手動完了は再生activityにしない。
+- サーバーでは生徒・動画教材・教材アクセス権を確認し、recordActivityで60分以内の既存Sessionのlast_activity_atとActive Dayだけ更新する。Session数は加算せず、期限切れや未作成のSessionは復活・作成しない。ユーザー操作のrecordOpenが開始判定を担う。更新はDB行ロックで同時処理を直列化する。
+- 表示状態はブラウザー申告であり実視聴を証明するものではない。iframe動画の再生検知、5%進むまで60分以上かかる極端な長時間動画、ネットワーク不達中の継続推定は対象外。専用タイマー通信は追加しない。
 - 新visitの開始日をAsia/Tokyoで日次計上。同じvisitのまま日を跨いだだけでは翌日に加算しない。
 - 既存APIのdaily_usage_count/monthly_usage_count、open_countを維持。過去は旧ページ表示回数のため、導入前後で定義が変わる。導入日時を分析時に区別すること。
 - ブラウザー通信失敗・離脱時の未送信による完全な計測保証はない。利用記録の失敗で学習を止めない。
@@ -166,8 +169,8 @@ APIの形式は[Google公式values.get](https://developers.google.com/workspace/
 
 ## 9. テスト
 
-今回の実行結果：PGLITE_TEST_MODULEを設定してnpm testを実行し、115 PASS / 0 FAIL / 0 SKIP。
-セルフレビュー後にも再実行して同結果。画面内を含む76本のJavaScript構文確認とgit diff --checkも成功。
+今回の実行結果：PGLITE_TEST_MODULEを設定してnpm testを実行し、118 PASS / 0 FAIL / 0 SKIP。
+開始日の優先順位、継続再生・無操作・日跨ぎ・重複・背景再生の回帰テストを含む。変更したJavaScriptとレッスン画面内の構文確認、git diff --checkも成功。
 本番Google Sheetsとの照合、実ブラウザーでの画面確認、本番複数接続の負荷試験は未実施。
 
 通常：npm test。SQL統合テストには隔離PGlite実行環境を任意で使用できる。
