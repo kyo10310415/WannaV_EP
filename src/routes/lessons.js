@@ -4,6 +4,7 @@ const { auth, checkRole } = require('../middleware/auth');
 const Lesson = require('../models/Lesson');
 const Progress = require('../models/Progress');
 const Quiz = require('../models/Quiz');
+const AppUsage = require('../models/AppUsage');
 
 // 全レッスン取得（進捗付き）
 router.get('/', auth, async (req, res) => {
@@ -93,6 +94,13 @@ router.post('/:id/watch-progress', auth, async (req, res) => {
       return res.status(400).json({ error: 'percentが必要です' });
     }
     const result = await Progress.updateWatchPercent(req.user.id, lessonId, percent);
+    if (req.user.role === '生徒' && req.body.playbackActive === true && percent >= 0 && percent <= 100) {
+      const lesson = await Lesson.findById(lessonId);
+      if (lesson?.content_type === 'video' && await Progress.canAccessLesson(req.user.id, lessonId)) {
+        // Analytics failure must not prevent saving learning progress.
+        await AppUsage.recordActivity(req.user.id).catch(() => console.error('Playback activity update failed'));
+      }
+    }
 
     // 95%以上視聴した場合
     if (percent >= 95) {

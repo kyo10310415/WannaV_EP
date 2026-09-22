@@ -2,6 +2,23 @@ const db = require('../config/database');
 const { sessionMinutes } = require('../config/portal');
 
 class AppUsage {
+  // Playback only extends a live session. Never starts/counts a session or revives an idle one.
+  static async recordActivity(userId) {
+    await db.query(`
+      WITH activity AS (
+        UPDATE portal_visit_state s
+        SET last_activity_at = GREATEST(s.last_activity_at, statement_timestamp())
+        FROM users u
+        WHERE s.user_id = $1 AND u.id = s.user_id AND u.role = '生徒'
+          AND s.last_activity_at > statement_timestamp() - $2 * INTERVAL '1 minute'
+        RETURNING s.user_id, s.last_activity_at
+      )
+      INSERT INTO portal_active_days (user_id, activity_date)
+      SELECT user_id, (last_activity_at AT TIME ZONE 'Asia/Tokyo')::date FROM activity
+      ON CONFLICT (user_id, activity_date) DO NOTHING
+    `, [userId, sessionMinutes()]);
+  }
+
   static async recordOpen(userId) {
     const result = await db.query(`
       WITH activity AS (

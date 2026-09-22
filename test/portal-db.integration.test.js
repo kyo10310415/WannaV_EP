@@ -77,6 +77,31 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
         VALUES (3, (NOW() AT TIME ZONE 'Asia/Tokyo')::date, 8, NOW())`);
       assert.equal((await AppUsage.recordOpen(3)).recorded, false);
     });
+    await t.test('70分の継続再生・同時イベント・日跨ぎは1Session、60分無操作は新Session', async () => {
+      await query('BEGIN');
+      try {
+        now = '2026-11-01T11:00:00Z'; // 20:00 JST
+        assert.equal((await AppUsage.recordOpen(1)).recorded, true);
+        now = '2026-11-01T11:30:00Z';
+        await AppUsage.recordActivity(1);
+        now = '2026-11-01T12:00:00Z';
+        await AppUsage.recordActivity(1);
+        now = '2026-11-01T12:10:00Z';
+        const mixed = await Promise.all([AppUsage.recordActivity(1), AppUsage.recordOpen(1), AppUsage.recordOpen(1)]);
+        assert.equal(mixed[1].recorded, false);
+        assert.equal(mixed[2].recorded, false);
+        assert.equal((await query("SELECT open_count FROM app_usage_daily WHERE user_id=1 AND usage_date='2026-11-01'")).rows[0].open_count, 1);
+        now = '2026-11-01T13:11:00Z';
+        await AppUsage.recordActivity(1); // Stale playback cannot revive an expired session.
+        assert.equal((await AppUsage.recordOpen(1)).recorded, true);
+        now = '2026-11-01T14:50:00Z';
+        await AppUsage.recordOpen(1);
+        now = '2026-11-01T15:10:00Z';
+        await Promise.all([AppUsage.recordActivity(1), AppUsage.recordActivity(1), AppUsage.recordActivity(2)]);
+        assert.equal((await query("SELECT COUNT(*)::integer AS n FROM portal_active_days WHERE activity_date='2026-11-02'")).rows[0].n, 1);
+        assert.equal((await query("SELECT COUNT(*)::integer AS n FROM app_usage_daily WHERE usage_date='2026-11-02'")).rows[0].n, 0);
+      } finally { now = null; await query('ROLLBACK'); }
+    });
     await pg.exec(`INSERT INTO courses(id,title,order_index,sequential_unlock) VALUES (1,'対象',1,true);
       INSERT INTO lessons(id,course_id,title,order_index,content_type) VALUES
         (1,1,'動画',1,'video'), (2,1,'クイズなし',2,'link');
@@ -120,7 +145,7 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
     await pg.exec(`INSERT INTO notion_students(notion_page_id, student_number, student_name,lesson_start_month)
       VALUES ('page-1',' ST-01 ','別表記','2020-01-01');
       INSERT INTO student_profiles(user_id,notion_page_id,lesson_start_date)
-      VALUES (1,'page-1','2099-01-01')`);
+      VALUES (1,'page-1','2020-01-02')`);
     const paymentRows = status => {
       const header = Array(19).fill('');
       header[18] = sheet.previousMonth().slice(0, 7).replace('-', '/');
@@ -128,16 +153,35 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
       row[3] = ' ST-01 '; row[18] = status;
       return [header, row];
     };
-    await t.test('初回同期前は全員拒否しない・Notion番号と開始日優先', async () => {
+    await t.test('初回同期前は全員拒否しない・Notion番号と具体的開始日優先', async () => {
       assert.equal((await StudentPayment.getAccess(1, '生徒')).allowed, true);
       const result = await StudentPayment.synchronize(async () => paymentRows('支払い完了'));
       assert.equal(result.updated, 1);
       assert.ok(result.issues.some(i => i.code === 'missing_student_number'));
       const detail = await StudentPayment.getDetail(1);
       assert.equal(detail.student_number, 'ST-01');
-      assert.equal(detail.lesson_start_date, '2020-01-01');
+      assert.equal(detail.lesson_start_date, '2020-01-02');
       assert.equal(detail.is_paid, true);
       assert.equal(detail.access.allowed, true);
+    });
+    await t.test('開始日9/20を開始月9/1より優先・当日の支払い判定・NULL時fallback', async () => {
+      const originalDate = sheet.japanDate;
+      await query('BEGIN');
+      try {
+        await query("UPDATE student_profiles SET lesson_start_date='2026-09-20' WHERE user_id=1");
+        await query("UPDATE notion_students SET lesson_start_month='2026-09-01' WHERE notion_page_id='page-1'");
+        await query('UPDATE student_payment_status SET is_paid=false WHERE user_id=1');
+        sheet.japanDate = () => '2026-09-19';
+        const before = await StudentPayment.getDetail(1);
+        assert.equal(before.lesson_start_date, '2026-09-20');
+        assert.deepEqual(before.access, { allowed: true, reason: 'before_start' });
+        sheet.japanDate = () => '2026-09-20';
+        assert.deepEqual((await StudentPayment.getDetail(1)).access, { allowed: false, reason: 'payment_required' });
+        await query('UPDATE student_payment_status SET is_paid=true WHERE user_id=1');
+        assert.deepEqual((await StudentPayment.getDetail(1)).access, { allowed: true, reason: 'paid' });
+        await query('UPDATE student_profiles SET lesson_start_date=NULL WHERE user_id=1');
+        assert.equal((await StudentPayment.getDetail(1)).lesson_start_date, '2026-09-01');
+      } finally { sheet.japanDate = originalDate; await query('ROLLBACK'); }
     });
     await t.test('API障害・列不明・重複でも既存正常データを維持', async () => {
       const before = (await query('SELECT * FROM student_payment_status')).rows;
@@ -187,6 +231,24 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
         assert.equal((await fetch(base + '/api/portal/links', { headers: { Authorization: 'Bearer ' + staff } })).status, 200);
         process.env.PAYMENT_ACCESS_CONTROL_ENABLED = 'false';
         assert.equal((await fetch(base + '/api/portal/links', { headers: { Authorization: 'Bearer ' + token } })).status, 200);
+        const savedActivity = AppUsage.recordActivity;
+        const activityCalls = [];
+        AppUsage.recordActivity = async id => activityCalls.push(id);
+        try {
+          const sendProgress = (body, jwtToken = token, id = 1) => fetch(base + '/api/lessons/' + id + '/watch-progress', {
+            method: 'POST', headers: { Authorization: 'Bearer ' + jwtToken, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          assert.equal((await sendProgress({ percent: 50, playbackActive: true })).status, 200);
+          assert.deepEqual(activityCalls, [1]);
+          for (const value of [false, undefined, 'true']) {
+            assert.equal((await sendProgress({ percent: 55, playbackActive: value })).status, 200);
+          }
+          assert.equal((await sendProgress({ percent: 60, playbackActive: true }, staff)).status, 200);
+          assert.equal((await sendProgress({ percent: 60, playbackActive: true }, token, 2)).status, 200); // Link, not video
+          assert.equal((await sendProgress({ percent: 'bad', playbackActive: true })).status, 400);
+          assert.deepEqual(activityCalls, [1]);
+        } finally { AppUsage.recordActivity = savedActivity; }
       } finally { await new Promise(resolve => server.close(resolve)); }
     });
   } finally {

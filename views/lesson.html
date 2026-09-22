@@ -343,6 +343,11 @@
                 }
             }
 
+            // 再視聴でも5%進むごとに既存の進捗通信を使う。シーク自体は再生activityにしない。
+            let lastPlaybackPercent = 0;
+            video.addEventListener('seeked', () => {
+                lastPlaybackPercent = video.duration ? video.currentTime / video.duration * 100 : 0;
+            });
             // timeupdate: 1秒ごとに視聴率を計算・表示
             video.addEventListener('timeupdate', () => {
                 if (!video.duration || video.duration === 0) return;
@@ -354,9 +359,11 @@
                 }
 
                 // 5%刻みでAPIに保存
-                if (percent - lastSavedPercent >= 5) {
-                    saveWatchPercent(percent);
+                const playbackActive = document.visibilityState === 'visible' && !video.paused && !video.seeking;
+                if (percent - lastSavedPercent >= 5 || (playbackActive && percent - lastPlaybackPercent >= 5)) {
+                    saveWatchPercent(percent, playbackActive);
                     lastSavedPercent = percent;
+                    lastPlaybackPercent = percent;
                 }
             });
 
@@ -364,7 +371,7 @@
             video.addEventListener('ended', () => {
                 currentWatchPercent = 100;
                 updateWatchBar(100);
-                saveWatchPercent(100);
+                saveWatchPercent(100, document.visibilityState === 'visible' && !video.seeking);
             });
 
             // loadedmetadata: 動画時間が判明したときヒント更新
@@ -392,7 +399,7 @@
         }
 
         // ===== 視聴率をAPIに保存 =====
-        async function saveWatchPercent(percent) {
+        async function saveWatchPercent(percent, playbackActive = false) {
             const token = localStorage.getItem('token');
             try {
                 const res = await fetch(`${API_URL}/lessons/${lessonId}/watch-progress`, {
@@ -401,7 +408,7 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ percent })
+                    body: JSON.stringify({ percent, playbackActive })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || '視聴率を保存できませんでした');

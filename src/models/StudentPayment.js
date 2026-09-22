@@ -2,10 +2,10 @@ const db = require('../config/database');
 const sheet = require('../utils/paymentSheet');
 const { paymentEnabled } = require('../config/portal');
 
-// Same date precedence as the existing student directory. No name/login-ID fallback.
+// Payment gating uses the specific start date; Notion's start month is only a fallback.
 const STUDENT_SQL = `
   SELECT u.id AS user_id, NULLIF(TRIM(ns.student_number), '') AS student_number,
-    COALESCE(ns.lesson_start_month, sp.lesson_start_date)::text AS lesson_start_date
+    COALESCE(sp.lesson_start_date, ns.lesson_start_month)::text AS lesson_start_date
   FROM users u
   LEFT JOIN student_profiles sp ON sp.user_id = u.id
   LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
