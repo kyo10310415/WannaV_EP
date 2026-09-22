@@ -153,6 +153,7 @@
         </div>
     </div>
 
+    <script src="/js/portal-session.js"></script>
     <script>
         const API_URL = '/api';
         let currentUser = null;
@@ -184,7 +185,7 @@
                 buildNav('admin-menu', currentUser.role, '/dashboard');
                 if (currentUser.role === '生徒') {
                     loadCharacterStatus();
-                    void recordAppOpen();
+                    PortalSession.start(currentUser);
                 }
 
                 loadDashboard();
@@ -192,19 +193,6 @@
                 console.error('認証エラー:', error);
                 localStorage.removeItem('token');
                 window.location.href = '/';
-            }
-        }
-
-        async function recordAppOpen() {
-            try {
-                const response = await fetch(`${API_URL}/usage/open`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-                });
-                if (!response.ok) throw new Error('利用回数の記録に失敗しました');
-            } catch (error) {
-                // 記録失敗で生徒のダッシュボード利用を妨げない。
-                console.warn('利用回数の記録エラー:', error);
             }
         }
 

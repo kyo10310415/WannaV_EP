@@ -89,7 +89,7 @@ router.post('/:id/watch-progress', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
     const { percent } = req.body;
-    if (typeof percent !== 'number') {
+    if (typeof percent !== 'number' || !Number.isFinite(percent)) {
       return res.status(400).json({ error: 'percentが必要です' });
     }
     const result = await Progress.updateWatchPercent(req.user.id, lessonId, percent);

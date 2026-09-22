@@ -16,7 +16,7 @@ const auth = async (req, res, next) => {
       });
     }
     req.user = decoded;
-    next();
+    return require('./portalAccess').requirePortalAccess(req, res, next);
   } catch (error) {
     res.status(401).json({ error: '無効なトークンです' });
   }

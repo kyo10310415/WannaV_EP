@@ -83,6 +83,12 @@ router.get('/me', async (req, res) => {
     const user = await User.findById(decoded.id);
     if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
 
+    // Media elements cannot attach Authorization headers. Scope this HttpOnly cookie
+    // to read-only media protection; JSON APIs still use the existing Bearer token.
+    res.cookie('portal_media', token, { httpOnly: true, sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production', path: '/',
+      maxAge: Math.max(0, decoded.exp * 1000 - Date.now()) });
+
     // needsPasswordChange をレスポンスに含める
     res.json({
       ...user,

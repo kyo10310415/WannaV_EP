@@ -377,6 +377,7 @@ const scheduleLogCleanup = () => {
 // 全ジョブ一括起動
 // ─────────────────────────────────────────────────────────────────────────────
 const startAllSchedulers = () => {
+  schedulePaymentSync();
   scheduleInactiveUserReminders();
   scheduleNotionSync();
   scheduleContractExpiryWarnings();
@@ -386,6 +387,17 @@ const startAllSchedulers = () => {
   console.log('🚀 All cron jobs registered');
 };
 
+function schedulePaymentSync() {
+  if (!process.env.GOOGLE_PAYMENT_SPREADSHEET_ID) return;
+  const StudentPayment = require('../models/StudentPayment');
+  const { paymentIntervalMinutes } = require('../config/portal');
+  const run = () => StudentPayment.synchronize()
+    .catch(error => console.error('Payment sync:', error.message));
+  void run();
+  const timer = setInterval(run, paymentIntervalMinutes() * 60000);
+  timer.unref();
+}
+
 module.exports = {
   scheduleInactiveUserReminders,
   scheduleNotionSync,
@@ -394,4 +406,5 @@ module.exports = {
   scheduleActiveStudentInactivityCheck,
   scheduleLogCleanup,
   startAllSchedulers,
+  schedulePaymentSync,
 };

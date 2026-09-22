@@ -43,6 +43,7 @@
         </section>
     </main>
 
+    <script src="/js/portal-session.js"></script>
     <script>
         const API_URL = '/api';
         let currentUser = null;
@@ -57,6 +58,7 @@
                 ]);
                 if (!authRes.ok) throw new Error('認証に失敗しました');
                 currentUser = await authRes.json();
+                PortalSession.start(currentUser);
                 document.getElementById('user-name').textContent = currentUser.name;
                 document.getElementById('user-role').textContent = currentUser.role;
                 buildNav('page-nav', currentUser.role, '/special-contents');

@@ -21,6 +21,11 @@
         <div class="nav" id="admin-nav"></div>
 
         <div id="alert-container"></div>
+        <div class="card">
+            <h2>支払い同期状況</h2>
+            <p id="payment-sync-status" style="margin-top:12px">読み込み中...</p>
+            <p style="margin-top:12px;color:var(--gray-text)">Portal Sessionは無操作の区切り（標準60分）ごとの利用回数、Active Dayは日本時間で1回でも利用した日です。今月の利用日数は生徒ごとに集計します。</p>
+        </div>
 
         <!-- ユーザー進捗一覧 -->
         <div class="card">
@@ -32,6 +37,11 @@
         </div>
     </div>
 
+    <dialog id="analytics-dialog" style="background:var(--card-bg);color:var(--light-text);border:1px solid var(--primary-blue);border-radius:16px;padding:24px;max-width:1100px;width:95vw;max-height:90vh;margin:auto">
+        <button class="btn btn-secondary" onclick="document.getElementById('analytics-dialog').close()">閉じる</button>
+        <div id="analytics-content" style="margin-top:20px"></div>
+    </dialog>
+    <script src="/js/admin-analytics.js"></script>
     <script>
         const API_URL = '/api';
         const PAGE_SIZE = 50;
@@ -62,6 +72,7 @@
 
                 buildNav('admin-nav', user.role, '/admin/users');
                 loadProgress();
+                loadPaymentSyncStatus();
             } catch (error) {
                 console.error('認証エラー:', error);
                 localStorage.removeItem('token');
@@ -109,11 +120,11 @@
 
                 html += `
                     <tr style="${user.learning_status === '要注意' || user.learning_status === '非アクティブ' ? 'background: rgba(243, 156, 18, 0.1);' : ''}">
-                        <td><strong>${escHtml(user.name || '')}</strong></td>
+                        <td><strong>${escHtml(user.name || '')}</strong><br><button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;margin-top:8px" onclick="openStudentAnalytics(${Number(user.id)})">学習・支払い詳細</button></td>
                         <td>${escHtml(user.email || '')}</td>
                         <td><strong>${contract}</strong></td>
-                        <td><strong>${Number(user.daily_usage_count) || 0}回</strong></td>
-                        <td><strong>${Number(user.monthly_usage_count) || 0}回</strong></td>
+                        <td><strong>${Number(user.daily_usage_count) || 0}回</strong><br><small>Active Day：${user.active_today ? '利用あり' : '利用なし'}</small></td>
+                        <td><strong>${Number(user.monthly_usage_count) || 0}回</strong><br><small>Active Day：${Number(user.monthly_active_days) || 0}日</small></td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <div class="progress-bar" style="width: 150px; height: 25px;">
@@ -148,11 +159,19 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" style="color: var(--accent-cyan);">${Number(summaryData.daily_usage_count) || 0}</div>
-                        <div class="stat-label">本日の利用回数</div>
+                        <div class="stat-label">本日の利用回数（Session）</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" style="color: var(--primary-blue-light);">${Number(summaryData.monthly_usage_count) || 0}</div>
-                        <div class="stat-label">今月の利用回数</div>
+                        <div class="stat-label">今月の利用回数（Session）</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Number(summaryData.daily_active_students) || 0}</div>
+                        <div class="stat-label">本日利用した生徒数（人）</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Number(summaryData.monthly_active_student_days) || 0}</div>
+                        <div class="stat-label">今月のActive Day合計（延べ人日）</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" style="color: var(--success);">${summaryData.contract_active_students || 0}</div>
