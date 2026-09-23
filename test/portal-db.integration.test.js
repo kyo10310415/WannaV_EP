@@ -6,6 +6,7 @@ const db = require('../src/config/database');
 const AppUsage = require('../src/models/AppUsage');
 const Progress = require('../src/models/Progress');
 const StudentPayment = require('../src/models/StudentPayment');
+const CharacterSelection = require('../src/models/CharacterSelection');
 const { LearningAnalytics } = require('../src/models/LearningAnalytics');
 const { createTables } = require('../src/models/schema');
 const sheet = require('../src/utils/paymentSheet');
@@ -36,6 +37,53 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
       (3,'missing@test','x','未紐付け','ST-03','生徒',NOW())`);
     await query(`INSERT INTO student_profiles(user_id,status,contract_plan)
       VALUES (1,'アクティブ','エントリープラン'), (3,'レッスン準備中','生徒プラン')`);
+    await t.test('2026年9月以前の生徒は選択不可、10月以降・開始日未設定は従来通り', async () => {
+      await query('BEGIN');
+      try {
+        await query("UPDATE student_profiles SET lesson_start_date='2026-09-30' WHERE user_id=1");
+        assert.equal(await CharacterSelection.canStudentSelect(1), false);
+        await query("UPDATE student_profiles SET lesson_start_date='2026-10-01' WHERE user_id=1");
+        assert.equal(await CharacterSelection.canStudentSelect(1), true);
+        await query("INSERT INTO notion_students(notion_page_id,lesson_start_month) VALUES('character-cutoff','2026-09-01')");
+        await query("UPDATE student_profiles SET notion_page_id='character-cutoff' WHERE user_id=1");
+        assert.equal(await CharacterSelection.canStudentSelect(1), true); // Concrete start date takes priority.
+        await query('UPDATE student_profiles SET lesson_start_date=NULL WHERE user_id=1');
+        assert.equal(await CharacterSelection.canStudentSelect(1), false); // Notion month fallback.
+        await query('UPDATE student_profiles SET notion_page_id=NULL WHERE user_id=1');
+        assert.equal(await CharacterSelection.canStudentSelect(1), true);
+
+        await query("UPDATE student_profiles SET lesson_start_date='2026-09-30' WHERE user_id=1");
+        const express = require('express');
+        const jwt = require('jsonwebtoken');
+        const app = express();
+        app.use(express.json());
+        app.use('/api/characters', require('../src/routes/characters'));
+        const previousSecret = process.env.JWT_SECRET;
+        const previousFlag = process.env.PAYMENT_ACCESS_CONTROL_ENABLED;
+        process.env.JWT_SECRET = 'isolated-character-cutoff-key';
+        process.env.PAYMENT_ACCESS_CONTROL_ENABLED = 'false';
+        const token = jwt.sign({ id: 1, role: '生徒' }, process.env.JWT_SECRET);
+        const server = app.listen(0, '127.0.0.1');
+        await new Promise(resolve => server.once('listening', resolve));
+        const base = 'http://127.0.0.1:' + server.address().port + '/api/characters';
+        const headers = { Authorization: 'Bearer ' + token };
+        try {
+          const own = await fetch(base + '/me', { headers });
+          assert.equal(own.status, 200);
+          assert.equal((await own.json()).canSelect, false);
+          assert.equal((await fetch(base + '/available', { headers })).status, 403);
+          assert.equal((await fetch(base + '/select', {
+            method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileId: 'unavailable-file' })
+          })).status, 403);
+        } finally {
+          await new Promise(resolve => server.close(resolve));
+          if (previousSecret === undefined) delete process.env.JWT_SECRET;
+          else process.env.JWT_SECRET = previousSecret;
+          process.env.PAYMENT_ACCESS_CONTROL_ENABLED = previousFlag;
+        }
+      } finally { await query('ROLLBACK'); }
+    });
     await t.test('廃止データを削除し、共通プロフィール・他機能のログを保持する', async () => {
       await pg.exec(`CREATE TABLE handover_info(id INTEGER); INSERT INTO handover_info VALUES(1);
         CREATE TABLE extension_reviews(id INTEGER); INSERT INTO extension_reviews VALUES(1);
