@@ -21,8 +21,6 @@ const DIRECTORY_CTE = `
       sp.assigned_tutor_id,
       sp.goal,
       sp.notes,
-      sp.handover_completed,
-      sp.handover_completed_at,
       sp.updated_at AS profile_updated_at,
       COALESCE(sp.notion_page_id, login_match.notion_page_id) AS linked_notion_page_id,
       tutor.name AS tutor_name,
@@ -70,8 +68,6 @@ const DIRECTORY_CTE = `
       a.assigned_tutor_id,
       a.goal,
       a.notes,
-      a.handover_completed,
-      a.handover_completed_at,
       a.profile_updated_at,
       a.tutor_name,
       a.tutor_username,
@@ -108,8 +104,6 @@ const DIRECTORY_CTE = `
       a.assigned_tutor_id,
       a.goal,
       a.notes,
-      a.handover_completed,
-      a.handover_completed_at,
       a.profile_updated_at,
       a.tutor_name,
       a.tutor_username,
@@ -153,12 +147,6 @@ class StudentProfile {
         OR d.student_number ILIKE ${placeholder}
       )`);
     }
-    if (flag === 'review') {
-      conditions.push(`EXISTS (
-        SELECT 1 FROM extension_reviews er
-        WHERE er.student_user_id = d.user_id AND er.review_status = '審査中'
-      )`);
-    }
     if (flag === 'followup') {
       conditions.push(`d.status = 'アクティブ' AND d.user_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM user_progress recent
@@ -187,10 +175,7 @@ class StudentProfile {
         progress.last_activity,
         COALESCE(progress.completed_lessons, 0) AS completed_lessons,
         satisfaction.latest_satisfaction,
-        EXISTS (
-          SELECT 1 FROM extension_reviews er
-          WHERE er.student_user_id = p.user_id AND er.review_status = '審査中'
-        ) AS under_review,
+        FALSE AS under_review,
         (
           p.status = 'アクティブ'
           AND p.user_id IS NOT NULL
@@ -363,8 +348,6 @@ class StudentProfile {
         sp.assigned_tutor_id,
         sp.goal,
         sp.notes,
-        sp.handover_completed,
-        sp.handover_completed_at,
         sp.notion_page_id,
         sp.updated_at AS profile_updated_at,
         t.name AS tutor_name,
@@ -376,7 +359,7 @@ class StudentProfile {
         -- 最新満足度スコア
         (SELECT overall_score FROM satisfaction_surveys ss WHERE ss.student_user_id = u.id ORDER BY created_at DESC LIMIT 1) AS latest_satisfaction,
         -- 延長審査中フラグ
-        EXISTS(SELECT 1 FROM extension_reviews er WHERE er.student_user_id = u.id AND er.review_status = '審査中') AS under_review
+        FALSE AS under_review
       FROM users u
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
@@ -387,7 +370,7 @@ class StudentProfile {
                sp.id, sp.status, sp.status_changed_at, sp.status_note,
                sp.contract_plan, sp.contract_start_date, sp.contract_end_date,
                sp.lesson_start_date, sp.assigned_tutor_id, sp.goal, sp.notes,
-               sp.handover_completed, sp.handover_completed_at, sp.notion_page_id, sp.updated_at,
+               sp.notion_page_id, sp.updated_at,
                ns.student_name, ns.status, ns.contract_plan, ns.lesson_start_month,
                t.name, t.username
       ORDER BY COALESCE(ns.status, sp.status) NULLS LAST, u.created_at DESC
@@ -520,11 +503,7 @@ class StudentProfile {
         sp.assigned_tutor_id,
         t.name AS tutor_name,
         (sp.contract_end_date - CURRENT_DATE) AS days_remaining,
-        EXISTS(
-          SELECT 1 FROM extension_reviews er
-          WHERE er.student_user_id = u.id
-            AND er.review_status IN ('審査中', '保留')
-        ) AS already_under_review
+        FALSE AS already_under_review
       FROM users u
       JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
@@ -535,45 +514,6 @@ class StudentProfile {
         AND sp.contract_end_date <= CURRENT_DATE + INTERVAL '${daysThreshold} days'
         AND sp.contract_end_date >= CURRENT_DATE
       ORDER BY sp.contract_end_date ASC
-    `);
-    return result.rows;
-  }
-
-  /**
-   * 延長審査対象者
-   * レッスン開始月を1か月目として、現在が4か月目の
-   * エントリープラン・アクティブのNotion連携済み生徒を取得する。
-   */
-  static async getExtensionReviewCandidates() {
-    const result = await db.query(`
-      SELECT
-        u.id AS user_id,
-        COALESCE(ns.student_name, u.name) AS student_name,
-        u.username,
-        ns.status,
-        ns.contract_plan,
-        ns.lesson_start_month AS lesson_start_date,
-        (DATE_TRUNC('month', ns.lesson_start_month) + INTERVAL '3 months')::date
-          AS fourth_month_start,
-        sp.contract_end_date,
-        sp.assigned_tutor_id,
-        t.name AS tutor_name,
-        EXISTS(
-          SELECT 1 FROM extension_reviews er
-          WHERE er.student_user_id = u.id
-            AND er.review_status IN ('審査中', '保留')
-        ) AS already_under_review
-      FROM users u
-      JOIN student_profiles sp ON u.id = sp.user_id
-      JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
-      LEFT JOIN users t ON sp.assigned_tutor_id = t.id
-      WHERE u.role = '生徒'
-        AND ns.contract_plan = 'エントリープラン'
-        AND ns.status = 'アクティブ'
-        AND ns.lesson_start_month IS NOT NULL
-        AND DATE_TRUNC('month', ns.lesson_start_month) + INTERVAL '3 months'
-          = DATE_TRUNC('month', CURRENT_DATE)
-      ORDER BY ns.lesson_start_month ASC, ns.student_name ASC NULLS LAST
     `);
     return result.rows;
   }

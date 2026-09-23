@@ -134,5 +134,5 @@ test('一覧検索に必要な複合・式インデックスを作成する', ()
   assert.match(schema, /idx_users_username_lower/);
   assert.match(schema, /idx_progress_user_last_watched/);
   assert.match(schema, /idx_satisfaction_student_created/);
-  assert.match(schema, /idx_extension_reviews_student_status/);
+  assert.match(schema, /DROP TABLE IF EXISTS extension_reviews/);
 });

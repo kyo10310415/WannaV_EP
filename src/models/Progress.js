@@ -1,5 +1,15 @@
 const db = require('../config/database');
 
+// Same population for the progress list, counters and usage summaries.
+const ACTIVE_STUDENTS = `
+  SELECT u.id FROM users u
+  LEFT JOIN student_profiles sp ON sp.user_id = u.id
+  LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+  WHERE u.role = '生徒'
+    AND COALESCE(ns.status, sp.status) IN ('アクティブ', 'レッスン準備中')
+    AND COALESCE(ns.contract_plan, sp.contract_plan) IS DISTINCT FROM '永久会員'
+`;
+
 class Progress {
   static async recordView(userId, lessonId) {
     const result = await db.query(`
@@ -162,7 +172,7 @@ class Progress {
     const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
     const safeOffset = Math.max(0, Number(offset) || 0);
     const result = await db.query(`
-      WITH lesson_total AS (
+      WITH eligible_students AS (${ACTIVE_STUDENTS}), lesson_total AS (
         SELECT COUNT(*)::integer AS total_lessons
         FROM lessons l
         JOIN courses c ON c.id = l.course_id
@@ -234,7 +244,7 @@ class Progress {
         LEFT JOIN usage_by_user au ON au.user_id = u.id
         LEFT JOIN active_days_by_user ad ON ad.user_id = u.id
         CROSS JOIN lesson_total lt
-        WHERE u.role = '生徒'
+        WHERE u.id IN (SELECT id FROM eligible_students)
       )
       SELECT *, COUNT(*) OVER()::integer AS total_count
       FROM student_progress
@@ -246,7 +256,7 @@ class Progress {
 
   static async getAllUsersProgressSummary() {
     const result = await db.query(`
-      WITH progress_by_user AS (
+      WITH eligible_students AS (${ACTIVE_STUDENTS}), progress_by_user AS (
         SELECT
           up.user_id,
           COUNT(*) FILTER (
@@ -270,6 +280,7 @@ class Progress {
         COUNT(*)::integer AS monthly_active_student_days
         FROM portal_active_days ad
         JOIN users active_user ON active_user.id = ad.user_id AND active_user.role = '生徒'
+        JOIN eligible_students eligible ON eligible.id = ad.user_id
         WHERE ad.activity_date BETWEEN DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
           AND (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
       ), usage_totals AS (
@@ -280,6 +291,7 @@ class Progress {
           COALESCE(SUM(aud.open_count), 0)::integer AS monthly_usage_count
         FROM app_usage_daily aud
         JOIN users usage_user ON usage_user.id = aud.user_id
+        JOIN eligible_students eligible ON eligible.id = aud.user_id
         WHERE usage_user.role = '生徒'
           AND aud.usage_date >= DATE_TRUNC(
             'month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo'
@@ -319,7 +331,7 @@ class Progress {
       CROSS JOIN lesson_total lt
       CROSS JOIN usage_totals ut
       CROSS JOIN active_day_totals adt
-      WHERE u.role = '生徒'
+      WHERE u.id IN (SELECT id FROM eligible_students)
     `);
     return result.rows[0];
   }

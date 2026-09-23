@@ -272,7 +272,7 @@ const createTables = async () => {
     `);
 
     // =====================================================
-    // 生徒プロフィール拡張テーブル（ステータス・契約・引き継ぎ情報）
+    // 生徒プロフィール拡張テーブル（ステータス・契約情報）
     // =====================================================
     await db.query(`
       CREATE TABLE IF NOT EXISTS student_profiles (
@@ -294,9 +294,6 @@ const createTables = async () => {
         -- 目標・特記事項
         goal TEXT,
         notes TEXT,
-        -- 引き継ぎ完了フラグ
-        handover_completed BOOLEAN DEFAULT FALSE,
-        handover_completed_at TIMESTAMP,
         -- Notion連携
         notion_page_id VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -308,8 +305,6 @@ const createTables = async () => {
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS status_note TEXT`);
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS goal TEXT`);
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS notes TEXT`);
-    await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS handover_completed BOOLEAN DEFAULT FALSE`);
-    await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS handover_completed_at TIMESTAMP`);
     await db.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS notion_page_id VARCHAR(255)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_notion_page ON student_profiles(notion_page_id)`);
     // 学籍番号と既存のusername/emailが一意に一致する生徒を自動でNotionに紐づける。
@@ -369,66 +364,6 @@ const createTables = async () => {
     `);
 
     // =====================================================
-    // 引き継ぎ情報テーブル（salesからTutorへ）
-    // =====================================================
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS handover_info (
-        id SERIAL PRIMARY KEY,
-        student_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-        -- 担当情報
-        sales_user_id INTEGER REFERENCES users(id),
-        tutor_user_id INTEGER REFERENCES users(id),
-        -- 契約情報
-        contract_plan VARCHAR(255),
-        contract_start_date DATE,
-        contract_end_date DATE,
-        lesson_start_date DATE,
-        first_session_date DATE,
-        -- 目標・特記事項
-        student_goal TEXT,
-        student_background TEXT,
-        special_notes TEXT,
-        -- ステータス
-        status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'confirmed')),
-        submitted_at TIMESTAMP,
-        confirmed_at TIMESTAMP,
-        confirmed_by INTEGER REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // =====================================================
-    // 延長審査テーブル
-    // =====================================================
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS extension_reviews (
-        id SERIAL PRIMARY KEY,
-        student_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        -- 審査情報
-        trigger_type VARCHAR(50) DEFAULT 'manual'
-          CHECK (trigger_type IN ('auto', 'manual')),
-        review_status VARCHAR(50) DEFAULT '審査中'
-          CHECK (review_status IN ('審査中', '延長決定', '延長なし', '保留')),
-        -- 審査結果
-        result VARCHAR(50) CHECK (result IN ('承認', '否認', '保留', NULL)),
-        result_reason TEXT,
-        new_contract_end_date DATE,
-        -- 担当者
-        reviewer_id INTEGER REFERENCES users(id),
-        -- 審査期間
-        review_start_date DATE DEFAULT CURRENT_DATE,
-        review_end_date DATE,
-        -- 契約情報（審査時点）
-        current_contract_end_date DATE,
-        -- メモ
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // =====================================================
     // 満足度テーブル
     // =====================================================
     await db.query(`
@@ -446,7 +381,7 @@ const createTables = async () => {
         -- 登録情報
         survey_date DATE DEFAULT CURRENT_DATE,
         registered_by INTEGER REFERENCES users(id),
-        -- 継続意向（延長審査との連携）
+        -- 継続意向（アンケート回答）
         wants_extension BOOLEAN,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -482,8 +417,6 @@ const createTables = async () => {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_user ON student_profiles(user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_status ON student_profiles(status)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_tutor ON student_profiles(assigned_tutor_id)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_extension_reviews_student ON extension_reviews(student_user_id)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_extension_reviews_student_status ON extension_reviews(student_user_id, review_status)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_satisfaction_student ON satisfaction_surveys(student_user_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_satisfaction_student_created ON satisfaction_surveys(student_user_id, created_at DESC)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_status_plan ON notion_students(status, contract_plan)`);
@@ -587,9 +520,7 @@ const createTables = async () => {
     `);
 
     // =====================================================
-    // 延長審査にメモ履歴を追加
     // =====================================================
-    await db.query(`ALTER TABLE extension_reviews ADD COLUMN IF NOT EXISTS memo_history JSONB DEFAULT '[]'`);
 
     // =====================================================
     // 満足度サーベイにメタデータ追加
@@ -639,6 +570,20 @@ const createTables = async () => {
       ON character_selections(stored_image_filename)
       WHERE stored_image_filename IS NOT NULL
     `);
+
+    // Retired workflows: explicitly requested destructive migration, no CASCADE.
+    // Shared student profile dates/contracts and learning/payment records are retained.
+    await db.query(`DO $$ BEGIN
+      DROP TABLE IF EXISTS handover_info;
+      DROP TABLE IF EXISTS extension_reviews;
+      ALTER TABLE student_profiles DROP COLUMN IF EXISTS handover_completed;
+      ALTER TABLE student_profiles DROP COLUMN IF EXISTS handover_completed_at;
+      DELETE FROM activity_logs WHERE action IN (
+      'handover_upsert', 'handover_submit', 'handover_confirm',
+      'extension_review_start', 'extension_review_update', 'extension_memo_add',
+      'auto_create_extension_review'
+      );
+    END $$`);
 
     console.log('✅ All database tables created successfully');
   } catch (error) {

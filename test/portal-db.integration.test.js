@@ -34,6 +34,52 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
       VALUES (1,'student@test','x','生徒','LOGIN-OVERRIDE','生徒',NOW()),
       (2,'staff@test','x','管理','staff','管理者',NOW()),
       (3,'missing@test','x','未紐付け','ST-03','生徒',NOW())`);
+    await query(`INSERT INTO student_profiles(user_id,status,contract_plan)
+      VALUES (1,'アクティブ','エントリープラン'), (3,'レッスン準備中','生徒プラン')`);
+    await t.test('廃止データを削除し、共通プロフィール・他機能のログを保持する', async () => {
+      await pg.exec(`CREATE TABLE handover_info(id INTEGER); INSERT INTO handover_info VALUES(1);
+        CREATE TABLE extension_reviews(id INTEGER); INSERT INTO extension_reviews VALUES(1);
+        ALTER TABLE student_profiles ADD COLUMN handover_completed BOOLEAN;
+        ALTER TABLE student_profiles ADD COLUMN handover_completed_at TIMESTAMP;
+        UPDATE student_profiles SET lesson_start_date='2026-09-20' WHERE user_id=1;
+        INSERT INTO activity_logs(action) VALUES('handover_upsert'),('extension_review_start'),('keep_test');`);
+      await createTables();
+      await createTables();
+      assert.equal((await query("SELECT to_regclass('handover_info') AS table_name")).rows[0].table_name, null);
+      assert.equal((await query("SELECT to_regclass('extension_reviews') AS table_name")).rows[0].table_name, null);
+      assert.deepEqual((await query('SELECT action FROM activity_logs')).rows.map(r => r.action), ['keep_test']);
+      assert.equal((await query('SELECT lesson_start_date::text FROM student_profiles WHERE user_id=1')).rows[0].lesson_start_date, '2026-09-20');
+      assert.equal((await query("SELECT COUNT(*)::integer AS n FROM information_schema.columns WHERE table_name='student_profiles' AND column_name LIKE 'handover_completed%'")).rows[0].n, 0);
+      const StudentProfile = require('../src/models/StudentProfile');
+      await StudentProfile.getDirectoryPage();
+      await StudentProfile.getAll();
+      await StudentProfile.getExpiringStudents();
+    });
+    await t.test('進捗対象はアクティブ・準備中かつ永久会員以外、一覧と集計が一致', async () => {
+      await query('BEGIN');
+      try {
+        for (const [status, plan, count] of [['アクティブ','永久会員',1], ['休会','生徒プラン',1],
+          ['レッスン準備中','PROプラン',2], ['アクティブ',null,2]]) {
+          await query('UPDATE student_profiles SET status=$1, contract_plan=$2 WHERE user_id=1', [status, plan]);
+          assert.equal((await Progress.getAllUsersProgress()).length, count);
+          assert.equal((await Progress.getAllUsersProgressSummary()).total_students, count);
+        }
+        await query("INSERT INTO notion_students(notion_page_id,student_name,status,contract_plan) VALUES('filter-test','優先','休会','エントリープラン')");
+        await query("UPDATE student_profiles SET notion_page_id='filter-test',status='アクティブ' WHERE user_id=1");
+        assert.equal((await Progress.getAllUsersProgressSummary()).total_students, 1);
+        await query("UPDATE notion_students SET status='アクティブ',contract_plan='永久会員' WHERE notion_page_id='filter-test'");
+        assert.equal((await Progress.getAllUsersProgress()).length, 1);
+        await query(`INSERT INTO app_usage_daily(user_id,usage_date,open_count,last_opened_at)
+          VALUES(1,(NOW() AT TIME ZONE 'Asia/Tokyo')::date,99,NOW())`);
+        await query(`INSERT INTO portal_active_days(user_id,activity_date)
+          VALUES(1,(NOW() AT TIME ZONE 'Asia/Tokyo')::date)`);
+        const summary = await Progress.getAllUsersProgressSummary();
+        assert.equal(summary.daily_usage_count, 0);
+        assert.equal(summary.monthly_usage_count, 0);
+        assert.equal(summary.daily_active_students, 0);
+        assert.equal(summary.monthly_active_student_days, 0);
+      } finally { await query('ROLLBACK'); }
+    });
     await t.test('初回1回・同時イベント20回でも重複しない・スタッフ対象外', async () => {
       now = '2026-09-22T01:00:00Z';
       assert.equal((await AppUsage.recordOpen(1)).recorded, true);
@@ -145,7 +191,8 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
     await pg.exec(`INSERT INTO notion_students(notion_page_id, student_number, student_name,lesson_start_month)
       VALUES ('page-1',' ST-01 ','別表記','2020-01-01');
       INSERT INTO student_profiles(user_id,notion_page_id,lesson_start_date)
-      VALUES (1,'page-1','2020-01-02')`);
+      VALUES (1,'page-1','2020-01-02') ON CONFLICT(user_id) DO UPDATE SET
+        notion_page_id=EXCLUDED.notion_page_id, lesson_start_date=EXCLUDED.lesson_start_date`);
     const paymentRows = status => {
       const header = Array(19).fill('');
       header[18] = sheet.previousMonth().slice(0, 7).replace('-', '/');

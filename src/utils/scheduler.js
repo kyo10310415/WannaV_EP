@@ -151,104 +151,6 @@ const scheduleContractExpiryWarnings = () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 新規ジョブ: 契約期限14日前の生徒に延長審査レコードを自動作成 (毎日 09:10)
-// 既に審査中のレコードがある場合はスキップ
-// ─────────────────────────────────────────────────────────────────────────────
-const scheduleAutoCreateExtensionReviews = () => {
-  cron.schedule('10 9 * * *', async () => {
-    console.log('🔄 [Cron] Auto-creating extension review records...');
-    try {
-      // 契約終了まで14日以内かつ審査中レコードが存在しない アクティブ生徒
-      const result = await db.query(`
-        SELECT
-          sp.user_id,
-          u.username,
-          sp.contract_end_date,
-          COALESCE(ns.contract_plan, sp.contract_plan) AS contract_plan,
-          sp.assigned_tutor_id
-        FROM student_profiles sp
-        JOIN users u ON u.id = sp.user_id
-        LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
-        WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
-          AND sp.contract_end_date IS NOT NULL
-          AND sp.contract_end_date::date <= (CURRENT_DATE + INTERVAL '14 days')::date
-          AND sp.contract_end_date::date >= CURRENT_DATE
-          AND NOT EXISTS (
-            SELECT 1 FROM extension_reviews er
-            WHERE er.student_user_id = sp.user_id
-              AND er.review_status IN ('審査中', '保留')
-          )
-      `);
-
-      if (result.rows.length === 0) {
-        console.log('✅ [Cron] No new extension reviews needed');
-        return;
-      }
-
-      console.log(`📝 [Cron] Auto-creating ${result.rows.length} extension review(s)...`);
-
-      for (const student of result.rows) {
-        // 延長審査レコード自動作成
-        await db.query(`
-          INSERT INTO extension_reviews
-            (student_user_id, trigger_type, review_status, notes)
-          VALUES ($1, $2, $3, $4)
-        `, [
-          student.user_id,
-          'auto',          // trigger_type: 自動作成
-          '審査中',
-          `契約終了14日前の自動審査レコード (終了日: ${
-            student.contract_end_date
-              ? new Date(student.contract_end_date).toLocaleDateString('ja-JP')
-              : '不明'
-          })`,
-        ]);
-
-        // Discord 通知
-        const embed = {
-          title: '📝 延長審査レコード自動作成',
-          description: `**${student.username}** さんの契約期限が近づいたため、延長審査レコードを自動作成しました。`,
-          color: 0x9B59B6,
-          fields: [
-            { name: '📅 契約終了日', value: student.contract_end_date
-                ? new Date(student.contract_end_date).toLocaleDateString('ja-JP')
-                : '未設定', inline: true },
-            { name: '📋 プラン', value: student.contract_plan || '未設定', inline: true },
-          ],
-          footer: { text: 'WannaV 受講管理システム — 自動生成' },
-          timestamp: new Date().toISOString(),
-        };
-
-        await NotificationService.sendDiscordNotification(
-          '📝 **延長審査レコード自動作成**',
-          embed
-        );
-
-        // ActivityLog
-        try {
-          await db.query(`
-            INSERT INTO activity_logs (user_id, action, target_type, target_id, detail)
-            VALUES ($1, $2, $3, $4, $5)
-          `, [
-            null,
-            'auto_create_extension_review',
-            'student',
-            student.user_id,
-            JSON.stringify({ trigger: 'auto_expiry', contract_end_date: student.contract_end_date }),
-          ]);
-        } catch (_) { /* サイレント */ }
-      }
-
-      console.log('✅ [Cron] Auto extension review creation done');
-    } catch (error) {
-      console.error('❌ [Cron] Auto extension review creation error:', error);
-    }
-  });
-
-  console.log('✅ Cron job scheduled: Auto extension review creation at 09:10 AM');
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 // 新規ジョブ: アクティブ生徒の長期不活発検知 (毎日 10:05)
 // 7日以上進捗なしのアクティブ生徒を検出して Discord + DB 通知
 // (既存の 3日チェックとは別で アクティブ生徒専用)
@@ -381,7 +283,6 @@ const startAllSchedulers = () => {
   scheduleInactiveUserReminders();
   scheduleNotionSync();
   scheduleContractExpiryWarnings();
-  scheduleAutoCreateExtensionReviews();
   scheduleActiveStudentInactivityCheck();
   scheduleLogCleanup();
   console.log('🚀 All cron jobs registered');
@@ -402,7 +303,6 @@ module.exports = {
   scheduleInactiveUserReminders,
   scheduleNotionSync,
   scheduleContractExpiryWarnings,
-  scheduleAutoCreateExtensionReviews,
   scheduleActiveStudentInactivityCheck,
   scheduleLogCleanup,
   startAllSchedulers,

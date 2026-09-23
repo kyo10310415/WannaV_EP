@@ -102,12 +102,6 @@
             const progressData = payload.users || [];
             const summaryData = payload.summary || {};
 
-            if (progressData.length === 0) {
-                container.innerHTML = '<p style="color: var(--gray-text);">生徒がいません</p>';
-                renderPagination(payload.pagination || {});
-                return;
-            }
-
             let html = '<div style="overflow-x:auto"><table class="table"><thead><tr><th>生徒名</th><th>メール</th><th>契約ステータス</th><th>本日の利用</th><th>今月の利用</th><th>進捗率</th><th>完了 / 総数</th><th>最終活動</th><th>学習状況</th></tr></thead><tbody>';
 
             progressData.forEach(user => {
@@ -127,10 +121,10 @@
                         <td><strong>${Number(user.monthly_usage_count) || 0}回</strong><br><small>Active Day：${Number(user.monthly_active_days) || 0}日</small></td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 10px;">
-                                <div class="progress-bar" style="width: 150px; height: 25px;">
-                                    <div class="progress-fill" style="width: ${percentage}%"></div>
+                                <button type="button" class="progress-bar" style="width:150px;height:25px;cursor:pointer" onclick="openCourseProgress(${Number(user.id)})" aria-label="コース別進捗を表示">
+                                    <span class="progress-fill" style="display:block;width: ${percentage}%"></span>
                                     <span class="progress-text" style="font-size: 12px;">${percentage}%</span>
-                                </div>
+                                </button>
                             </div>
                         </td>
                         <td>
@@ -149,13 +143,14 @@
                 `;
             });
 
+            if (!progressData.length) html += '<tr><td colspan="9">対象の生徒がいません</td></tr>';
             html += '</tbody></table></div>';
 
             const summary = `
                 <div class="dashboard-grid" style="margin-bottom: 30px;">
                     <div class="stat-card">
                         <div class="stat-value">${summaryData.total_students || 0}</div>
-                        <div class="stat-label">総生徒数</div>
+                        <div class="stat-label">アクティブ生徒数</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" style="color: var(--accent-cyan);">${Number(summaryData.daily_usage_count) || 0}</div>
@@ -172,10 +167,6 @@
                     <div class="stat-card">
                         <div class="stat-value">${Number(summaryData.monthly_active_student_days) || 0}</div>
                         <div class="stat-label">今月のActive Day合計（延べ人日）</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: var(--success);">${summaryData.contract_active_students || 0}</div>
-                        <div class="stat-label">契約アクティブ</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" style="color: var(--primary-blue-light);">${summaryData.not_started_students || 0}</div>
@@ -249,8 +240,6 @@
                 { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
                 { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
                 { href:'/admin/characters',         label:'🎭 キャラクター管理',     roles:['管理者','セールス'] },
-                { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },
-                { href:'/admin/extensions',         label:'📅 延長審査',             roles:['管理者','クルー'] },
                 { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
                 { href:'/admin/schedule',           label:'🗓 受講スケジュール',      roles:['管理者','クルー'] },
                 { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },
