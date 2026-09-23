@@ -2,9 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
 const StudentProfile = require('../models/StudentProfile');
-const ExtensionReview = require('../models/ExtensionReview');
 const SatisfactionSurvey = require('../models/SatisfactionSurvey');
-const HandoverInfo = require('../models/HandoverInfo');
 const ActivityLog = require('../models/ActivityLog');
 const StudentGoal = require('../models/StudentGoal');
 const LessonSchedule = require('../models/LessonSchedule');
@@ -298,7 +296,7 @@ router.get('/:userId', auth, checkRole('管理者', 'クルー', 'セールス')
 
 /**
  * GET /api/students/meta/expiring
- * 契約終了が近い生徒一覧（延長審査対象候補）
+ * 契約終了が近い生徒一覧
  */
 router.get('/meta/expiring', auth, checkRole('管理者', 'クルー'), async (req, res) => {
   try {
@@ -311,19 +309,6 @@ router.get('/meta/expiring', auth, checkRole('管理者', 'クルー'), async (r
   }
 });
 
-/**
- * GET /api/students/meta/extension-review-candidates
- * レッスン開始から4か月目の延長審査対象者一覧
- */
-router.get('/meta/extension-review-candidates', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const students = await StudentProfile.getExtensionReviewCandidates();
-    res.json(students);
-  } catch (error) {
-    console.error('Get extension review candidates error:', error);
-    res.status(500).json({ error: '延長審査対象者の取得に失敗しました' });
-  }
-});
 
 /**
  * GET /api/students/meta/followup
@@ -340,122 +325,11 @@ router.get('/meta/followup', auth, checkRole('管理者', 'クルー'), async (r
   }
 });
 
-// ====================================================
-// 延長審査管理
-// ====================================================
 
-/**
- * GET /api/students/extensions/list
- * 延長審査一覧
- */
-router.get('/extensions/list', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const { status, tutorId, limit, offset } = req.query;
-    const filterTutorId = req.user.role === 'クルー' ? req.user.id : (tutorId || null);
-    const reviews = await ExtensionReview.getAll({
-      status: status || null,
-      tutorId: filterTutorId,
-      limit: parseInt(limit) || 50,
-      offset: parseInt(offset) || 0
-    });
-    res.json(reviews);
-  } catch (error) {
-    console.error('Get extension reviews error:', error);
-    res.status(500).json({ error: '延長審査一覧の取得に失敗しました' });
-  }
-});
 
-/**
- * GET /api/students/extensions/active
- * 審査中の延長審査一覧
- */
-router.get('/extensions/active', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const reviews = await ExtensionReview.getActiveReviews();
-    res.json(reviews);
-  } catch (error) {
-    console.error('Get active reviews error:', error);
-    res.status(500).json({ error: '審査中リストの取得に失敗しました' });
-  }
-});
 
-/**
- * POST /api/students/:userId/extensions
- * 延長審査を開始
- */
-router.post('/:userId/extensions', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const { triggerType, currentContractEndDate, notes } = req.body;
-    const review = await ExtensionReview.create({
-      studentUserId: req.params.userId,
-      triggerType: triggerType || 'manual',
-      currentContractEndDate,
-      reviewerId: req.user.id,
-      notes
-    });
 
-    await ActivityLog.log({
-      userId: req.user.id,
-      action: 'extension_review_start',
-      targetType: 'student',
-      targetId: parseInt(req.params.userId),
-      detail: { reviewId: review.id },
-      ipAddress: req.ip
-    });
 
-    res.status(201).json(review);
-  } catch (error) {
-    console.error('Create extension review error:', error);
-    res.status(500).json({ error: '延長審査の開始に失敗しました' });
-  }
-});
-
-/**
- * GET /api/students/:userId/extensions
- * 特定生徒の延長審査履歴
- */
-router.get('/:userId/extensions', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const reviews = await ExtensionReview.getByStudentId(req.params.userId);
-    res.json(reviews);
-  } catch (error) {
-    console.error('Get student extensions error:', error);
-    res.status(500).json({ error: '延長審査履歴の取得に失敗しました' });
-  }
-});
-
-/**
- * PATCH /api/students/extensions/:reviewId
- * 審査結果を記録
- */
-router.patch('/extensions/:reviewId', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const { reviewStatus, result, resultReason, newContractEndDate } = req.body;
-    const review = await ExtensionReview.updateResult(req.params.reviewId, {
-      reviewStatus,
-      result,
-      resultReason,
-      newContractEndDate,
-      reviewerId: req.user.id
-    });
-
-    if (!review) return res.status(404).json({ error: '審査が見つかりません' });
-
-    await ActivityLog.log({
-      userId: req.user.id,
-      action: 'extension_review_update',
-      targetType: 'extension_review',
-      targetId: parseInt(req.params.reviewId),
-      detail: { result, reviewStatus, newContractEndDate },
-      ipAddress: req.ip
-    });
-
-    res.json(review);
-  } catch (error) {
-    console.error('Update extension review error:', error);
-    res.status(500).json({ error: '審査結果の更新に失敗しました' });
-  }
-});
 
 // ====================================================
 // 満足度管理
@@ -570,162 +444,6 @@ router.delete('/surveys/:surveyId', auth, checkRole('管理者'), async (req, re
 });
 
 // ====================================================
-// 引き継ぎ情報管理
-// ====================================================
-
-/**
- * GET /api/students/handovers/list
- * 引き継ぎ情報一覧
- */
-router.get('/handovers/list', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
-  try {
-    const { status, salesId, tutorId, limit, offset } = req.query;
-    let filterSalesId = null;
-    let filterTutorId = null;
-
-    if (req.user.role === 'セールス') {
-      filterSalesId = req.user.id;
-    } else if (req.user.role === 'クルー') {
-      filterTutorId = req.user.id;
-    } else {
-      filterSalesId = salesId || null;
-      filterTutorId = tutorId || null;
-    }
-
-    const handovers = await HandoverInfo.getAll({
-      status: status || null,
-      salesId: filterSalesId,
-      tutorId: filterTutorId,
-      limit: parseInt(limit) || 50,
-      offset: parseInt(offset) || 0
-    });
-    res.json(handovers);
-  } catch (error) {
-    console.error('Get handovers error:', error);
-    res.status(500).json({ error: '引き継ぎ一覧の取得に失敗しました' });
-  }
-});
-
-/**
- * GET /api/students/handovers/pending
- * 未確認の引き継ぎ（Tutor向け）
- */
-router.get('/handovers/pending', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const tutorId = req.user.role === 'クルー' ? req.user.id : (req.query.tutorId || req.user.id);
-    const handovers = await HandoverInfo.getPendingForTutor(tutorId);
-    res.json(handovers);
-  } catch (error) {
-    console.error('Get pending handovers error:', error);
-    res.status(500).json({ error: '未確認引き継ぎの取得に失敗しました' });
-  }
-});
-
-/**
- * GET /api/students/:userId/handover
- * 特定生徒の引き継ぎ情報
- */
-router.get('/:userId/handover', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
-  try {
-    const handover = await HandoverInfo.findByStudentId(req.params.userId);
-    res.json(handover || {});
-  } catch (error) {
-    console.error('Get handover error:', error);
-    res.status(500).json({ error: '引き継ぎ情報の取得に失敗しました' });
-  }
-});
-
-/**
- * PUT /api/students/:userId/handover
- * 引き継ぎ情報の作成・更新
- */
-router.put('/:userId/handover', auth, checkRole('管理者', 'クルー', 'セールス'), async (req, res) => {
-  try {
-    const data = {
-      ...req.body,
-      salesUserId: req.user.role === 'セールス' ? req.user.id : (req.body.salesUserId || null)
-    };
-    const handover = await HandoverInfo.upsert(req.params.userId, data);
-
-    // student_profiles にも契約情報を同期
-    if (handover.contract_plan || handover.contract_start_date || handover.lesson_start_date || handover.tutor_user_id) {
-      await StudentProfile.upsert(req.params.userId, {
-        contractPlan: handover.contract_plan,
-        contractStartDate: handover.contract_start_date,
-        contractEndDate: handover.contract_end_date,
-        lessonStartDate: handover.lesson_start_date,
-        assignedTutorId: handover.tutor_user_id
-      });
-    }
-
-    await ActivityLog.log({
-      userId: req.user.id,
-      action: 'handover_upsert',
-      targetType: 'student',
-      targetId: parseInt(req.params.userId),
-      detail: { handoverId: handover.id },
-      ipAddress: req.ip
-    });
-
-    res.json(handover);
-  } catch (error) {
-    console.error('Upsert handover error:', error);
-    res.status(500).json({ error: '引き継ぎ情報の保存に失敗しました' });
-  }
-});
-
-/**
- * POST /api/students/:userId/handover/submit
- * 引き継ぎを提出（salesからTutorへ）
- */
-router.post('/:userId/handover/submit', auth, checkRole('管理者', 'セールス'), async (req, res) => {
-  try {
-    const handover = await HandoverInfo.submit(req.params.userId);
-    if (!handover) return res.status(404).json({ error: '引き継ぎ情報が見つかりません' });
-
-    await ActivityLog.log({
-      userId: req.user.id,
-      action: 'handover_submit',
-      targetType: 'student',
-      targetId: parseInt(req.params.userId),
-      ipAddress: req.ip
-    });
-
-    res.json(handover);
-  } catch (error) {
-    console.error('Submit handover error:', error);
-    res.status(500).json({ error: '引き継ぎの提出に失敗しました' });
-  }
-});
-
-/**
- * POST /api/students/:userId/handover/confirm
- * 引き継ぎを確認（Tutorが確認）
- */
-router.post('/:userId/handover/confirm', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const handover = await HandoverInfo.confirm(req.params.userId, req.user.id);
-    if (!handover) return res.status(404).json({ error: '引き継ぎ情報が見つかりません' });
-
-    // ステータスをアクティブに変更
-    await StudentProfile.updateStatus(req.params.userId, 'アクティブ', '引き継ぎ確認済み', req.user.id);
-
-    await ActivityLog.log({
-      userId: req.user.id,
-      action: 'handover_confirm',
-      targetType: 'student',
-      targetId: parseInt(req.params.userId),
-      ipAddress: req.ip
-    });
-
-    res.json(handover);
-  } catch (error) {
-    console.error('Confirm handover error:', error);
-    res.status(500).json({ error: '引き継ぎの確認に失敗しました' });
-  }
-});
-
-// ====================================================
 // ログ管理
 // ====================================================
 
@@ -781,7 +499,7 @@ router.get('/meta/tutors', auth, checkRole('管理者', 'クルー', 'セール�
 router.get('/meta/status-options', auth, checkRole('管理者', 'クルー', 'セールス'), (req, res) => {
   res.json([
     { value: 'アクティブ',    label: 'アクティブ',    color: '#2ECC71', description: '通常受講中' },
-    { value: 'レッスン準備中', label: 'レッスン準備中', color: '#34C8E8', description: '引き継ぎ前・準備段階' },
+    { value: 'レッスン準備中', label: 'レッスン準備中', color: '#34C8E8', description: 'レッスン開始前の準備段階' },
     { value: '休会',          label: '休会',          color: '#F39C12', description: '一時停止中' },
     { value: '正規退会',      label: '正規退会',      color: '#94B8D4', description: '正規の手続きで退会' },
     { value: '強制退会',      label: '強制退会',      color: '#E74C3C', description: '規約違反等による強制退会' },
@@ -1240,52 +958,6 @@ router.get('/:userId/progress-summary', auth, checkRole('管理者', 'クルー'
 });
 
 // ====================================================
-// 延長審査 – メモ履歴追加
-// ====================================================
-
-/**
- * POST /api/students/extensions/:reviewId/memo
- * 延長審査にメモを追加
- */
-router.post('/extensions/:reviewId/memo', auth, checkRole('管理者', 'クルー'), async (req, res) => {
-  try {
-    const { memo } = req.body;
-    if (!memo) return res.status(400).json({ error: 'メモを入力してください' });
-
-    const result = await db.query(`
-      UPDATE extension_reviews
-      SET memo_history = COALESCE(memo_history, '[]'::jsonb) || $1::jsonb,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-      RETURNING *
-    `, [
-      JSON.stringify([{
-        text: memo,
-        author_id: req.user.id,
-        created_at: new Date().toISOString()
-      }]),
-      req.params.reviewId
-    ]);
-
-    if (!result.rows.length) return res.status(404).json({ error: '審査が見つかりません' });
-
-    await ActivityLog.log({
-      userId: req.user.id,
-      action: 'extension_memo_add',
-      targetType: 'extension_review',
-      targetId: parseInt(req.params.reviewId),
-      detail: { memo: memo.substring(0, 50) },
-      ipAddress: req.ip
-    });
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Add memo error:', error);
-    res.status(500).json({ error: 'メモの追加に失敗しました' });
-  }
-});
-
-// ====================================================
 // 総合ダッシュボード用API
 // ====================================================
 
@@ -1321,22 +993,12 @@ router.get('/dashboard/summary', auth, checkRole('管理者', 'クルー'), asyn
             AND sp.contract_end_date <= CURRENT_DATE + INTERVAL '30 days'
             AND sp.contract_end_date >= CURRENT_DATE
             AND sp.status = 'アクティブ'
-        ) AS expiring_30days,
-        COUNT(DISTINCT er.student_user_id) AS under_review
+        ) AS expiring_30days
       FROM users u
       JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN user_progress up ON u.id = up.user_id
-      LEFT JOIN extension_reviews er ON u.id = er.student_user_id
-        AND er.review_status IN ('審査中', '保留')
       WHERE u.role = '生徒' ${tutorFilter}
       GROUP BY ()
-    `);
-
-    // 未確認引き継ぎ
-    const handoverRes = await db.query(`
-      SELECT COUNT(*) AS pending_handovers
-      FROM handover_info h
-      ${req.user.role === 'クルー' ? `WHERE h.tutor_user_id = ${req.user.id} AND h.status = 'submitted'` : `WHERE h.status = 'submitted'`}
     `);
 
     // 最近の満足度（直近30日）
@@ -1351,7 +1013,6 @@ router.get('/dashboard/summary', auth, checkRole('管理者', 'クルー'), asyn
     res.json({
       statusCounts: statusRes.rows,
       alerts: alertRes.rows[0] || {},
-      pendingHandovers: parseInt(handoverRes.rows[0]?.pending_handovers) || 0,
       recentSatisfaction: surveyRes.rows[0] || {}
     });
   } catch (error) {

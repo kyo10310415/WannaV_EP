@@ -50,6 +50,25 @@
             '<tr><th>' + esc(label) + '</th><td>' + esc(value) + '</td></tr>').join('') + '</tbody></table>';
     }
     let request = 0;
+    window.openCourseProgress = async userId => {
+        const id = ++request;
+        const dialog = document.getElementById('analytics-dialog');
+        const body = document.getElementById('analytics-content');
+        body.textContent = 'コース別進捗を読み込み中…';
+        if (!dialog.open) dialog.showModal();
+        try {
+            const data = await get('/api/admin/users/' + userId + '/analytics');
+            if (id !== request) return;
+            const courses = data.learning.courses.filter(course => !course.special);
+            body.innerHTML = '<h3>コース別進捗（通常コース）</h3>' +
+                (courses.length ? '<table class="table"><thead><tr><th>コース</th><th>完了 / 総教材数</th><th>進捗率</th></tr></thead><tbody>' +
+                courses.map(course => '<tr><td>' + esc(course.title) + '</td><td>' +
+                    number(course.kpi.completed) + ' / ' + number(course.kpi.total) +
+                    '</td><td>' + percent(course.kpi.completion_rate) + '</td></tr>').join('') +
+                '</tbody></table>' : '<p>対象のコースはありません。</p>');
+        } catch (error) { if (id === request) body.textContent = error.message; }
+    };
+
     window.openStudentAnalytics = async userId => {
         const id = ++request;
         const dialog = document.getElementById('analytics-dialog');

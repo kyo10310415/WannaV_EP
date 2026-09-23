@@ -179,8 +179,6 @@
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
                     <button onclick="copyInvitationUrl()" class="btn btn-secondary">🔗 招待URLをコピー</button>
                     <button id="notion-sync-button" onclick="syncNotionStudents()" class="btn btn-primary" style="display:none">🔄 Notion同期</button>
-                    <button onclick="window.location='/admin/handovers'" class="btn btn-secondary">📋 引き継ぎ管理</button>
-                    <button onclick="window.location='/admin/extensions'" class="btn btn-secondary">📅 延長審査</button>
                     <button onclick="window.location='/admin/surveys'" class="btn btn-secondary">⭐ 満足度</button>
                 </div>
             </div>
@@ -211,7 +209,6 @@
                 <select id="filter-flag" class="filter-select" onchange="applyFilter()">
                     <option value="">すべて</option>
                     <option value="followup">フォロー対象のみ</option>
-                    <option value="review">審査中のみ</option>
                 </select>
             </div>
 
@@ -229,7 +226,6 @@
                             <th>進捗</th>
                             <th>満足度</th>
                             <th>フラグ</th>
-                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="students-tbody"></tbody>
@@ -308,7 +304,7 @@
             if (currentPlanFilter) params.set('contractPlan', currentPlanFilter);
 
             const tbody = document.getElementById('students-tbody');
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px"><div class="loading" style="margin:auto"></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px"><div class="loading" style="margin:auto"></div></td></tr>';
             const data = await fetchJSON(`/api/students?${params.toString()}`);
             if (loadId !== latestLoadId) return;
             if (!data) return;
@@ -419,7 +415,6 @@
                 const completedLessons = s.completed_lessons || 0;
                 const satisfaction = s.latest_satisfaction ? renderStars(s.latest_satisfaction) : '-';
                 const flags = [];
-                if (s.under_review) flags.push('<span class="review-flag">🔍 審査中</span>');
                 if (!s.has_account) flags.push('<span class="review-flag">⚠️ アカウント未作成</span>');
                 const sourceBadge = s.record_source === 'notion'
                     ? '<span class="source-badge source-notion">Notion</span>'
@@ -432,9 +427,6 @@
                 const loginEditButton = canEditLoginId
                     ? `<button onclick="openLoginIdModal(${index})" class="action-btn btn-edit" style="margin-top:5px">変更</button>`
                     : '';
-                const accountActions = s.has_account
-                    ? `<button onclick="openHandover(${s.user_id})" class="action-btn btn-info">引継ぎ</button>`
-                    : '<span style="font-size:11px;color:var(--gray-text)">アカウント作成後に利用可能</span>';
                 return `<tr>
                     <td>
                         <div style="font-weight:600">${escHtml(s.student_name || '')}</div>
@@ -460,11 +452,6 @@
                     </td>
                     <td>${satisfaction}</td>
                     <td>${flags.join(' ') || '-'}</td>
-                    <td>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap">
-                            ${accountActions}
-                        </div>
-                    </td>
                 </tr>`;
             }).join('');
         }
@@ -521,9 +508,6 @@
             }
         }
 
-        function openHandover(uid) {
-            window.location.href = `/admin/handovers?uid=${uid}`;
-        }
 
         // ---- 生徒招待URL ----
         async function copyInvitationUrl() {
@@ -592,8 +576,6 @@
                 { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
                 { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
                 { href:'/admin/characters',         label:'🎭 キャラクター管理',     roles:['管理者','セールス'] },
-                { href:'/admin/handovers',          label:'📋 引き継ぎ',             roles:['管理者','クルー','セールス'] },
-                { href:'/admin/extensions',         label:'📅 延長審査',             roles:['管理者','クルー'] },
                 { href:'/admin/surveys',            label:'⭐ 満足度',               roles:['管理者','クルー'] },
                 { href:'/admin/schedule',           label:'🗓 受講スケジュール',      roles:['管理者','クルー'] },
                 { href:'/admin/accounts',           label:'⚙️ 管理者用アカウント',   roles:['管理者'] },

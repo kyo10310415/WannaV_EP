@@ -97,17 +97,11 @@ app.get('/admin/student-management', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-student-management.html'));
 });
 
-app.get('/admin/extensions', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'admin-extensions.html'));
-});
 
 app.get('/admin/surveys', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-surveys.html'));
 });
 
-app.get('/admin/handovers', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'admin-handovers.html'));
-});
 
 app.get('/admin/logs', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin-logs.html'));
