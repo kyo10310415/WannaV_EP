@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const db = require('../src/config/database');
 const CharacterSelection = require('../src/models/CharacterSelection');
 const {
@@ -18,6 +19,36 @@ const {
 } = require('../src/utils/characterStorage');
 
 const root = path.join(__dirname, '..');
+
+test('旧生徒の未選択ボタンを隠し、既存の選択結果は表示する', async () => {
+  const dashboard = fs.readFileSync(path.join(root, 'views', 'dashboard.html'), 'utf8');
+  const source = dashboard.slice(
+    dashboard.indexOf('async function loadCharacterStatus()'),
+    dashboard.indexOf('async function openCharacterSelector()')
+  );
+  const panel = { style: { display: 'none' } };
+  const content = { innerHTML: '' };
+  let response = { selection: null, canSelect: false };
+  const context = {
+    document: { getElementById: id => id === 'student-character-panel' ? panel : content },
+    characterFetch: async () => response,
+    escHtml: value => String(value),
+  };
+  vm.runInNewContext(source + '\nthis.loadCharacterStatus = loadCharacterStatus;', context);
+  await context.loadCharacterStatus();
+  assert.equal(panel.style.display, 'none');
+  assert.doesNotMatch(content.innerHTML, /キャラクター選択<\/button>/);
+
+  response = { selection: null, canSelect: true };
+  await context.loadCharacterStatus();
+  assert.notEqual(panel.style.display, 'none');
+  assert.match(content.innerHTML, /キャラクター選択<\/button>/);
+
+  response = { selection: { status: 'confirmed', imageUrl: '/image', fileName: '選択済み.png' }, canSelect: false };
+  await context.loadCharacterStatus();
+  assert.match(content.innerHTML, /選択したキャラクター/);
+  assert.match(content.innerHTML, /選択済み.png/);
+});
 
 test('GoogleサービスアカウントJSONを通常形式とBase64形式で読み取る', () => {
   const credential = { client_email: 'drive@example.test', private_key: 'private-key' };

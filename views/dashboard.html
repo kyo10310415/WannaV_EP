@@ -218,6 +218,10 @@
             try {
                 const data = await characterFetch('/characters/me');
                 if (!data.selection) {
+                    if (!data.canSelect) {
+                        panel.style.display = 'none';
+                        return;
+                    }
                     content.innerHTML = `
                         <div>
                             <h2>🎭 キャラクターを選択</h2>

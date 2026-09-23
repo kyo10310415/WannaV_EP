@@ -1,6 +1,19 @@
 const db = require('../config/database');
 
 class CharacterSelection {
+  static async canStudentSelect(studentUserId) {
+    const result = await db.query(`
+      SELECT (COALESCE(sp.lesson_start_date, ns.lesson_start_month) IS NULL
+        OR COALESCE(sp.lesson_start_date, ns.lesson_start_month) >= DATE '2026-10-01') AS can_select
+      FROM users u
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
+      LEFT JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+      WHERE u.id = $1 AND u.role = '生徒'
+    `, [studentUserId]);
+    // Keep the existing selection flow for students whose start date is not set yet.
+    return result.rows[0]?.can_select === true;
+  }
+
   static async findById(selectionId) {
     const result = await db.query(`SELECT * FROM character_selections WHERE id = $1`, [selectionId]);
     return result.rows[0] || null;

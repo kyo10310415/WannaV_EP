@@ -136,9 +136,12 @@ router.use(auth);
  */
 router.get('/me', checkRole('生徒'), async (req, res) => {
   try {
-    const selection = await CharacterSelection.findByStudent(req.user.id);
+    const [selection, eligible] = await Promise.all([
+      CharacterSelection.findByStudent(req.user.id),
+      CharacterSelection.canStudentSelect(req.user.id),
+    ]);
     res.json({
-      canSelect: !selection,
+      canSelect: !selection && eligible,
       selection: serializeSelection(selection),
     });
   } catch (error) {
@@ -153,6 +156,9 @@ router.get('/me', checkRole('生徒'), async (req, res) => {
  */
 router.get('/available', checkRole('生徒'), async (req, res) => {
   try {
+    if (!await CharacterSelection.canStudentSelect(req.user.id)) {
+      return res.status(403).json({ error: 'このアカウントではキャラクターを選択できません' });
+    }
     const existing = await CharacterSelection.findByStudent(req.user.id);
     if (existing) {
       return res.status(409).json({
@@ -188,6 +194,9 @@ router.get('/available', checkRole('生徒'), async (req, res) => {
  */
 router.post('/select', checkRole('生徒'), async (req, res) => {
   try {
+    if (!await CharacterSelection.canStudentSelect(req.user.id)) {
+      return res.status(403).json({ error: 'このアカウントではキャラクターを選択できません' });
+    }
     const fileId = String(req.body.fileId || '').trim();
     if (!fileId) return res.status(400).json({ error: '画像を選択してください' });
 
