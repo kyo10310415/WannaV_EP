@@ -48,6 +48,11 @@
         .portal-link-title { color:var(--light-text); font-size:20px; }
         .portal-link-action { flex-shrink:0; position:relative; z-index:1; }
         .portal-link-action.disabled { opacity:.55; pointer-events:none; }
+        #important-message-dialog { width:min(92vw,620px); max-height:85vh; margin:auto; border:1px solid var(--primary-blue); border-radius:18px; padding:28px; color:var(--light-text); background:var(--card-bg); box-shadow:0 20px 60px rgba(0,0,0,.55); }
+        #important-message-dialog::backdrop { background:rgba(0,0,0,.7); }
+        #important-message-body { white-space:pre-wrap; overflow-wrap:anywhere; margin:20px 0; line-height:1.7; max-height:45vh; overflow:auto; }
+        #important-message-link { display:block; overflow-wrap:anywhere; margin-bottom:16px; color:var(--accent-cyan); }
+        .important-message-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
         @media (max-width:600px) {
             .character-modal { padding:8px; }
             .character-modal-box { padding:16px; max-height:96vh; }
@@ -64,6 +69,16 @@
     </style>
 </head>
 <body>
+    <dialog id="important-message-dialog" aria-labelledby="important-message-title">
+        <h2 id="important-message-title">📢 重要メッセージ</h2>
+        <p id="important-message-body"></p>
+        <a id="important-message-link" target="_blank" rel="noopener noreferrer" hidden>関連ページを開く ↗</a>
+        <div class="important-message-actions">
+            <label><input type="checkbox" id="important-message-today"> 本日は表示しない</label>
+            <button class="btn btn-primary" type="button" id="important-message-close" onclick="closeImportantMessage()">閉じる</button>
+        </div>
+        <p id="important-message-error" role="alert"></p>
+    </dialog>
     <div id="character-modal" class="character-modal" aria-hidden="true" onclick="closeCharacterSelectorFromBackdrop(event)">
         <div class="character-modal-box" role="dialog" aria-modal="true" aria-labelledby="character-modal-title">
             <div class="character-modal-header">
@@ -162,6 +177,52 @@
         let visibleCharacterImages = [];
         let previewedCharacter = null;
         let characterSelectionSubmitting = false;
+        let currentImportantMessage = null;
+        document.getElementById('important-message-dialog').addEventListener('cancel', event => {
+            event.preventDefault();
+            closeImportantMessage();
+        });
+
+        async function loadImportantMessage() {
+            try {
+                const response = await fetch(`${API_URL}/portal/important-message`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                });
+                if (!response.ok) return;
+                const { message } = await response.json();
+                if (!message) return;
+                currentImportantMessage = message;
+                document.getElementById('important-message-body').textContent = message.body;
+                const link = document.getElementById('important-message-link');
+                link.hidden = !message.url;
+                if (message.url) link.href = message.url;
+                document.getElementById('important-message-today').checked = false;
+                document.getElementById('important-message-error').textContent = '';
+                document.getElementById('important-message-dialog').showModal();
+            } catch (error) { console.error('重要メッセージの取得に失敗しました', error); }
+        }
+
+        async function closeImportantMessage() {
+            const dialog = document.getElementById('important-message-dialog');
+            const button = document.getElementById('important-message-close');
+            if (document.getElementById('important-message-today').checked) {
+                button.disabled = true;
+                try {
+                    const response = await fetch(`${API_URL}/portal/important-message/dismiss`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ revision: currentImportantMessage.revision })
+                    });
+                    if (!response.ok) throw new Error((await response.json()).error || '保存に失敗しました');
+                } catch (error) {
+                    document.getElementById('important-message-error').textContent = error.message;
+                    button.disabled = false;
+                    return;
+                }
+                button.disabled = false;
+            }
+            dialog.close();
+        }
 
         // 認証チェック
         async function checkAuth() {
@@ -183,6 +244,7 @@
                 document.getElementById('user-role').textContent = currentUser.role;
 
                 buildNav('admin-menu', currentUser.role, '/dashboard');
+                loadImportantMessage();
                 if (currentUser.role === '生徒') {
                     loadCharacterStatus();
                     PortalSession.start(currentUser);
@@ -602,6 +664,7 @@
                 { href: '/admin/accounts',           label: '⚙️ 管理者用アカウント',      roles: ['管理者'] },
                 { href: '/admin/students-accounts',  label: '🎓 生徒用アカウント管理',    roles: ['管理者', 'セールス'] },
                 { href: '/admin/contents',           label: '📹 コンテンツ管理',          roles: ['管理者'] },
+                { href: '/admin/important-message',  label: '📢 重要メッセージ管理',      roles: ['管理者'] },
                 { href: '/admin/users',              label: '📈 ユーザー進捗管理',        roles: ['管理者', 'クルー'] },
                 { href: '/admin/logs',               label: '📜 操作ログ',                roles: ['管理者'] },
             ];

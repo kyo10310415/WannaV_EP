@@ -7,6 +7,7 @@ const AppUsage = require('../src/models/AppUsage');
 const Progress = require('../src/models/Progress');
 const StudentPayment = require('../src/models/StudentPayment');
 const CharacterSelection = require('../src/models/CharacterSelection');
+const ImportantMessage = require('../src/models/ImportantMessage');
 const { LearningAnalytics } = require('../src/models/LearningAnalytics');
 const { createTables } = require('../src/models/schema');
 const sheet = require('../src/utils/paymentSheet');
@@ -37,6 +38,89 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
       (3,'missing@test','x','未紐付け','ST-03','生徒',NOW())`);
     await query(`INSERT INTO student_profiles(user_id,status,contract_plan)
       VALUES (1,'アクティブ','エントリープラン'), (3,'レッスン準備中','生徒プラン')`);
+    await t.test('重要メッセージの期間・利用者別抑制・日本時間の日付境界・更新版', async () => {
+      await query('BEGIN');
+      const originalQuery = db.query;
+      try {
+        const first = await ImportantMessage.save({
+          body: 'メンテナンス予告', url: 'https://example.test/info',
+          startsAt: new Date('2026-09-30T00:00:00Z'), endsAt: new Date('2026-10-03T00:00:00Z')
+        });
+        assert.equal(first.revision, 1);
+        db.query = (sql, params) => query(sql.replaceAll('CURRENT_TIMESTAMP', "TIMESTAMPTZ '2026-09-29T14:50:00Z'"), params);
+        assert.equal(await ImportantMessage.getVisibleFor(1), null);
+        db.query = (sql, params) => query(sql.replaceAll('CURRENT_TIMESTAMP', "TIMESTAMPTZ '2026-09-30T14:50:00Z'"), params);
+        assert.equal((await ImportantMessage.getVisibleFor(1)).body, 'メンテナンス予告');
+        assert.equal(await ImportantMessage.dismissToday(1, 1), true);
+        assert.equal(await ImportantMessage.dismissToday(1, 1), true);
+        assert.equal(await ImportantMessage.getVisibleFor(1), null);
+        assert.ok(await ImportantMessage.getVisibleFor(3));
+        db.query = (sql, params) => query(sql.replaceAll('CURRENT_TIMESTAMP', "TIMESTAMPTZ '2026-09-30T15:10:00Z'"), params);
+        assert.ok(await ImportantMessage.getVisibleFor(1)); // 00:10 JST next day.
+        assert.equal(await ImportantMessage.dismissToday(1, 1), true);
+        const updated = await ImportantMessage.save({
+          body: '更新した予告', url: null,
+          startsAt: new Date('2026-09-30T00:00:00Z'), endsAt: new Date('2026-10-03T00:00:00Z')
+        });
+        assert.equal(updated.revision, 2);
+        assert.equal((await ImportantMessage.getVisibleFor(1)).body, '更新した予告');
+        assert.equal(await ImportantMessage.dismissToday(1, 1), false); // Old version cannot hide update.
+        db.query = (sql, params) => query(sql.replaceAll('CURRENT_TIMESTAMP', "TIMESTAMPTZ '2026-10-03T00:00:00Z'"), params);
+        assert.equal(await ImportantMessage.getVisibleFor(1), null);
+        await ImportantMessage.remove();
+        assert.equal(await ImportantMessage.getCurrent(), null);
+      } finally { db.query = originalQuery; await query('ROLLBACK'); }
+    });
+    await t.test('重要メッセージ設定は管理者のみ、表示・当日抑制は認証利用者ごと', async () => {
+      const express = require('express');
+      const jwt = require('jsonwebtoken');
+      const app = express();
+      app.use(express.json());
+      app.use('/api/admin', require('../src/routes/admin'));
+      app.use('/api/portal', require('../src/routes/portal'));
+      const priorSecret = process.env.JWT_SECRET;
+      const priorFlag = process.env.PAYMENT_ACCESS_CONTROL_ENABLED;
+      process.env.JWT_SECRET = 'isolated-message-test-secret';
+      process.env.PAYMENT_ACCESS_CONTROL_ENABLED = 'false';
+      const admin = jwt.sign({ id: 2, role: '管理者' }, process.env.JWT_SECRET);
+      const student = jwt.sign({ id: 1, role: '生徒' }, process.env.JWT_SECRET);
+      const other = jwt.sign({ id: 3, role: '生徒' }, process.env.JWT_SECRET);
+      const server = app.listen(0, '127.0.0.1');
+      await new Promise(resolve => server.once('listening', resolve));
+      const base = 'http://127.0.0.1:' + server.address().port;
+      const call = (route, token, method = 'GET', body) => fetch(base + route, {
+        method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {})
+      });
+      try {
+        const now = Date.now();
+        const local = date => new Date(date + 9 * 3600000).toISOString().slice(0, 16);
+        const settings = { body: 'メンテナンス予定', url: 'https://example.test/info',
+          startsAt: local(now - 3600000), endsAt: local(now + 3600000) };
+        assert.equal((await call('/api/admin/important-message', student)).status, 403);
+        assert.equal((await call('/api/admin/important-message', student, 'PUT', settings)).status, 403);
+        assert.equal((await call('/api/admin/important-message', admin, 'PUT',
+          { ...settings, url: 'javascript:alert(1)' })).status, 400);
+        assert.equal((await call('/api/admin/important-message', admin, 'PUT',
+          { ...settings, startsAt: '2026-02-30T12:00' })).status, 400);
+        const saved = await call('/api/admin/important-message', admin, 'PUT', settings);
+        assert.equal(saved.status, 200);
+        assert.equal((await saved.json()).message.body, 'メンテナンス予定');
+        const visible = await call('/api/portal/important-message', student);
+        assert.equal(visible.headers.get('cache-control'), 'no-store');
+        assert.equal((await visible.json()).message.body, 'メンテナンス予定');
+        assert.equal((await call('/api/portal/important-message/dismiss', student, 'POST', { revision: 1 })).status, 200);
+        assert.equal((await (await call('/api/portal/important-message', student)).json()).message, null);
+        assert.ok((await (await call('/api/portal/important-message', other)).json()).message);
+        assert.equal((await call('/api/admin/important-message', admin, 'DELETE')).status, 200);
+        assert.equal((await (await call('/api/portal/important-message', other)).json()).message, null);
+      } finally {
+        await new Promise(resolve => server.close(resolve));
+        if (priorSecret === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = priorSecret;
+        process.env.PAYMENT_ACCESS_CONTROL_ENABLED = priorFlag;
+      }
+    });
     await t.test('2026年9月以前の生徒は選択不可、10月以降・開始日未設定は従来通り', async () => {
       await query('BEGIN');
       try {

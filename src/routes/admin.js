@@ -9,8 +9,63 @@ const Lesson = require('../models/Lesson');
 const Quiz = require('../models/Quiz');
 const Progress = require('../models/Progress');
 const PortalSetting = require('../models/PortalSetting');
+const ImportantMessage = require('../models/ImportantMessage');
 const db = require('../config/database');
 const { generateThumbnail } = require('../utils/thumbnail');
+
+function parseJstDateTime(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const date = new Date(value + '+09:00');
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16) === value
+    ? date : null;
+}
+
+router.get('/important-message', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ message: await ImportantMessage.getCurrent() });
+  } catch (error) {
+    console.error('Get important message settings error:', error);
+    res.status(500).json({ error: '重要メッセージ設定の取得に失敗しました' });
+  }
+});
+
+router.put('/important-message', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    const input = req.body || {};
+    const body = typeof input.body === 'string' ? input.body.trim() : '';
+    const url = typeof input.url === 'string' ? input.url.trim() : '';
+    const startsAt = parseJstDateTime(input.startsAt);
+    const endsAt = parseJstDateTime(input.endsAt);
+    if (!body || body.length > 2000) return res.status(400).json({ error: 'メッセージは1〜2000文字で入力してください' });
+    if (!startsAt || !endsAt || startsAt >= endsAt) {
+      return res.status(400).json({ error: '表示期間を日本時間で正しく設定してください' });
+    }
+    if (url.length > 2048) return res.status(400).json({ error: 'URLが長すぎます' });
+    if (url) {
+      try {
+        const parsed = new URL(url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('protocol');
+      } catch (_) { return res.status(400).json({ error: 'URLはhttpまたはhttps形式で入力してください' }); }
+    }
+    const message = await ImportantMessage.save({ body, url: url || null, startsAt, endsAt });
+    res.json({ message });
+  } catch (error) {
+    console.error('Save important message error:', error);
+    res.status(500).json({ error: '重要メッセージの保存に失敗しました' });
+  }
+});
+
+router.delete('/important-message', auth, checkRole('管理者'), async (req, res) => {
+  try {
+    await ImportantMessage.remove();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete important message error:', error);
+    res.status(500).json({ error: '重要メッセージの停止に失敗しました' });
+  }
+});
 
 // 動画アップロード設定
 // UPLOAD_DIR は server.js で global に設定される（Render Disk 対応）

@@ -136,6 +136,27 @@ const createTables = async () => {
       )
     `);
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS important_messages (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        body TEXT NOT NULL,
+        url TEXT,
+        starts_at TIMESTAMPTZ NOT NULL,
+        ends_at TIMESTAMPTZ NOT NULL CHECK (ends_at > starts_at),
+        revision INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS important_message_dismissals (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        message_id INTEGER NOT NULL REFERENCES important_messages(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,
+        dismissed_on DATE NOT NULL,
+        PRIMARY KEY (user_id, message_id, revision, dismissed_on)
+      )
+    `);
+
     // Quiz questions table
     await db.query(`
       CREATE TABLE IF NOT EXISTS quiz_questions (

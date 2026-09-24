@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重要メッセージ管理 - WannaV ポータル</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .message-editor { max-width: 760px; margin: 24px auto; }
+        .message-editor textarea { min-height: 150px; resize: vertical; }
+        .message-period { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .message-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+        #message-status { min-height: 1.5em; margin-top: 16px; }
+        @media (max-width: 600px) { .message-period { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="header"><div class="header-content">
+        <h1 class="logo">✨ WannaV ポータル</h1>
+        <div class="user-info"><button class="btn btn-secondary" onclick="logout()">ログアウト</button></div>
+    </div></div>
+    <div class="container">
+        <nav class="nav" style="display:flex">
+            <a class="nav-link" href="/dashboard">📊 ダッシュボード</a>
+            <a class="nav-link" href="/admin/contents">📹 コンテンツ管理</a>
+            <a class="nav-link active" href="/admin/important-message">📢 重要メッセージ</a>
+        </nav>
+        <div class="card message-editor">
+            <h2>📢 重要メッセージ</h2>
+            <p style="color:var(--gray-text);margin:12px 0 24px">指定期間中、アプリを開いた利用者のダッシュボードに表示します。日時は日本時間です。</p>
+            <form id="message-form">
+                <div class="form-group">
+                    <label class="form-label" for="message-body">メッセージ内容</label>
+                    <textarea class="form-input" id="message-body" maxlength="2000" required></textarea>
+                </div>
+                <div class="message-period">
+                    <div class="form-group"><label class="form-label" for="message-start">表示開始日時</label><input class="form-input" type="datetime-local" id="message-start" required></div>
+                    <div class="form-group"><label class="form-label" for="message-end">表示終了日時</label><input class="form-input" type="datetime-local" id="message-end" required></div>
+                </div>
+                <div class="form-group"><label class="form-label" for="message-url">添付URL（任意）</label><input class="form-input" type="url" id="message-url" placeholder="https://example.com"></div>
+                <div class="message-actions">
+                    <button class="btn btn-primary" type="submit" id="save-button">保存する</button>
+                    <button class="btn btn-secondary" type="button" id="stop-button" onclick="stopMessage()" disabled>表示を停止する</button>
+                </div>
+                <p id="message-status" role="status" aria-live="polite"></p>
+            </form>
+        </div>
+    </div>
+    <script>
+        const token = localStorage.getItem('token');
+        const status = document.getElementById('message-status');
+        const jstLocal = value => value
+            ? new Date(new Date(value).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16)
+            : '';
+        async function request(method, body) {
+            const response = await fetch('/api/admin/important-message', {
+                method,
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...(body ? { body: JSON.stringify(body) } : {})
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || '処理に失敗しました');
+            return data;
+        }
+        async function init() {
+            if (!token) { location.href = '/'; return; }
+            try {
+                const response = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+                if (!response.ok) throw new Error('認証に失敗しました');
+                const user = await response.json();
+                if (user.role !== '管理者') { location.href = '/dashboard'; return; }
+                const { message } = await request('GET');
+                if (message) {
+                    document.getElementById('message-body').value = message.body;
+                    document.getElementById('message-start').value = jstLocal(message.starts_at);
+                    document.getElementById('message-end').value = jstLocal(message.ends_at);
+                    document.getElementById('message-url').value = message.url || '';
+                    document.getElementById('stop-button').disabled = false;
+                }
+            } catch (error) { status.textContent = error.message; }
+        }
+        document.getElementById('message-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const button = document.getElementById('save-button');
+            button.disabled = true;
+            status.textContent = '保存中…';
+            try {
+                const { message } = await request('PUT', {
+                    body: document.getElementById('message-body').value,
+                    startsAt: document.getElementById('message-start').value,
+                    endsAt: document.getElementById('message-end').value,
+                    url: document.getElementById('message-url').value
+                });
+                status.textContent = '保存しました。表示期間になるとアプリに表示されます。';
+                document.getElementById('stop-button').disabled = !message;
+            } catch (error) { status.textContent = error.message; }
+            finally { button.disabled = false; }
+        });
+        async function stopMessage() {
+            if (!confirm('重要メッセージの表示を停止しますか？')) return;
+            try {
+                await request('DELETE');
+                document.getElementById('stop-button').disabled = true;
+                status.textContent = '表示を停止しました。';
+            } catch (error) { status.textContent = error.message; }
+        }
+        function logout() { localStorage.removeItem('token'); location.href = '/'; }
+        init();
+    </script>
+</body>
+</html>
