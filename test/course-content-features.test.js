@@ -139,9 +139,9 @@ test('コースごとの順次解禁設定に基づいてレッスンアクセ�
   try {
     assert.equal(await Progress.canAccessLesson(12, 34), true);
     assert.match(capturedSql, /current\.sequential_unlock = false THEN true/);
-    assert.match(capturedSql, /previous\.id IS NULL THEN true/);
+    assert.match(capturedSql, /ELSE NOT EXISTS/);
     assert.match(capturedSql, /up\.lesson_id = previous\.id/);
-    assert.match(capturedSql, /ORDER BY previous\.order_index DESC, previous\.id DESC/);
+    assert.match(capturedSql, /up\.completed IS DISTINCT FROM true/);
     assert.deepEqual(capturedParams, [12, 34]);
   } finally {
     db.query = originalQuery;
@@ -162,6 +162,6 @@ test('管理画面でコース名と動画解禁方法を変更できる', () =>
   assert.match(adminPage, /course-edit-title/);
   assert.match(adminPage, /course-edit-sequential-unlock/);
   assert.match(adminPage, /sequentialUnlock: document\.getElementById\('course-edit-sequential-unlock'\)\.checked/);
-  assert.match(dashboard, /group\.sequentialUnlock && index > 0/);
-  assert.match(dashboard, /!group\.sequentialUnlock \|\| index === 0/);
+  assert.match(dashboard, /group\.sequentialUnlock && !priorLessonsComplete/);
+  assert.match(dashboard, /priorLessonsComplete = priorLessonsComplete && lesson\.completed/);
 });

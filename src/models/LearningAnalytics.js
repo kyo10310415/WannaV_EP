@@ -30,6 +30,7 @@ function summarize(lessons) {
 
 function buildAnalytics(rows, requiredIds = []) {
   const courses = [];
+  const priorLessonsComplete = new Map();
   for (const row of rows) {
     let course = courses.find(c => c.id === row.course_id);
     if (!course) {
@@ -37,9 +38,10 @@ function buildAnalytics(rows, requiredIds = []) {
         special: row.is_special_content, required: requiredIds.includes(row.course_id), lessons: [] };
       courses.push(course);
     }
-    const previous = course.lessons.at(-1);
-    const canAccess = !course.sequential || !previous ||
-      (previous.completed && (!previous.has_quiz || previous.quiz_passed));
+    const previousComplete = priorLessonsComplete.get(row.course_id) ?? true;
+    const canAccess = !course.sequential || previousComplete;
+    priorLessonsComplete.set(row.course_id, previousComplete &&
+      row.completed && (!row.has_quiz || row.quiz_passed));
     course.lessons.push({ ...row, can_access: Boolean(canAccess),
       watch_complete: row.content_type === 'video' && row.watch_percent >= 95,
       quiz_retries: Math.max(row.quiz_attempts - 1, 0) });
