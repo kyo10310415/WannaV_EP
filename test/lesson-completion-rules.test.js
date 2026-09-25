@@ -8,7 +8,7 @@ const Progress = require('../src/models/Progress');
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('順次解禁は小テストがある前レッスンの合格状態も確認する', async () => {
+test('順次解禁は前に並ぶ全レッスンの完了と小テスト合格を確認する', async () => {
   const originalQuery = db.query;
   let capturedSql = '';
   db.query = async (sql) => {
@@ -17,8 +17,12 @@ test('順次解禁は小テストがある前レッスンの合格状態も確�
   };
   try {
     assert.equal(await Progress.canAccessLesson(5, 9), true);
-    assert.match(capturedSql, /NOT EXISTS[\s\S]*FROM quiz_questions qq[\s\S]*qq\.lesson_id = previous\.id/);
-    assert.match(capturedSql, /OR up\.quiz_passed = true/);
+    assert.match(capturedSql, /NOT EXISTS \([\s\S]*FROM lessons previous/);
+    assert.match(capturedSql, /previous\.order_index < current\.order_index/);
+    assert.match(capturedSql, /previous\.id < current\.id/);
+    assert.match(capturedSql, /up\.completed IS DISTINCT FROM true/);
+    assert.match(capturedSql, /FROM quiz_questions qq WHERE qq\.lesson_id = previous\.id/);
+    assert.match(capturedSql, /up\.quiz_passed IS DISTINCT FROM true/);
   } finally {
     db.query = originalQuery;
   }
@@ -46,6 +50,17 @@ test('小テストありレッスンは手動完了APIで完了にできない',
   assert.match(manualRoute, /status\(409\)/);
   assert.match(manualRoute, /quiz_required: true/);
   assert.ok(manualRoute.indexOf('questions.length > 0') < manualRoute.indexOf('Progress.completeByWatching'));
+});
+
+test('ロック中のレッスンは完了やクイズ提出でも解禁を回避できない', () => {
+  const route = read('src/routes/lessons.js');
+  for (const path of ["/:id/manual-complete", "/:id/quiz"]) {
+    const start = route.indexOf(`router.post('${path}'`);
+    const next = route.indexOf('router.post(', start + 1);
+    const handler = route.slice(start, next < 0 ? undefined : next);
+    assert.match(handler, /Progress\.canAccessLesson\(req\.user\.id, lessonId\)/);
+    assert.match(handler, /status\(403\)/);
+  }
 });
 
 test('クイズ未合格の既存完了記録を起動時に補正する', () => {

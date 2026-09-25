@@ -510,12 +510,13 @@
                         </div>
                         <div class="lessons-grid">`;
 
-                group.lessons.forEach((lesson, index) => {
+                let priorLessonsComplete = true;
+                group.lessons.forEach(lesson => {
                     const isCompleted = lesson.completed;
-                    // アンロック判定はコース内の並びごとに行う。
-                    const previousLesson = group.lessons[index - 1];
-                    const isLocked = isStudent && group.sequentialUnlock && index > 0 && !previousLesson.completed;
-                    const canAccess = !isStudent || !group.sequentialUnlock || index === 0 || previousLesson.completed;
+                    const isLocked = isStudent && group.sequentialUnlock && !priorLessonsComplete;
+                    const canAccess = !isLocked;
+                    priorLessonsComplete = priorLessonsComplete && lesson.completed &&
+                        (!lesson.has_quiz || lesson.quiz_passed);
 
                     // サムネイル生成
                     const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url, lesson.content_type);
@@ -527,8 +528,8 @@
                         (isCompleted ? ' completed' : '') +
                         (isLocked   ? ' locked'    : '');
 
-                    const overlayIcon = isCompleted ? '✅' : isLocked ? '🔒' : lesson.content_type === 'link' ? '↗' : lesson.content_type === 'image' ? '🔍' : '▶';
-                    const overlayClass = isCompleted ? 'thumb-overlay completed' : isLocked ? 'thumb-overlay locked' : 'thumb-overlay play';
+                    const overlayIcon = isLocked ? '🔒' : isCompleted ? '✅' : lesson.content_type === 'link' ? '↗' : lesson.content_type === 'image' ? '🔍' : '▶';
+                    const overlayClass = isLocked ? 'thumb-overlay locked' : isCompleted ? 'thumb-overlay completed' : 'thumb-overlay play';
 
                     const linkStart = canAccess ? `<a href="/lesson/${Number(lesson.id)}" class="lesson-card-link">` : `<div class="lesson-card-link no-pointer">`;
                     const linkEnd   = canAccess ? `</a>` : `</div>`;

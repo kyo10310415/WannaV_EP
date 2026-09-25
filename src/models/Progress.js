@@ -343,34 +343,22 @@ class Progress {
         FROM lessons l
         JOIN courses c ON c.id = l.course_id
         WHERE l.id = $2
-      ), previous_lesson AS (
-        SELECT previous.id
-        FROM lessons previous
-        JOIN current_lesson current ON current.course_id = previous.course_id
-        WHERE previous.order_index < current.order_index
-           OR (previous.order_index = current.order_index AND previous.id < current.id)
-        ORDER BY previous.order_index DESC, previous.id DESC
-        LIMIT 1
       )
       SELECT CASE
         WHEN current.sequential_unlock = false THEN true
-        WHEN previous.id IS NULL THEN true
-        ELSE EXISTS (
-          SELECT 1
-          FROM user_progress up
-          WHERE up.user_id = $1
-            AND up.lesson_id = previous.id
-            AND up.completed = true
-            AND (
-              NOT EXISTS (
+        ELSE NOT EXISTS (
+          SELECT 1 FROM lessons previous
+          LEFT JOIN user_progress up ON up.user_id = $1 AND up.lesson_id = previous.id
+          WHERE previous.course_id = current.course_id
+            AND (previous.order_index < current.order_index
+              OR (previous.order_index = current.order_index AND previous.id < current.id))
+            AND (up.completed IS DISTINCT FROM true
+              OR (EXISTS (
                 SELECT 1 FROM quiz_questions qq WHERE qq.lesson_id = previous.id
-              )
-              OR up.quiz_passed = true
-            )
+              ) AND up.quiz_passed IS DISTINCT FROM true))
         )
       END AS can_access
       FROM current_lesson current
-      LEFT JOIN previous_lesson previous ON true
     `, [userId, lessonId]);
 
     return result.rows[0]?.can_access === true;

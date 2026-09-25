@@ -117,3 +117,18 @@ test('学習KPIは視聴・合格を分離し、未履歴の失敗回数を推�
   assert.equal(passed.required.quiz_attempt_pass_rate, 50);
   assert.equal(buildAnalytics([], []).required_configured, false);
 });
+
+test('学習KPIは差し込み教材より後の完了済み教材も解禁扱いにしない', () => {
+  const lesson = { course_id: 1, course_title: '科目', sequential_unlock: true,
+    content_type: 'link', view_count: 0, watch_percent: 0, quiz_attempts: 0,
+    quiz_failed_attempts: 0, quiz_passed: false, has_quiz: false };
+  const result = buildAnalytics([
+    { ...lesson, id: 1, completed: true },
+    { ...lesson, id: 3, completed: false },
+    { ...lesson, id: 2, completed: true },
+    { ...lesson, id: 4, completed: true },
+  ]);
+  assert.deepEqual(result.courses[0].lessons.map(item => item.can_access),
+    [true, true, false, false]);
+  assert.equal(result.courses[0].next_locked_lesson, 2);
+});

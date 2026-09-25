@@ -92,15 +92,18 @@
                 groupMap.get(key).lessons.push(lesson);
             });
             const isStudent = currentUser.role === '生徒';
-            container.innerHTML = groups.map(group => `
+            container.innerHTML = groups.map(group => {
+                let priorLessonsComplete = true;
+                return `
                 <section class="special-course">
                     <div class="special-course-header">
                         <h3 class="special-course-title">✨ ${escHtml(group.title)}</h3>
                         <span class="special-rule">${group.sequential ? '🔒 順次解禁' : '🔓 すべて閲覧可能'}</span>
                     </div>
-                    <div class="lessons-grid">${group.lessons.map((lesson,index) => {
-                        const previous = group.lessons[index - 1];
-                        const locked = isStudent && group.sequential && index > 0 && !previous.completed;
+                    <div class="lessons-grid">${group.lessons.map(lesson => {
+                        const locked = isStudent && group.sequential && !priorLessonsComplete;
+                        priorLessonsComplete = priorLessonsComplete && lesson.completed &&
+                            (!lesson.has_quiz || lesson.quiz_passed);
                         const thumbnail = getThumbnail(lesson);
                         const typeLabel = lesson.content_type === 'image'
                             ? (lesson.external_link_url ? '🖼️ 画像＋リンク' : '🖼️ 画像')
@@ -110,7 +113,7 @@
                         return `${wrapperStart}<article class="lesson-card${lesson.completed ? ' completed' : ''}${locked ? ' locked' : ''}">
                             <div class="lesson-thumb-wrap">
                                 ${thumbnail.src ? `<img src="${escHtml(thumbnail.src)}" alt="${escHtml(lesson.title)}" class="lesson-thumb-img" loading="lazy">` : `<div class="lesson-thumb-placeholder"><span>${thumbnail.emoji}</span></div>`}
-                                <div class="${lesson.completed ? 'thumb-overlay completed' : locked ? 'thumb-overlay locked' : 'thumb-overlay play'}"><span class="overlay-icon">${lesson.completed ? '✅' : locked ? '🔒' : '▶'}</span></div>
+                                <div class="${locked ? 'thumb-overlay locked' : lesson.completed ? 'thumb-overlay completed' : 'thumb-overlay play'}"><span class="overlay-icon">${locked ? '🔒' : lesson.completed ? '✅' : '▶'}</span></div>
                                 ${lesson.completed ? '<div class="thumb-badge-done">✅ 完了</div>' : ''}
                             </div>
                             <div class="lesson-card-body">
@@ -119,7 +122,8 @@
                             </div>
                         </article>${wrapperEnd}`;
                     }).join('')}</div>
-                </section>`).join('');
+                </section>`;
+            }).join('');
         }
 
         function getThumbnail(lesson) {

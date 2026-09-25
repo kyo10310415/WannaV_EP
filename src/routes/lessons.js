@@ -128,6 +128,9 @@ router.post('/:id/watch-progress', auth, async (req, res) => {
 router.post('/:id/manual-complete', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
+    if (req.user.role === '生徒' && !await Progress.canAccessLesson(req.user.id, lessonId)) {
+      return res.status(403).json({ error: '前のレッスンを完了してください' });
+    }
     const questions = await Quiz.getQuestionsByLesson(lessonId);
     if (questions.length > 0) {
       return res.status(409).json({
@@ -156,6 +159,9 @@ router.post('/:id/quiz', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
     const { answers } = req.body;
+    if (req.user.role === '生徒' && !await Progress.canAccessLesson(req.user.id, lessonId)) {
+      return res.status(403).json({ error: '前のレッスンを完了してください' });
+    }
 
     const result = await Quiz.verifyAnswers(lessonId, answers);
     await Progress.completeQuiz(req.user.id, lessonId, result.passed);

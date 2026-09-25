@@ -308,6 +308,38 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
       assert.equal(old.quiz_attempts, 1);
       assert.equal(legacy.quiz_failed_attempts, null);
     });
+    await t.test('完了済みレッスンの途中へ差し込むと後続の完了済みレッスンも一時的にロックする', async () => {
+      await query('BEGIN');
+      try {
+        await query("INSERT INTO lessons(id,course_id,title,order_index,content_type) VALUES (4,1,'後続',3,'link')");
+        await Progress.completeByWatching(1, 4);
+        assert.equal(await Progress.canAccessLesson(1, 4), true);
+
+        // 同順位はID順。新しい教材を1番目と2番目の間に差し込む。
+        await query("INSERT INTO lessons(id,course_id,title,order_index,content_type) VALUES (3,1,'差し込み',1,'link')");
+        assert.equal(await Progress.canAccessLesson(1, 3), true);
+        assert.equal(await Progress.canAccessLesson(1, 2), false);
+        assert.equal(await Progress.canAccessLesson(1, 4), false);
+        const rows = await require('../src/models/Lesson').getWithProgress(1);
+        assert.deepEqual(rows.map(row => row.id), [1, 3, 2, 4]);
+        const analytics = await LearningAnalytics.forStudent(1);
+        assert.deepEqual(analytics.courses[0].lessons.map(lesson => lesson.can_access),
+          [true, true, false, false]);
+
+        await Progress.completeByWatching(1, 3);
+        assert.equal(await Progress.canAccessLesson(1, 2), true);
+        assert.equal(await Progress.canAccessLesson(1, 4), true);
+
+        // 並べ替え後も新しい順序で全前提を評価し、完了済みの後続履歴は消さない。
+        await query('DELETE FROM user_progress WHERE user_id = 1 AND lesson_id = 3');
+        await query('UPDATE lessons SET order_index = 2 WHERE id = 3');
+        assert.equal(await Progress.canAccessLesson(1, 2), true);
+        assert.equal(await Progress.canAccessLesson(1, 3), true);
+        assert.equal(await Progress.canAccessLesson(1, 4), false);
+        await Progress.completeByWatching(1, 3);
+        assert.equal(await Progress.canAccessLesson(1, 4), true);
+      } finally { await query('ROLLBACK'); }
+    });
     await t.test('既存の日次・月次集計SQLとページングを維持', async () => {
       const users = await Progress.getAllUsersProgress({ limit: 1, offset: 0 });
       assert.equal(users.length, 1);

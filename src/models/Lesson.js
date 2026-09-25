@@ -94,6 +94,7 @@ class Lesson {
         c.title as course_title,
         c.sequential_unlock,
         c.is_special_content,
+        EXISTS (SELECT 1 FROM quiz_questions q WHERE q.lesson_id = l.id) AS has_quiz,
         COALESCE(up.completed, false) as completed,
         COALESCE(up.quiz_passed, false) as quiz_passed,
         COALESCE(up.watch_percent, 0) as watch_percent,
