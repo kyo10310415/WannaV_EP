@@ -87,7 +87,7 @@ class Lesson {
     await db.query('DELETE FROM lessons WHERE id = $1', [id]);
   }
 
-  static async getWithProgress(userId, specialOnly = false) {
+  static async getWithProgress(userId, specialOnly = false, unrestricted = false) {
     const result = await db.query(`
       SELECT 
         l.*,
@@ -98,13 +98,23 @@ class Lesson {
         COALESCE(up.completed, false) as completed,
         COALESCE(up.quiz_passed, false) as quiz_passed,
         COALESCE(up.watch_percent, 0) as watch_percent,
+        CASE WHEN $3::boolean OR c.sequential_unlock IS NOT TRUE THEN true
+          ELSE COALESCE(BOOL_AND(
+            COALESCE(up.completed, false) AND
+            (NOT EXISTS (SELECT 1 FROM quiz_questions q WHERE q.lesson_id = l.id)
+              OR COALESCE(up.quiz_passed, false))
+          ) OVER (
+            PARTITION BY l.course_id ORDER BY l.order_index, l.id
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+          ), true)
+        END AS can_access,
         up.last_watched_at
       FROM lessons l
       LEFT JOIN courses c ON l.course_id = c.id
       LEFT JOIN user_progress up ON l.id = up.lesson_id AND up.user_id = $1
       WHERE COALESCE(c.is_special_content, false) = $2
       ORDER BY c.order_index, c.id, l.order_index, l.id
-    `, [userId, specialOnly]);
+    `, [userId, specialOnly, unrestricted]);
     return result.rows;
   }
 

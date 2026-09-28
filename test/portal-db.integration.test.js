@@ -322,6 +322,7 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
         assert.equal(await Progress.canAccessLesson(1, 4), false);
         const rows = await require('../src/models/Lesson').getWithProgress(1);
         assert.deepEqual(rows.map(row => row.id), [1, 3, 2, 4]);
+        assert.deepEqual(rows.map(row => row.can_access), [true, true, false, false]);
         const analytics = await LearningAnalytics.forStudent(1);
         assert.deepEqual(analytics.courses[0].lessons.map(lesson => lesson.can_access),
           [true, true, false, false]);
@@ -329,6 +330,8 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
         await Progress.completeByWatching(1, 3);
         assert.equal(await Progress.canAccessLesson(1, 2), true);
         assert.equal(await Progress.canAccessLesson(1, 4), true);
+        assert.deepEqual((await require('../src/models/Lesson').getWithProgress(1))
+          .map(row => row.can_access), [true, true, true, true]);
 
         // 並べ替え後も新しい順序で全前提を評価し、完了済みの後続履歴は消さない。
         await query('DELETE FROM user_progress WHERE user_id = 1 AND lesson_id = 3');
@@ -336,9 +339,60 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
         assert.equal(await Progress.canAccessLesson(1, 2), true);
         assert.equal(await Progress.canAccessLesson(1, 3), true);
         assert.equal(await Progress.canAccessLesson(1, 4), false);
+        assert.deepEqual((await require('../src/models/Lesson').getWithProgress(1))
+          .map(row => row.can_access), [true, true, true, false]);
         await Progress.completeByWatching(1, 3);
         assert.equal(await Progress.canAccessLesson(1, 4), true);
       } finally { await query('ROLLBACK'); }
+    });
+    await t.test('管理者だけが順次解禁を無視でき、生徒・セールス・クルーは画面用APIと直接アクセスでロックされる', async () => {
+      const express = require('express');
+      const jwt = require('jsonwebtoken');
+      const app = express();
+      app.use(express.json());
+      app.use('/api/lessons', require('../src/routes/lessons'));
+      const priorSecret = process.env.JWT_SECRET;
+      const priorFlag = process.env.PAYMENT_ACCESS_CONTROL_ENABLED;
+      process.env.JWT_SECRET = 'isolated-lesson-access-test-secret';
+      process.env.PAYMENT_ACCESS_CONTROL_ENABLED = 'false';
+      await query('BEGIN');
+      const server = app.listen(0, '127.0.0.1');
+      await new Promise(resolve => server.once('listening', resolve));
+      const base = 'http://127.0.0.1:' + server.address().port;
+      const call = (path, id, role, method = 'GET') => fetch(base + '/api/lessons' + path, {
+        method, headers: { Authorization: 'Bearer ' + jwt.sign({ id, role }, process.env.JWT_SECRET) }
+      });
+      try {
+        await query("INSERT INTO lessons(id,course_id,title,order_index,content_type) VALUES (3,1,'差し込み',1,'link')");
+        const studentList = await (await call('/', 1, '生徒')).json();
+        assert.deepEqual(studentList.map(lesson => lesson.can_access), [true, true, false]);
+        assert.equal((await call('/2', 1, '生徒')).status, 403);
+        for (const role of ['セールス', 'クルー']) {
+          const list = await (await call('/', 2, role)).json();
+          assert.deepEqual(list.map(lesson => lesson.can_access), [true, false, false]);
+          assert.equal((await call('/2', 2, role)).status, 403);
+          assert.equal((await call('/2/manual-complete', 2, role, 'POST')).status, 403);
+          assert.equal((await call('/2/quiz', 2, role, 'POST')).status, 403);
+        }
+        const adminList = await (await call('/', 2, '管理者')).json();
+        assert.deepEqual(adminList.map(lesson => lesson.can_access), [true, true, true]);
+        assert.equal((await call('/2', 2, '管理者')).status, 200);
+        await query('UPDATE courses SET is_special_content = true WHERE id = 1');
+        assert.deepEqual((await (await call('/special', 1, '生徒')).json())
+          .map(lesson => lesson.can_access), [true, true, false]);
+        assert.deepEqual((await (await call('/special', 2, '管理者')).json())
+          .map(lesson => lesson.can_access), [true, true, true]);
+        await query("INSERT INTO courses(id,title,order_index,sequential_unlock) VALUES (2,'全公開',2,false)");
+        await query("INSERT INTO lessons(id,course_id,title,order_index,content_type) VALUES (4,2,'公開1',1,'link'), (5,2,'公開2',2,'link')");
+        assert.deepEqual((await (await call('/', 1, '生徒')).json())
+          .map(lesson => lesson.can_access), [true, true]);
+      } finally {
+        await new Promise(resolve => server.close(resolve));
+        await query('ROLLBACK');
+        if (priorSecret === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = priorSecret;
+        process.env.PAYMENT_ACCESS_CONTROL_ENABLED = priorFlag;
+      }
     });
     await t.test('既存の日次・月次集計SQLとページングを維持', async () => {
       const users = await Progress.getAllUsersProgress({ limit: 1, offset: 0 });

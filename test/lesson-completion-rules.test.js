@@ -63,6 +63,16 @@ test('ロック中のレッスンは完了やクイズ提出でも解禁を回�
   }
 });
 
+test('解禁状態はAPIが返し、管理者以外の画面はその判定を使用する', () => {
+  const lessonModel = read('src/models/Lesson.js');
+  const dashboard = read('views/dashboard.html');
+  const special = read('views/special-contents.html');
+  assert.match(lessonModel, /BOOL_AND\([\s\S]*ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING/);
+  assert.match(lessonModel, /END AS can_access/);
+  assert.match(dashboard, /lesson\.can_access !== true/);
+  assert.match(special, /lesson\.can_access !== true/);
+});
+
 test('クイズ未合格の既存完了記録を起動時に補正する', () => {
   const schema = read('src/models/schema.js');
   assert.match(schema, /idx_quiz_questions_lesson ON quiz_questions\(lesson_id\)/);

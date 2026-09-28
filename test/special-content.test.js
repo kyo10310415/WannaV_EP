@@ -29,9 +29,11 @@ test('通常ダッシュボードとスペシャルコンテンツをDBで分離
   try {
     await Lesson.getWithProgress(8);
     await Lesson.getWithProgress(8, true);
+    await Lesson.getWithProgress(8, true, true);
     assert.match(calls[0].sql, /COALESCE\(c\.is_special_content, false\) = \$2/);
-    assert.deepEqual(calls[0].params, [8, false]);
-    assert.deepEqual(calls[1].params, [8, true]);
+    assert.deepEqual(calls[0].params, [8, false, false]);
+    assert.deepEqual(calls[1].params, [8, true, false]);
+    assert.deepEqual(calls[2].params, [8, true, true]);
   } finally {
     db.query = originalQuery;
   }
