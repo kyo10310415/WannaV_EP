@@ -436,7 +436,7 @@
 
                 if (portalLinks) renderPortalLinks(portalLinks);
                 else document.getElementById('portal-links').innerHTML = '<div class="portal-link-card" style="grid-column:1/-1;color:var(--gray-text);">定期イベント情報を取得できませんでした</div>';
-                renderLessons(lessons, currentUser.role, progressData.courseStats || []);
+                renderLessons(lessons, progressData.courseStats || []);
             } catch (error) {
                 console.error('データ読み込みエラー:', error);
                 document.getElementById('lessons-container').innerHTML = 
@@ -459,9 +459,8 @@
         }
 
         // レッスン描画
-        function renderLessons(lessons, userRole, courseStats) {
+        function renderLessons(lessons, courseStats) {
             const container = document.getElementById('lessons-container');
-            const isStudent = userRole === '生徒';
             
             if (lessons.length === 0) {
                 container.innerHTML = '<p style="color: var(--gray-text);">レッスンがまだありません</p>';
@@ -510,13 +509,10 @@
                         </div>
                         <div class="lessons-grid">`;
 
-                let priorLessonsComplete = true;
                 group.lessons.forEach(lesson => {
                     const isCompleted = lesson.completed;
-                    const isLocked = isStudent && group.sequentialUnlock && !priorLessonsComplete;
+                    const isLocked = lesson.can_access !== true;
                     const canAccess = !isLocked;
-                    priorLessonsComplete = priorLessonsComplete && lesson.completed &&
-                        (!lesson.has_quiz || lesson.quiz_passed);
 
                     // サムネイル生成
                     const thumb = getThumbnail(lesson.video_url, lesson.thumbnail_url, lesson.content_type);

@@ -162,6 +162,5 @@ test('管理画面でコース名と動画解禁方法を変更できる', () =>
   assert.match(adminPage, /course-edit-title/);
   assert.match(adminPage, /course-edit-sequential-unlock/);
   assert.match(adminPage, /sequentialUnlock: document\.getElementById\('course-edit-sequential-unlock'\)\.checked/);
-  assert.match(dashboard, /group\.sequentialUnlock && !priorLessonsComplete/);
-  assert.match(dashboard, /priorLessonsComplete = priorLessonsComplete && lesson\.completed/);
+  assert.match(dashboard, /lesson\.can_access !== true/);
 });

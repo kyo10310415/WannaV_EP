@@ -9,7 +9,7 @@ const AppUsage = require('../models/AppUsage');
 // 全レッスン取得（進捗付き）
 router.get('/', auth, async (req, res) => {
   try {
-    const lessons = await Lesson.getWithProgress(req.user.id);
+    const lessons = await Lesson.getWithProgress(req.user.id, false, req.user.role === '管理者');
     res.json(lessons);
   } catch (error) {
     console.error('Get lessons error:', error);
@@ -20,7 +20,7 @@ router.get('/', auth, async (req, res) => {
 // スペシャルコンテンツ対象レッスン取得（進捗付き）
 router.get('/special', auth, async (req, res) => {
   try {
-    const lessons = await Lesson.getWithProgress(req.user.id, true);
+    const lessons = await Lesson.getWithProgress(req.user.id, true, req.user.role === '管理者');
     res.json(lessons);
   } catch (error) {
     console.error('Get special lessons error:', error);
@@ -33,8 +33,8 @@ router.get('/:id', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
 
-    // 順番解禁の制約は生徒のみに適用する。管理側の全権限は内容を確認できる。
-    if (req.user.role === '生徒') {
+    // 順番解禁を無視して内容を確認できるのは管理者のみ。
+    if (req.user.role !== '管理者') {
       const canAccess = await Progress.canAccessLesson(req.user.id, lessonId);
       if (!canAccess) {
         return res.status(403).json({ error: '前のレッスンを完了してください' });
@@ -128,7 +128,7 @@ router.post('/:id/watch-progress', auth, async (req, res) => {
 router.post('/:id/manual-complete', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
-    if (req.user.role === '生徒' && !await Progress.canAccessLesson(req.user.id, lessonId)) {
+    if (req.user.role !== '管理者' && !await Progress.canAccessLesson(req.user.id, lessonId)) {
       return res.status(403).json({ error: '前のレッスンを完了してください' });
     }
     const questions = await Quiz.getQuestionsByLesson(lessonId);
@@ -158,10 +158,10 @@ router.post('/:id/manual-complete', auth, async (req, res) => {
 router.post('/:id/quiz', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;
-    const { answers } = req.body;
-    if (req.user.role === '生徒' && !await Progress.canAccessLesson(req.user.id, lessonId)) {
+    if (req.user.role !== '管理者' && !await Progress.canAccessLesson(req.user.id, lessonId)) {
       return res.status(403).json({ error: '前のレッスンを完了してください' });
     }
+    const { answers } = req.body || {};
 
     const result = await Quiz.verifyAnswers(lessonId, answers);
     await Progress.completeQuiz(req.user.id, lessonId, result.passed);
