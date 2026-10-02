@@ -36,14 +36,28 @@ function dateOnly(value) {
 }
 
 class SocialMetrics {
+  static async forUser(userId, now = new Date()) {
+    const student = (await db.query(`SELECT u.name AS student_name, a.* FROM users u
+      JOIN test_student_social_accounts a ON a.user_id = u.id
+      WHERE u.id = $1 AND u.username = 'test_seito' AND u.role = '生徒'
+        AND NOT EXISTS (SELECT 1 FROM student_profiles sp WHERE sp.user_id = u.id AND sp.notion_page_id IS NOT NULL)`, [userId])).rows[0];
+    return student ? this.forSource(student, 'test_student_social_snapshots', now) : null;
+  }
+
   static async forPage(pageId, now = new Date()) {
     const student = (await db.query(`SELECT notion_page_id, student_name, x_username, youtube_channel_id
       FROM notion_students WHERE notion_page_id = $1`, [pageId])).rows[0];
     if (!student) return null;
+    return this.forSource(student, 'student_social_snapshots', now);
+  }
+
+  static async forSource(student, table, now) {
+    if (!['student_social_snapshots', 'test_student_social_snapshots'].includes(table)) throw new Error('Invalid snapshot source');
+    const pageId = student.notion_page_id;
     const week = weekStart(now);
     const from = historyStart(now);
     const rows = (await db.query(`SELECT platform, account_key, week_start, count, status, fetched_at
-      FROM student_social_snapshots WHERE notion_page_id = $1 AND week_start >= $2::date - INTERVAL '7 days'
+      FROM ${table} WHERE notion_page_id = $1 AND week_start >= $2::date - INTERVAL '7 days'
       ORDER BY week_start`, [pageId, from])).rows;
     const platforms = {};
     for (const [platform, id] of [['x', student.x_username], ['youtube', student.youtube_channel_id]]) {
@@ -68,14 +82,18 @@ class SocialMetrics {
 
   static async save(records, queryable = db) {
     if (!records.length) return;
-    await queryable.query(`INSERT INTO student_social_snapshots
-      (notion_page_id, platform, account_key, week_start, count, status)
-      SELECT notion_page_id, platform, account_key, week_start, count, status
-      FROM jsonb_to_recordset($1::jsonb) AS r(notion_page_id varchar, platform text,
-        account_key text, week_start date, count bigint, status text)
-      ON CONFLICT (notion_page_id, platform, account_key, week_start) DO UPDATE SET
-        count = EXCLUDED.count, status = EXCLUDED.status, fetched_at = CURRENT_TIMESTAMP
-      WHERE student_social_snapshots.status <> 'ok'`, [JSON.stringify(records)]);
+    for (const table of ['student_social_snapshots', 'test_student_social_snapshots']) {
+      const selected = records.filter(record => record.notion_page_id.startsWith('manual:') === (table === 'test_student_social_snapshots'));
+      if (!selected.length) continue;
+      await queryable.query(`INSERT INTO ${table}
+        (notion_page_id, platform, account_key, week_start, count, status)
+        SELECT notion_page_id, platform, account_key, week_start, count, status
+        FROM jsonb_to_recordset($1::jsonb) AS r(notion_page_id varchar, platform text,
+          account_key text, week_start date, count bigint, status text)
+        ON CONFLICT (notion_page_id, platform, account_key, week_start) DO UPDATE SET
+          count = EXCLUDED.count, status = EXCLUDED.status, fetched_at = CURRENT_TIMESTAMP
+        WHERE ${table}.status <> 'ok'`, [JSON.stringify(selected)]);
+    }
   }
 
   static async synchronize(now = new Date()) {
@@ -86,11 +104,17 @@ class SocialMetrics {
       if (!locked) return { skipped: true };
       await client.query("DELETE FROM student_social_snapshots WHERE platform = 'youtube' AND fetched_at < CURRENT_TIMESTAMP - INTERVAL '30 days'");
       await client.query("DELETE FROM student_social_snapshots WHERE platform = 'x' AND week_start < $1::date - INTERVAL '7 days'", [historyStart(now)]);
+      await client.query("DELETE FROM test_student_social_snapshots WHERE platform = 'youtube' AND fetched_at < CURRENT_TIMESTAMP - INTERVAL '30 days'");
+      await client.query("DELETE FROM test_student_social_snapshots WHERE platform = 'x' AND week_start < $1::date - INTERVAL '7 days'", [historyStart(now)]);
       const students = (await client.query(`SELECT notion_page_id, x_username, youtube_channel_id
-        FROM notion_students WHERE contract_plan = ANY($1::text[])`, [TARGET_CONTRACT_PLANS])).rows;
+        FROM notion_students WHERE contract_plan = ANY($1::text[])
+        UNION ALL SELECT a.notion_page_id, a.x_username, a.youtube_channel_id
+        FROM test_student_social_accounts a JOIN users u ON u.id = a.user_id
+        WHERE u.username = 'test_seito' AND u.role = '生徒'
+          AND NOT EXISTS (SELECT 1 FROM student_profiles sp WHERE sp.user_id = u.id AND sp.notion_page_id IS NOT NULL)`, [TARGET_CONTRACT_PLANS])).rows;
       const week = weekStart(now);
       const completed = new Set((await client.query(`SELECT notion_page_id, platform, account_key
-        FROM student_social_snapshots WHERE week_start = $1 AND
+        FROM (SELECT * FROM student_social_snapshots UNION ALL SELECT * FROM test_student_social_snapshots) snapshots WHERE week_start = $1 AND
           (status IN ('ok','hidden','invalid_id') OR fetched_at > CURRENT_TIMESTAMP - INTERVAL '6 hours')`, [week]))
         .rows.map(row => JSON.stringify([row.notion_page_id, row.platform, row.account_key])));
       const summary = { saved: 0, failed: 0 };

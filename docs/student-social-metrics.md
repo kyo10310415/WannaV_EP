@@ -26,3 +26,10 @@ Web Service → Environment に設定し、再デプロイする。
 RenderのPostgreSQLに保存するため、新たなDiskやスプレッドシートの設定は不要。
 
 公式資料: [X User Lookup](https://docs.x.com/x-api/users/lookup/introduction)、[YouTube channels.list](https://developers.google.com/youtube/v3/docs/channels/list)、[YouTube保存規定](https://developers.google.com/youtube/terms/developer-policies)
+## Notion未連携のテストアカウント
+
+ログインIDが `test_seito`、権限が「生徒」、Notion未連携のアカウントだけ手動設定できます。
+管理者で「生徒用アカウント管理」を開き、対象行の「SNS設定」からX ID（@なし）とYouTubeチャンネルIDを保存してください。
+空欄は未設定です。保存後は未取得の今週データを取得します。すでに取得成功した同じIDの今週データは再取得しません。
+生徒としてログインすると、通常と同じダッシュボードのSNS推移に表示されます。履歴は設定後から蓄積されます。
+テスト用の設定・履歴はNotionの生徒情報と別テーブルに保存し、Notion同期の対象には追加しません。
