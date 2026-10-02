@@ -1,5 +1,6 @@
 (() => {
     let started = false;
+    let previewing = false;
     const messages = {
         normal: 'あなたの発信が、一人ひとりの心に届いています。今日までの積み重ねに胸を張って、次の一歩もあなたらしく進んでいきましょう！',
         thousand: 'ついに1,000人！ あなたの声や世界観を楽しみにしている人が、こんなにも増えました。ここから始まる新しい景色へ。あなたの挑戦を、WannaVはこれからも応援しています！',
@@ -83,6 +84,13 @@
     }
 
     window.SocialCelebration = {
+        async preview(user, platform, threshold) {
+            if (user?.role !== '管理者' || previewing || document.querySelector('dialog[open]') ||
+                !['x', 'youtube'].includes(platform) || ![100, 1000, 10000].includes(threshold)) return;
+            previewing = true;
+            try { await show({ platform, threshold }); }
+            finally { previewing = false; }
+        },
         async start(user) {
             if (started || user.role !== '生徒' || user.needsPasswordChange) return;
             started = true;
