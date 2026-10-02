@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ダッシュボード - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/social-metrics.css">
     <style>
+        .student-social-layout { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:24px; align-items:start; }
+        .dashboard-main { min-width:0; }
+        #student-social-panel { min-width:0; }
+        @media(max-width:1100px) { .student-social-layout { grid-template-columns:1fr; } }
         .character-panel-content { display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap; }
         .character-current { display:flex; align-items:center; gap:18px; }
         .character-current img { width:120px; height:120px; object-fit:contain; background:#fff; border-radius:18px; border:2px solid rgba(52,200,232,0.5); }
@@ -131,6 +136,8 @@
     <div class="container">
         <!-- 管理者メニュー（権限に応じて動的生成） -->
         <div id="admin-menu" class="nav" style="display: none;"></div>
+        <div id="dashboard-layout">
+        <main class="dashboard-main">
 
         <!-- 定期イベントへの外部リンク -->
         <div id="portal-links" class="portal-links-grid" aria-label="定期イベント">
@@ -166,8 +173,15 @@
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
         </div>
+        </main>
+        <aside id="student-social-panel" class="card" style="display:none" aria-label="SNSの推移">
+            <h2 style="font-size:20px">📈 SNSの推移</h2>
+            <div id="student-social-content"><p class="social-empty">読み込み中...</p></div>
+        </aside>
+        </div>
     </div>
 
+    <script src="/js/social-metrics.js"></script>
     <script src="/js/portal-session.js"></script>
     <script>
         const API_URL = '/api';
@@ -246,6 +260,7 @@
                 buildNav('admin-menu', currentUser.role, '/dashboard');
                 loadImportantMessage();
                 if (currentUser.role === '生徒') {
+                    loadSocialMetrics();
                     loadCharacterStatus();
                     PortalSession.start(currentUser);
                 }
@@ -256,6 +271,19 @@
                 localStorage.removeItem('token');
                 window.location.href = '/';
             }
+        }
+
+        async function loadSocialMetrics() {
+            document.getElementById('dashboard-layout').classList.add('student-social-layout');
+            document.getElementById('student-social-panel').style.display = '';
+            const container = document.getElementById('student-social-content');
+            try {
+                const res = await fetch('/api/social-metrics/me', {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                });
+                if (!res.ok) throw new Error('SNSデータを取得できませんでした');
+                SocialMetricsWidget.render(container, (await res.json()).data);
+            } catch (error) { container.textContent = error.message; }
         }
 
         async function characterFetch(path, options = {}) {

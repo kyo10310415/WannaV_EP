@@ -1,0 +1,28 @@
+# 生徒ごとのSNS週次データ
+
+- Notionの `X ID（@は無し）` と `YTチャンネルID` を同期する。YTチャンネルIDは `UC` で始まる24文字。
+- 生徒はダッシュボード右側で自分の今週の人数・取得日・折れ線グラフを閲覧する。幅1100px以下では下部に表示。
+- 管理者・クルーは生徒管理の「SNS推移」ボタンでポップアップ表示。クルーは担当生徒のみ。セールスには表示しない。
+- 週は日本時間の月曜〜日曜。通常は月曜9時に取得する。毎日9時、起動時、Notion同期後にも今週の未取得分・失敗分だけ補完する。成功済みの週次データは再取得しない。失敗は6時間以上間隔を空けて再試行する。
+- 画面表示では外部APIを呼ばず、PostgreSQLに保存した数値と取得日を使用する。Xは100件、YouTubeは50件単位でまとめて取得。同じアカウントは一回の同期内で重複取得しない。
+- Xは過去2か月、YouTubeは直近30日の履歴を表示。履歴は導入後から蓄積され、取得していない過去の日付を遡って作ることはできない。
+- ID未設定・不正・非公開・取得失敗は0人と区別する。取得に失敗した週はグラフで繋がず、欠測として扱う。
+- NotionでIDを変更すると、新しいアカウントの履歴だけを表示し、別アカウントの人数を混ぜない。
+- YouTube公開登録者数は有効数字3桁。APIキー方式では本人認証なしの登録者数を30日超保持できないため、古いYouTube履歴は定期処理で削除し、表示時にも30日で制限する。
+
+## Renderの設定
+
+Web Service → Environment に設定し、再デプロイする。
+
+| Key | Value |
+| --- | --- |
+| `X_BEARER_TOKEN` | X開発者アプリのBearer Token本体（`Bearer ` は付けない） |
+| `YOUTUBE_API_KEY` | YouTube Data API v3が有効なGoogle CloudプロジェクトのAPIキー |
+
+キーはサーバーだけで使用し、ブラウザ・ログに出力しない。どちらか未設定でも、設定済みのサービスは取得可能。認証情報はGitにコミットしない。
+
+初回はNotionのIDを入力し、生徒管理の「Notion同期」を実行する。バックグラウンド取得の完了後に画面を再表示すると今週の数値を確認できる。
+
+RenderのPostgreSQLに保存するため、新たなDiskやスプレッドシートの設定は不要。
+
+公式資料: [X User Lookup](https://docs.x.com/x-api/users/lookup/introduction)、[YouTube channels.list](https://developers.google.com/youtube/v3/docs/channels/list)、[YouTube保存規定](https://developers.google.com/youtube/terms/developer-policies)

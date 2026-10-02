@@ -64,13 +64,15 @@ class NotionStudent {
         status: e.status || null,
         contract_plan: e.contractPlan || null,
         login_id: e.loginId || null,
+        x_username: e.xUsername || null,
+        youtube_channel_id: e.youtubeChannelId || null,
         raw_data: e.rawData || null,
       }));
       await db.query(`
         INSERT INTO notion_students
           (notion_page_id, student_name, name_furigana, student_number,
            notion_url, lesson_start_month, status, contract_plan, login_id,
-           login_id_overridden, raw_data, synced_at)
+           x_username, youtube_channel_id, login_id_overridden, raw_data, synced_at)
         SELECT
           incoming.notion_page_id,
           incoming.student_name,
@@ -81,6 +83,8 @@ class NotionStudent {
           incoming.status,
           incoming.contract_plan,
           incoming.login_id,
+          incoming.x_username,
+          incoming.youtube_channel_id,
           FALSE,
           incoming.raw_data,
           CURRENT_TIMESTAMP
@@ -94,6 +98,8 @@ class NotionStudent {
           status varchar,
           contract_plan varchar,
           login_id varchar,
+          x_username text,
+          youtube_channel_id text,
           raw_data jsonb
         )
         ON CONFLICT (notion_page_id) DO UPDATE SET
@@ -104,6 +110,8 @@ class NotionStudent {
           lesson_start_month = EXCLUDED.lesson_start_month,
           status             = EXCLUDED.status,
           contract_plan      = EXCLUDED.contract_plan,
+          x_username         = EXCLUDED.x_username,
+          youtube_channel_id = EXCLUDED.youtube_channel_id,
           login_id           = CASE
             WHEN notion_students.login_id_overridden THEN notion_students.login_id
             ELSE EXCLUDED.login_id

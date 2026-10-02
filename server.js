@@ -43,6 +43,7 @@ app.use('/api/lessons', require('./src/routes/lessons'));
 app.use('/api/progress', require('./src/routes/progress'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/notion', require('./src/routes/notion'));
+app.use('/api/social-metrics', require('./src/routes/socialMetrics'));
 app.use('/api/students', require('./src/routes/students'));
 app.use('/api/characters', require('./src/routes/characters'));
 app.use('/api/portal', require('./src/routes/portal'));

@@ -2,6 +2,8 @@
 
 VTuber育成スクール向けの動画ベースeラーニングポータルサイト
 
+生徒ごとのX・YouTube週次データと環境変数は [SNS週次データ設定](docs/student-social-metrics.md) を参照。
+
 ## 🎯 プロジェクト概要
 
 - **プロジェクト名**: WannaV eラーニング
