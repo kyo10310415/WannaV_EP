@@ -154,6 +154,51 @@ test('SNS週次保存・再取得抑止・30日制限・生徒別権限を隔離
         assert.equal((await call('/student?userId=-1', 2, '管理者')).status, 400);
       } finally { await new Promise(resolve => server.close(resolve)); }
     });
+    await t.test('Notionなしのtest_seitoだけ手動設定し、同じ週次処理と生徒画面で表示する', async () => {
+      await db.query(`INSERT INTO users(id,email,password,name,username,role)
+        VALUES (6,'test@example.invalid','unused','テスト生徒','test_seito','生徒')`);
+      const express = require('express'), jwt = require('jsonwebtoken');
+      const app = express();
+      app.use(express.json());
+      app.use('/api/social-metrics', require('../src/routes/socialMetrics'));
+      const server = app.listen(0, '127.0.0.1');
+      await new Promise(resolve => server.once('listening', resolve));
+      const base = 'http://127.0.0.1:' + server.address().port + '/api/social-metrics';
+      const call = (path, id, role, body) => fetch(base + path, {
+        method: body ? 'PUT' : 'GET',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + jwt.sign({ id, role }, process.env.JWT_SECRET) },
+        ...(body ? { body: JSON.stringify(body) } : {})
+      });
+      const synchronize = SocialMetrics.synchronize;
+      let triggered = 0;
+      SocialMetrics.synchronize = async () => { triggered++; };
+      try {
+        const ids = { xUsername: '@Samusou_Nayuki', youtubeChannelId: yt };
+        assert.equal((await call('/test-account', 6, '生徒', ids)).status, 403);
+        assert.equal((await call('/test-account', 4, 'セールス', ids)).status, 403);
+        assert.equal((await call('/test-account', 2, '管理者', { ...ids, youtubeChannelId: 'bad' })).status, 400);
+        assert.equal((await call('/test-account', 2, '管理者', ids)).status, 200);
+        assert.equal(triggered, 1);
+        const config = await (await call('/test-account', 2, '管理者')).json();
+        assert.equal(config.xUsername, 'samusou_nayuki');
+        axios.get = async url => url.includes('api.x.com')
+          ? { data: { data: [{ username: 'samusou_nayuki', public_metrics: { followers_count: 1234 } }] } }
+          : { data: { items: [{ id: yt, statistics: { subscriberCount: '4560' } }] } };
+        await synchronize.call(SocialMetrics);
+        const own = await (await call('/me', 6, '生徒')).json();
+        assert.equal(own.data.studentName, 'テスト生徒');
+        assert.equal(own.data.platforms.x.count, 1234);
+        assert.equal(own.data.platforms.youtube.count, 4560);
+        assert.equal((await SocialMetrics.forUser(5)), null);
+        assert.equal((await db.query("SELECT count(*)::integer n FROM notion_students WHERE notion_page_id LIKE 'manual:%'")).rows[0].n, 0);
+        await db.query("INSERT INTO student_profiles(user_id,notion_page_id) VALUES (6,'page1')");
+        assert.equal((await call('/test-account', 2, '管理者', ids)).status, 404);
+        assert.equal(await SocialMetrics.forUser(6), null);
+      } finally {
+        SocialMetrics.synchronize = synchronize;
+        await new Promise(resolve => server.close(resolve));
+      }
+    });
   } finally {
     db.query = originalQuery; db.pool.connect = originalConnect; axios.get = originalGet;
     for (const key of Object.keys(process.env)) if (!(key in oldEnv)) delete process.env[key];

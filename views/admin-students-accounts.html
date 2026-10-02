@@ -7,6 +7,17 @@
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+    <dialog id="test-social-dialog" style="background:var(--card-bg);color:var(--gray-text);border-radius:16px;padding:24px;width:min(92vw,480px);margin:auto;">
+        <h2>test_seito のSNS設定</h2>
+        <p>Notion未連携のテストアカウント専用です。空欄は未設定として保存します。</p>
+        <form id="test-social-form">
+            <div class="form-group"><label class="form-label" for="test-x-id">X ID（@なし）</label><input id="test-x-id" class="form-input" maxlength="15"></div>
+            <div class="form-group"><label class="form-label" for="test-youtube-id">YouTubeチャンネルID</label><input id="test-youtube-id" class="form-input" maxlength="24" placeholder="UCから始まるID"></div>
+            <p id="test-social-message" role="status"></p>
+            <button id="test-social-save" class="btn btn-primary" type="submit">保存</button>
+            <button class="btn btn-secondary" type="button" onclick="document.getElementById('test-social-dialog').close()">閉じる</button>
+        </form>
+    </dialog>
     <!-- パスワードリセットモーダル（管理者のみ表示） -->
     <div id="password-reset-modal" style="
         display: none; position: fixed; inset: 0; z-index: 1000;
@@ -91,6 +102,35 @@
     <script>
         const API_URL = '/api';
         let currentUser = null;
+
+        async function openTestSocialSettings() {
+            if (currentUser?.role !== '管理者') return;
+            try {
+                const res = await fetch('/api/social-metrics/test-account', { headers: { Authorization: 'Bearer ' + localStorage.getItem('token') } });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'SNS設定の取得に失敗しました');
+                document.getElementById('test-x-id').value = data.xUsername;
+                document.getElementById('test-youtube-id').value = data.youtubeChannelId;
+                document.getElementById('test-social-message').textContent = '';
+                document.getElementById('test-social-dialog').showModal();
+            } catch (error) { showAlert(error.message, 'error'); }
+        }
+
+        document.getElementById('test-social-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const button = document.getElementById('test-social-save');
+            button.disabled = true;
+            try {
+                const res = await fetch('/api/social-metrics/test-account', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
+                    body: JSON.stringify({ xUsername: document.getElementById('test-x-id').value.trim(), youtubeChannelId: document.getElementById('test-youtube-id').value.trim() })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'SNS設定の保存に失敗しました');
+                document.getElementById('test-social-message').textContent = data.message;
+            } catch (error) { document.getElementById('test-social-message').textContent = error.message; }
+            finally { button.disabled = false; }
+        });
 
         // ===== パスワードリセットモーダル（管理者のみ） =====
         let resetTargetId = null;
@@ -246,7 +286,7 @@
                         <td style="font-weight:600;">${user.name}</td>
                         <td>${pwChanged}</td>
                         <td style="color:var(--gray-text); font-size:13px;">${createdDate}</td>
-                        <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}</td>
+                        <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}${isAdmin && user.username === 'test_seito' ? '<button class="btn btn-secondary" onclick="openTestSocialSettings()">📈 SNS設定</button>' : ''}</td>
                     </tr>
                 `;
             });

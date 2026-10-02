@@ -292,6 +292,17 @@ const createTables = async () => {
       WHERE login_id_overridden = FALSE
         AND login_id IS DISTINCT FROM NULLIF(TRIM(student_number), '')
     `);
+    await db.query(`CREATE TABLE IF NOT EXISTS test_student_social_accounts (
+      notion_page_id VARCHAR(255) PRIMARY KEY,
+      user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      x_username TEXT,
+      youtube_channel_id TEXT
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS test_student_social_snapshots (
+      LIKE student_social_snapshots INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+      PRIMARY KEY (notion_page_id, platform, account_key, week_start),
+      FOREIGN KEY (notion_page_id) REFERENCES test_student_social_accounts(notion_page_id) ON DELETE CASCADE
+    )`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_plan ON notion_students(contract_plan)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_login_id_lower ON notion_students(LOWER(login_id))`);
 
