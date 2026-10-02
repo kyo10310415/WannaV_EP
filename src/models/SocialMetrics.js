@@ -82,17 +82,30 @@ class SocialMetrics {
 
   static async save(records, queryable = db) {
     if (!records.length) return;
-    for (const table of ['student_social_snapshots', 'test_student_social_snapshots']) {
-      const selected = records.filter(record => record.notion_page_id.startsWith('manual:') === (table === 'test_student_social_snapshots'));
-      if (!selected.length) continue;
-      await queryable.query(`INSERT INTO ${table}
-        (notion_page_id, platform, account_key, week_start, count, status)
-        SELECT notion_page_id, platform, account_key, week_start, count, status
-        FROM jsonb_to_recordset($1::jsonb) AS r(notion_page_id varchar, platform text,
-          account_key text, week_start date, count bigint, status text)
-        ON CONFLICT (notion_page_id, platform, account_key, week_start) DO UPDATE SET
-          count = EXCLUDED.count, status = EXCLUDED.status, fetched_at = CURRENT_TIMESTAMP
-        WHERE ${table}.status <> 'ok'`, [JSON.stringify(selected)]);
+    if (queryable === db) {
+      const client = await db.pool.connect();
+      try { return await this.save(records, client); } finally { client.release(); }
+    }
+    await queryable.query('BEGIN');
+    try {
+      for (const table of ['student_social_snapshots', 'test_student_social_snapshots']) {
+        const selected = records.filter(record => record.notion_page_id.startsWith('manual:') === (table === 'test_student_social_snapshots'));
+        if (!selected.length) continue;
+        const result = await queryable.query(`INSERT INTO ${table}
+          (notion_page_id, platform, account_key, week_start, count, status)
+          SELECT notion_page_id, platform, account_key, week_start, count, status
+          FROM jsonb_to_recordset($1::jsonb) AS r(notion_page_id varchar, platform text,
+            account_key text, week_start date, count bigint, status text)
+          ON CONFLICT (notion_page_id, platform, account_key, week_start) DO UPDATE SET
+            count = EXCLUDED.count, status = EXCLUDED.status, fetched_at = CURRENT_TIMESTAMP
+          WHERE ${table}.status <> 'ok'
+          RETURNING notion_page_id, platform, account_key, count, status`, [JSON.stringify(selected)]);
+        await require('./SocialMilestone').SocialMilestone.record(result.rows, queryable);
+      }
+      await queryable.query('COMMIT');
+    } catch (error) {
+      await queryable.query('ROLLBACK');
+      throw error;
     }
   }
 
@@ -102,6 +115,7 @@ class SocialMetrics {
     try {
       locked = (await client.query('SELECT pg_try_advisory_lock(78234, 2) AS locked')).rows[0].locked;
       if (!locked) return { skipped: true };
+      await require('./SocialMilestone').SocialMilestone.cleanup(client);
       await client.query("DELETE FROM student_social_snapshots WHERE platform = 'youtube' AND fetched_at < CURRENT_TIMESTAMP - INTERVAL '30 days'");
       await client.query("DELETE FROM student_social_snapshots WHERE platform = 'x' AND week_start < $1::date - INTERVAL '7 days'", [historyStart(now)]);
       await client.query("DELETE FROM test_student_social_snapshots WHERE platform = 'youtube' AND fetched_at < CURRENT_TIMESTAMP - INTERVAL '30 days'");

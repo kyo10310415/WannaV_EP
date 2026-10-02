@@ -303,6 +303,27 @@ const createTables = async () => {
       PRIMARY KEY (notion_page_id, platform, account_key, week_start),
       FOREIGN KEY (notion_page_id) REFERENCES test_student_social_accounts(notion_page_id) ON DELETE CASCADE
     )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS social_milestone_state (
+      source_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK (platform IN ('x','youtube')),
+      account_key TEXT NOT NULL,
+      high_water BIGINT NOT NULL CHECK (high_water >= 0),
+      pending BIGINT CHECK (pending >= 100),
+      pending_at TIMESTAMPTZ,
+      high_water_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (source_id,platform,account_key)
+    )`);
+    // Existing successful snapshots are a baseline, not retroactive congratulations.
+    await db.query(`INSERT INTO social_milestone_state(source_id,platform,account_key,high_water,updated_at,high_water_at)
+      SELECT notion_page_id,platform,account_key,
+        CASE WHEN count < 1000 THEN (count / 100) * 100
+          WHEN count < 10000 THEN (count / 1000) * 1000 ELSE (count / 10000) * 10000 END, fetched_at, fetched_at
+      FROM (SELECT DISTINCT ON (notion_page_id,platform,account_key) * FROM (
+        SELECT * FROM student_social_snapshots UNION ALL SELECT * FROM test_student_social_snapshots
+      ) snapshots WHERE status = 'ok' AND (platform <> 'youtube' OR fetched_at >= CURRENT_TIMESTAMP - INTERVAL '30 days')
+        ORDER BY notion_page_id,platform,account_key,fetched_at DESC) latest
+      ON CONFLICT DO NOTHING`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_plan ON notion_students(contract_plan)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notion_login_id_lower ON notion_students(LOWER(login_id))`);
 

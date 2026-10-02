@@ -8,6 +8,7 @@
         start(user) {
             if (started || user.role !== '生徒' || user.needsPasswordChange) return;
             started = true;
+            window.SocialCelebration?.start(user);
             const activity = async () => {
                 if (document.visibilityState !== 'visible' || sending || Date.now() - lastSent < throttleMs) return;
                 sending = true;

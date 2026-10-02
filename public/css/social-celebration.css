@@ -1,0 +1,9 @@
+.social-celebration { inset:0; width:100vw; height:100dvh; max-width:none; max-height:none; padding:20px; margin:0; border:0; background:transparent; color:#fff; overflow:auto; }
+.social-celebration::backdrop { background:rgba(3,10,25,.88); }
+.celebration-confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
+.celebration-card { position:relative; margin:max(12vh,25px) auto 25px; max-width:650px; padding:clamp(24px,5vw,50px); text-align:center; background:linear-gradient(135deg,#162f52,#202042); border:2px solid #51e2ff; border-radius:26px; box-shadow:0 0 65px rgba(81,226,255,.3); }
+.celebration-badge { color:#ffcf40; letter-spacing:.12em; font-weight:800; margin-bottom:20px; }
+.celebration-card h2 { font-size:clamp(23px,4vw,38px); line-height:1.5; color:#fff; padding-bottom:15px; overflow-wrap:anywhere; }
+.celebration-message { font-size:clamp(16px,2.5vw,20px); line-height:1.9; margin:20px 0 30px; }
+.social-celebration-special .celebration-card { border:3px solid #ffcf40; background:linear-gradient(135deg,#4d2860,#1c315d); box-shadow:0 0 85px rgba(255,207,64,.45); }
+.social-celebration-special h2 { color:#ffe890; }

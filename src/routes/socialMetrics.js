@@ -3,6 +3,18 @@ const router = express.Router();
 const { auth, checkRole } = require('../middleware/auth');
 const db = require('../config/database');
 const { SocialMetrics, accountKey, validId } = require('../models/SocialMetrics');
+const { SocialMilestone } = require('../models/SocialMilestone');
+
+router.post('/milestones/claim', auth, checkRole('生徒'), async (req, res) => {
+  const platform = req.body?.platform;
+  if (platform !== undefined && !['x', 'youtube'].includes(platform)) {
+    return res.status(400).json({ error: 'SNSを正しく指定してください' });
+  }
+  try {
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ celebrations: await SocialMilestone.claim(req.user.id, platform || null) });
+  } catch (_) { res.status(500).json({ error: 'お祝い情報の取得に失敗しました' }); }
+});
 
 // Only the explicitly designated, Notion-unlinked test student accepts manual IDs.
 async function testStudent() {
