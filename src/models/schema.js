@@ -271,6 +271,20 @@ const createTables = async () => {
     `);
     await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS login_id VARCHAR(255)`);
     await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS login_id_overridden BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS x_username TEXT`);
+    await db.query(`ALTER TABLE notion_students ADD COLUMN IF NOT EXISTS youtube_channel_id TEXT`);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS student_social_snapshots (
+        notion_page_id VARCHAR(255) NOT NULL REFERENCES notion_students(notion_page_id) ON DELETE CASCADE,
+        platform TEXT NOT NULL CHECK (platform IN ('x', 'youtube')),
+        account_key TEXT NOT NULL,
+        week_start DATE NOT NULL,
+        count BIGINT CHECK (count >= 0),
+        status TEXT NOT NULL CHECK (status IN ('ok','api_error','not_found','hidden','invalid_id')),
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (notion_page_id, platform, account_key, week_start)
+      )
+    `);
     // 手動変更されていない既存キャッシュは、学籍番号をログインIDへ反映する。
     await db.query(`
       UPDATE notion_students

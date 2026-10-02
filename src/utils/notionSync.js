@@ -23,6 +23,8 @@ const PROP = {
   LESSON_START:   'レッスン開始月',
   STATUS:         'ステータス',
   CONTRACT_PLAN:  '契約プラン',
+  X_ID:          'X ID（@は無し）',
+  YOUTUBE_ID:    'YTチャンネルID',
 };
 
 // ===== axios インスタンスを token 付きで生成 =====
@@ -103,6 +105,8 @@ function parsePage(page) {
     lessonStartMonth,
     status,
     contractPlan,
+    xUsername: getTextValue(props[PROP.X_ID])?.trim().replace(/^@/, '') || null,
+    youtubeChannelId: getTextValue(props[PROP.YOUTUBE_ID])?.trim() || null,
     // Notion連携生徒の初期ログインIDは学籍番号を使用する。
     loginId: studentNumber?.trim() || null,
     rawData: page,
@@ -199,6 +203,9 @@ async function runNotionStudentSync() {
     }
 
     const summary = await NotionStudent.upsertMany(students);
+    // Fetch only missing snapshots; screen loads never call the external APIs.
+    void require('../models/SocialMetrics').SocialMetrics.synchronize()
+      .catch(() => console.error('Social metrics synchronization after Notion sync failed'));
     console.log(`✅ Notion 同期完了: ${summary.upserted} 件を DB に保存`);
     console.log(`👤 アカウント: ${summary.accountsCreated} 件作成 / ${summary.accountsLinked} 件連携 / ${summary.accountsSkipped} 件スキップ`);
 

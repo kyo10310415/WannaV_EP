@@ -279,6 +279,7 @@ const scheduleLogCleanup = () => {
 // 全ジョブ一括起動
 // ─────────────────────────────────────────────────────────────────────────────
 const startAllSchedulers = () => {
+  scheduleSocialMetrics();
   schedulePaymentSync();
   scheduleInactiveUserReminders();
   scheduleNotionSync();
@@ -287,6 +288,15 @@ const startAllSchedulers = () => {
   scheduleLogCleanup();
   console.log('🚀 All cron jobs registered');
 };
+
+function scheduleSocialMetrics() {
+  const { SocialMetrics } = require('../models/SocialMetrics');
+  const run = () => SocialMetrics.synchronize()
+    .catch(() => console.error('Social metrics synchronization failed'));
+  // Successful weekly snapshots are skipped. Daily runs recover missed/failed acquisitions.
+  cron.schedule('0 9 * * *', run, { timezone: 'Asia/Tokyo' });
+  void run();
+}
 
 function schedulePaymentSync() {
   if (!process.env.GOOGLE_PAYMENT_SPREADSHEET_ID) return;
@@ -300,6 +310,7 @@ function schedulePaymentSync() {
 }
 
 module.exports = {
+  scheduleSocialMetrics,
   scheduleInactiveUserReminders,
   scheduleNotionSync,
   scheduleContractExpiryWarnings,

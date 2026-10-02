@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>生徒管理 - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/social-metrics.css">
     <style>
         .status-badge {
             display: inline-flex; align-items: center; gap: 5px;
@@ -109,6 +110,13 @@
     </style>
 </head>
 <body>
+    <dialog id="social-metrics-dialog" aria-labelledby="social-metrics-popup-title">
+        <div class="social-dialog-header">
+            <h2 id="social-metrics-popup-title">SNSの推移</h2>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('social-metrics-dialog').close()">閉じる</button>
+        </div>
+        <div id="social-metrics-popup-content"></div>
+    </dialog>
     <!-- ログインID編集モーダル -->
     <div id="login-id-modal" class="modal-overlay">
         <div class="modal-box" style="max-width:480px">
@@ -226,6 +234,7 @@
                             <th>進捗</th>
                             <th>満足度</th>
                             <th>フラグ</th>
+                            <th id="social-metrics-column" hidden>SNS</th>
                         </tr>
                     </thead>
                     <tbody id="students-tbody"></tbody>
@@ -238,6 +247,7 @@
         </div>
     </div>
 
+    <script src="/js/social-metrics.js"></script>
     <script>
         const TOKEN = localStorage.getItem('token');
         const CONTRACT_PLANS = [
@@ -251,6 +261,8 @@
         let visibleStudents = [];
         let currentLoginStudent = null;
         let canEditLoginId = false;
+        let canViewSocialMetrics = false;
+        let socialMetricsRequest = 0;
         let currentPlanFilter = '';
         let currentPageOffset = 0;
         let directorySummary = {};
@@ -263,6 +275,8 @@
             if (!me) return;
             document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
             canEditLoginId = me.role === '管理者' || me.role === 'セールス';
+            canViewSocialMetrics = me.role === '管理者' || me.role === 'クルー';
+            document.getElementById('social-metrics-column').hidden = !canViewSocialMetrics;
             if (canEditLoginId) document.getElementById('notion-sync-button').style.display = '';
             buildNav('admin-nav', me.role, '/admin/student-management');
             await loadTutors();
@@ -452,9 +466,29 @@
                     </td>
                     <td>${satisfaction}</td>
                     <td>${flags.join(' ') || '-'}</td>
+                    ${canViewSocialMetrics ? `<td><button type="button" class="action-btn btn-edit" onclick="openSocialMetrics(${index})">📈 SNS推移</button></td>` : ''}
                 </tr>`;
             }).join('');
         }
+
+        async function openSocialMetrics(index) {
+            if (!canViewSocialMetrics) return;
+            const student = visibleStudents[index];
+            if (!student) return;
+            const request = ++socialMetricsRequest;
+            const dialog = document.getElementById('social-metrics-dialog');
+            const container = document.getElementById('social-metrics-popup-content');
+            document.getElementById('social-metrics-popup-title').textContent = `${student.student_name || ''} — SNSの推移`;
+            container.textContent = '読み込み中...';
+            if (!dialog.open) dialog.showModal();
+            const params = new URLSearchParams(student.notion_page_id
+                ? { notionPageId: student.notion_page_id } : { userId: student.user_id });
+            const result = await fetchJSON('/api/social-metrics/student?' + params);
+            if (request !== socialMetricsRequest || !dialog.open) return;
+            if (!result || result.error) { container.textContent = result?.error || 'SNSデータを取得できませんでした'; return; }
+            SocialMetricsWidget.render(container, result.data);
+        }
+        document.getElementById('social-metrics-dialog').addEventListener('close', () => { socialMetricsRequest++; });
 
         function getStatusClass(status) {
             if (status === 'アクティブ') return 'status-active';
