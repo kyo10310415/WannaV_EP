@@ -14,6 +14,36 @@ test('100、1000、10000の境界と人数ジャンプは最新の節目にな�
   assert.equal(milestone(NaN), 0);
 });
 
+test('管理者の演出プレビューは繰り返せて、SNS API・達成履歴へ通信しない', async () => {
+  const titles = [];
+  let fetches = 0;
+  const context = {
+    window: {}, matchMedia: () => ({ matches: true }), cancelAnimationFrame() {},
+    fetch() { fetches++; throw new Error('Preview must not fetch'); },
+    document: { querySelector: () => null, body: { append() {} }, createElement(tag) {
+      const handlers = {};
+      return { setAttribute() {}, append() {}, focus() {}, remove() {},
+        addEventListener(name, fn) { handlers[name] = fn; },
+        showModal() { queueMicrotask(() => handlers.close()); },
+        set textContent(text) { if (tag === 'h2') titles.push(text); }
+      };
+    } }
+  };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/js/social-celebration.js'), 'utf8'), context);
+  const preview = context.window.SocialCelebration.preview;
+  for (const role of ['生徒', 'セールス', 'クルー']) await preview({ role }, 'x', 100);
+  await preview({ role: '管理者' }, 'bad', 100);
+  await preview({ role: '管理者' }, 'x', 200);
+  assert.equal(titles.length, 0);
+  for (const threshold of [100, 1000, 10000, 100]) await preview({ role: '管理者' }, 'youtube', threshold);
+  assert.equal(titles.length, 4);
+  assert.equal(titles[0], 'YouTubeの登録者数が100人達成しました！');
+  assert.equal(fetches, 0);
+  const html = fs.readFileSync(require.resolve('../views/admin-students-accounts.html'), 'utf8');
+  assert.match(html, /id="celebration-preview" hidden/);
+  assert.match(html, /hidden = user.role !== '管理者'/);
+});
+
 test('生徒だけに一度開始し、同時達成は順番に表示、特別な節目に特別な文章を使う', async () => {
   const elements = [], calls = [];
   function element(tag) {

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>生徒用アカウント管理 - WannaV ポータル</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/social-celebration.css">
 </head>
 <body>
     <dialog id="test-social-dialog" style="background:var(--card-bg);color:var(--gray-text);border-radius:16px;padding:24px;width:min(92vw,480px);margin:auto;">
@@ -89,6 +90,20 @@
             </form>
         </div>
 
+        <div class="card" id="celebration-preview" hidden>
+            <h2>🎉 SNS達成の演出プレビュー</h2>
+            <p>演出のみを再生します。SNSの人数・達成履歴は変更されません。何度でも確認できます。</p>
+            <div class="form-group">
+                <label class="form-label" for="preview-platform">SNS</label>
+                <select id="preview-platform" class="form-input"><option value="x">X</option><option value="youtube">YouTube</option></select>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <button class="btn btn-secondary" type="button" onclick="previewCelebration(100)">通常（100人）</button>
+                <button class="btn btn-primary" type="button" onclick="previewCelebration(1000)">1,000人達成</button>
+                <button class="btn btn-primary" type="button" onclick="previewCelebration(10000)">10,000人達成</button>
+            </div>
+        </div>
+
         <!-- 生徒アカウント一覧 -->
         <div class="card">
             <h2 style="margin-bottom: 30px;">📋 生徒アカウント一覧</h2>
@@ -99,9 +114,15 @@
         </div>
     </div>
 
+    <script src="/js/social-celebration.js"></script>
     <script>
         const API_URL = '/api';
         let currentUser = null;
+
+        function previewCelebration(threshold) {
+            if (currentUser?.role !== '管理者') return;
+            void SocialCelebration.preview(currentUser, document.getElementById('preview-platform').value, threshold);
+        }
 
         async function openTestSocialSettings() {
             if (currentUser?.role !== '管理者') return;
@@ -177,6 +198,7 @@
                 if (!res.ok) throw new Error('認証失敗');
                 const user = await res.json();
                 currentUser = user;
+                document.getElementById('celebration-preview').hidden = user.role !== '管理者';
                 document.getElementById('user-name').textContent = user.name;
 
                 // 管理者・セールスのみアクセス可
