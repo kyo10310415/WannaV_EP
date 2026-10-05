@@ -4,6 +4,8 @@ VTuber育成スクール向けの動画ベースeラーニングポータルサ�
 
 生徒ごとのX・YouTube週次データと環境変数は [SNS週次データ設定](docs/student-social-metrics.md) を参照。
 
+動画・教材をRenderから配信しないための設定・既存動画の移行・ロールバックは [private Object Storage運用ガイド](docs/object-storage.md) を参照。
+
 ## 🎯 プロジェクト概要
 
 - **プロジェクト名**: WannaV eラーニング

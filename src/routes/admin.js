@@ -12,6 +12,8 @@ const PortalSetting = require('../models/PortalSetting');
 const ImportantMessage = require('../models/ImportantMessage');
 const db = require('../config/database');
 const { generateThumbnail } = require('../utils/thumbnail');
+const objectStorage = require('../services/objectStorage');
+const lessonMedia = require('../services/lessonMedia');
 
 function parseJstDateTime(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
@@ -80,7 +82,7 @@ const MAX_IMAGE_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_MB * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, getUploadDir());
+    cb(null, objectStorage.enabled() ? lessonMedia.stagingDir() : getUploadDir());
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -456,6 +458,8 @@ router.get('/lessons/free-subject/view-analytics', auth, checkRole('管理者'),
 
 // レッスン作成
 router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async (req, res) => {
+  const staged = [];
+  let optimizedImage;
   try {
     const {
       courseId, title, description, duration, orderIndex,
@@ -472,6 +476,8 @@ router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async
     let imageFilename = null;
     let imageUrl = null;
     let linkUrl = null;
+    let videoStorageKey = null;
+    let imageStorageKey = null;
 
     if (imageFile && imageFile.size > MAX_IMAGE_UPLOAD_BYTES) {
       await Promise.all([removeUploadedFile(imageFile), removeUploadedFile(videoFile)]);
@@ -483,6 +489,8 @@ router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async
       videoUrl = `/uploads/${videoFile.filename}`;
       // MP4サムネイル自動生成（非同期・失敗しても続行）
       thumbnailUrl = await generateThumbnail(videoFile.path, videoFile.filename);
+      videoStorageKey = await lessonMedia.stage(videoFile, 'video', staged);
+      if (videoStorageKey) videoUrl = null;
       await removeUploadedFile(imageFile);
     } else if (mode === 'video-url' && validExternalUrl(externalVideoUrl)) {
       videoFilename = 'external';
@@ -494,6 +502,12 @@ router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async
       imageUrl = `/uploads/${imageFile.filename}`;
       thumbnailUrl = imageUrl;
       linkUrl = String(externalLinkUrl || '').trim() || null;
+      optimizedImage = await lessonMedia.optimizeImage(imageFile);
+      imageStorageKey = await lessonMedia.stage(optimizedImage, 'image', staged);
+      if (imageStorageKey) {
+        imageUrl = null;
+        thumbnailUrl = await generateThumbnail(imageFile.path, imageFile.filename);
+      }
       await removeUploadedFile(videoFile);
     } else if (mode === 'link' && validExternalUrl(externalLinkUrl)) {
       contentType = 'link';
@@ -517,11 +531,14 @@ router.post('/lessons', auth, checkRole('管理者'), handleContentUpload, async
       duration,
       orderIndex: orderIndex || 0,
       thumbnailUrl,
+      videoStorageKey,
+      imageStorageKey,
     });
-
+    if (staged.length) await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile), removeUploadedFile(optimizedImage)]);
     res.status(201).json(lesson);
   } catch (error) {
-    console.error('Create lesson error:', error);
+    await lessonMedia.discard(staged);
+    console.error('Create lesson failed; temporary files retained for recovery');
     res.status(500).json({ error: 'レッスンの作成に失敗しました' });
   }
 });
@@ -539,6 +556,8 @@ router.get('/lessons', auth, checkRole('管理者', 'クルー'), async (req, re
 
 // レッスン更新
 router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, async (req, res) => {
+  const staged = [];
+  let optimizedImage;
   try {
     const {
       title, description, duration, orderIndex, externalVideoUrl,
@@ -549,6 +568,7 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
     const imageFile = uploadedFile(req, 'image');
     
     if (!lesson) {
+      await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
       return res.status(404).json({ error: 'レッスンが見つかりません' });
     }
 
@@ -559,6 +579,8 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
     let imageFilename = lesson.image_filename || null;
     let imageUrl      = lesson.image_url || null;
     let linkUrl       = lesson.external_link_url || null;
+    let videoStorageKey = lesson.video_storage_key || null;
+    let imageStorageKey = lesson.image_storage_key || null;
 
     if (imageFile && imageFile.size > MAX_IMAGE_UPLOAD_BYTES) {
       await Promise.all([removeUploadedFile(imageFile), removeUploadedFile(videoFile)]);
@@ -570,6 +592,9 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
       videoFilename = videoFile.filename;
       videoUrl      = `/uploads/${videoFile.filename}`;
       thumbnailUrl  = await generateThumbnail(videoFile.path, videoFile.filename);
+      videoStorageKey = await lessonMedia.stage(videoFile, 'video', staged);
+      if (videoStorageKey) videoUrl = null;
+      imageStorageKey = null;
       imageFilename = null;
       imageUrl = null;
       linkUrl = null;
@@ -582,20 +607,26 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
       imageFilename = null;
       imageUrl = null;
       linkUrl = null;
+      videoStorageKey = null;
+      imageStorageKey = null;
       await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
     } else if (
       contentMode === 'image'
-      && (imageFile || (lesson.content_type === 'image' && lesson.image_url))
+      && (imageFile || (lesson.content_type === 'image' && (lesson.image_url || lesson.image_storage_key)))
       && validOptionalExternalUrl(externalLinkUrl)
     ) {
       contentType = 'image';
       videoFilename = null;
       videoUrl = null;
+      videoStorageKey = null;
       if (imageFile) {
         imageFilename = imageFile.filename;
         imageUrl = `/uploads/${imageFile.filename}`;
+        optimizedImage = await lessonMedia.optimizeImage(imageFile);
+        imageStorageKey = await lessonMedia.stage(optimizedImage, 'image', staged);
+        if (imageStorageKey) imageUrl = null;
       }
-      thumbnailUrl = imageUrl;
+      thumbnailUrl = imageStorageKey ? (imageFile ? await generateThumbnail(imageFile.path,imageFile.filename) : lesson.thumbnail_url) : imageUrl;
       linkUrl = String(externalLinkUrl || '').trim() || null;
       await removeUploadedFile(videoFile);
     } else if (contentMode === 'link' && validExternalUrl(externalLinkUrl)) {
@@ -605,6 +636,8 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
       imageFilename = null;
       imageUrl = null;
       thumbnailUrl = null;
+      videoStorageKey = null;
+      imageStorageKey = null;
       linkUrl = externalLinkUrl.trim();
       await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile)]);
     } else if (contentMode !== 'keep') {
@@ -626,12 +659,16 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
       thumbnailUrl,
       duration,
       orderIndex,
-      courseId: courseId || lesson.course_id  // コース変更対応
+      courseId: courseId || lesson.course_id, // コース変更対応
+      videoStorageKey, imageStorageKey,
     });
-
+    if (!updated) throw new Error('Lesson was removed concurrently');
+    if (staged.length) await Promise.all([removeUploadedFile(videoFile), removeUploadedFile(imageFile), removeUploadedFile(optimizedImage)]);
+    await lessonMedia.removeReplaced(lesson, updated);
     res.json(updated);
   } catch (error) {
-    console.error('Update lesson error:', error);
+    await lessonMedia.discard(staged);
+    console.error('Update lesson failed; previous media preserved');
     res.status(500).json({ error: 'レッスンの更新に失敗しました' });
   }
 });
@@ -639,7 +676,8 @@ router.patch('/lessons/:id', auth, checkRole('管理者'), handleContentUpload, 
 // レッスン削除
 router.delete('/lessons/:id', auth, checkRole('管理者'), async (req, res) => {
   try {
-    await Lesson.delete(req.params.id);
+    const removed = await Lesson.delete(req.params.id);
+    await lessonMedia.removeReplaced(removed, null);
     res.json({ success: true });
   } catch (error) {
     console.error('Delete lesson error:', error);
@@ -656,13 +694,7 @@ router.post('/lessons/:id/regenerate-thumbnail', auth, checkRole('管理者'), a
       return res.status(400).json({ error: 'MP4ファイルのレッスンのみ対象です' });
     }
 
-    const videoPath = require('path').join(getUploadDir(), lesson.video_filename);
-    const fs = require('fs');
-    if (!fs.existsSync(videoPath)) {
-      return res.status(404).json({ error: '動画ファイルが見つかりません' });
-    }
-
-    const thumbnailUrl = await generateThumbnail(videoPath, lesson.video_filename);
+    const thumbnailUrl = await lessonMedia.regenerateThumbnail(lesson);
     if (!thumbnailUrl) return res.status(500).json({ error: 'サムネイル生成に失敗しました' });
 
     // DBに保存
@@ -678,18 +710,13 @@ router.post('/lessons/:id/regenerate-thumbnail', auth, checkRole('管理者'), a
 router.post('/lessons/bulk-regenerate-thumbnails', auth, checkRole('管理者'), async (req, res) => {
   try {
     const lessons = await Lesson.getAll();
-    const path = require('path');
-    const fs = require('fs');
     const results = [];
 
     for (const lesson of lessons) {
       if (!lesson.video_filename || lesson.video_filename === 'external') continue;
       if (lesson.thumbnail_url) continue; // 既に生成済みはスキップ
 
-      const videoPath = path.join(getUploadDir(), lesson.video_filename);
-      if (!fs.existsSync(videoPath)) continue;
-
-      const thumbnailUrl = await generateThumbnail(videoPath, lesson.video_filename);
+      const thumbnailUrl = await lessonMedia.regenerateThumbnail(lesson);
       if (thumbnailUrl) {
         await db.query('UPDATE lessons SET thumbnail_url = $1 WHERE id = $2', [thumbnailUrl, lesson.id]);
         results.push({ id: lesson.id, title: lesson.title, thumbnail_url: thumbnailUrl });

@@ -84,7 +84,7 @@ test('画像教材に説明と任意の外部リンクを組み合わせて登�
   assert.match(adminPage, /外部リンクURL（任意）/);
   assert.match(adminPage, /contentMode === 'image'[\s\S]*formData\.append\('externalLinkUrl'/);
   assert.match(adminRoutes, /mode === 'image'[\s\S]*validOptionalExternalUrl\(externalLinkUrl\)/);
-  assert.match(adminRoutes, /lesson\.content_type === 'image' && lesson\.image_url/);
+  assert.match(adminRoutes, /lesson\.content_type === 'image' && \(lesson\.image_url \|\| lesson\.image_storage_key\)/);
   assert.match(lessonPage, /class="resource-copy"/);
   assert.match(lessonPage, /currentLesson\.description/);
   assert.match(lessonPage, /currentLesson\.external_link_url/);

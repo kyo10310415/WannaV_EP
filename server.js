@@ -31,7 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Static files
 app.use(express.static('public'));
-app.use('/uploads', require('./src/middleware/portalAccess').protectMedia, express.static(UPLOAD_DIR, {
+app.use('/uploads', require('./src/middleware/objectMediaRedirect'), require('./src/middleware/portalAccess').protectMedia, express.static(UPLOAD_DIR, {
   setHeaders: res => {
     if (require('./src/config/portal').paymentEnabled()) res.set('Cache-Control', 'private, no-store');
   }

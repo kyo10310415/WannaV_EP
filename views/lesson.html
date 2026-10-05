@@ -158,6 +158,8 @@
                 const data = await response.json();
                 currentLesson = data.lesson;
                 questions = data.questions;
+                if (currentLesson.video_storage_key) currentLesson.video_url = (await getMediaUrl('video')).url;
+                if (currentLesson.image_storage_key) currentLesson.image_url = (await getMediaUrl('image')).url;
                 renderLesson();
                 recordView(lessonId);
             } catch (error) {
@@ -167,6 +169,17 @@
         }
 
         // ===== レッスン描画 =====
+        let mediaExpiresAt = 0;
+        async function getMediaUrl(kind) {
+            const response = await fetch(`${API_URL}/lessons/${lessonId}/media-url?kind=${kind}`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!response.ok) throw new Error('教材URLの取得に失敗しました');
+            const media = await response.json();
+            if (kind === 'video') mediaExpiresAt = Date.parse(media.expiresAt) || 0;
+            return media;
+        }
+
         function renderLesson() {
             document.getElementById('lesson-title').textContent = currentLesson.title;
             document.getElementById('lesson-description').textContent =
@@ -228,17 +241,43 @@
                 // ===== MP4ファイル =====
                 container.className = 'video-outer video-file-container';
                 container.innerHTML = `
-                    <video id="video-player" controls controlsList="nodownload"
+                    <video id="video-player" controls playsinline preload="metadata" controlsList="nodownload"
                         style="width:100%;display:block;border-radius:14px;">
-                        <source src="${videoUrl}" type="video/mp4">
+                        <source src="${escHtml(videoUrl)}" type="video/mp4">
                         お使いのブラウザは動画再生に対応していません。
                     </video>
                 `;
                 initMp4Player();
+                if (currentLesson.video_storage_key) attachMediaRefresh();
             }
         }
 
         // ===== iframeビルド =====
+        function attachMediaRefresh() {
+            const video = document.getElementById('video-player');
+            let refreshing = false, failures = 0;
+            async function refresh() {
+                if (refreshing || failures >= 2) return;
+                refreshing = true;
+                const position = video.currentTime, resume = !video.paused;
+                try {
+                    const media = await getMediaUrl('video');
+                    video.addEventListener('loadedmetadata', () => {
+                        video.currentTime = position;
+                        if (resume) video.play().catch(() => {});
+                    }, { once:true });
+                    video.src = media.url;
+                    video.load();
+                } catch (_) { showAlert('動画URLの更新に失敗しました。画面を開き直してください', 'error'); }
+                finally { refreshing = false; failures++; }
+            }
+            video.addEventListener('error', refresh);
+            video.addEventListener('playing', () => { failures = 0; });
+            video.addEventListener('play', () => {
+                if (mediaExpiresAt && Date.now() >= mediaExpiresAt - 30000) void refresh();
+            });
+        }
+
         function buildIframe(container, embedUrl, allowStr) {
             container.className = 'video-outer video-iframe-container';
             container.innerHTML = `
@@ -282,7 +321,11 @@
             document.getElementById('manual-complete-section').style.display = 'block';
         }
 
-        function openImageLightbox() {
+        async function openImageLightbox() {
+            if (currentLesson.image_storage_key) {
+                try { currentLesson.image_url = (await getMediaUrl('image')).url; }
+                catch (_) { showAlert('教材画像を取得できませんでした', 'error'); return; }
+            }
             const lightbox = document.getElementById('image-lightbox');
             document.getElementById('lightbox-image').src = currentLesson.image_url;
             lightbox.classList.add('open');
