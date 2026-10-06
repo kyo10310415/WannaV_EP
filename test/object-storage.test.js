@@ -112,6 +112,9 @@ test('アップロード・再生権限・差し替え・削除・移行を隔�
     await t.test('署名URLは未認証・ロック・未払いでは発行せず管理者と許可生徒には発行',async()=>{
       const url='/api/lessons/'+uploaded.id+'/media-url';
       assert.equal((await fetch(base+url)).status,401);
+      const expired=jwt.sign({id:1,role:'管理者'},process.env.JWT_SECRET,{expiresIn:-1});
+      const denied=await fetch(base+url,{headers:{Authorization:'Bearer '+expired}});
+      assert.equal(denied.status,401);assert.equal((await denied.json()).code,'TOKEN_EXPIRED');
       allowed=false; assert.equal((await call(url,'生徒')).status,403);
       assert.equal((await call(url)).status,200);
       allowed=true;

@@ -1,4 +1,4 @@
-const jwt = require('jsonwebtoken');
+const { verifyToken, respondTokenError } = require('../utils/jwtAuth');
 
 const auth = async (req, res, next) => {
   try {
@@ -8,7 +8,7 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: '認証が必要です' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyToken(token);
     if (decoded.passwordChangeRequired) {
       return res.status(403).json({
         error: '初回ログイン時のパスワード変更が必要です',
@@ -18,7 +18,9 @@ const auth = async (req, res, next) => {
     req.user = decoded;
     return require('./portalAccess').requirePortalAccess(req, res, next);
   } catch (error) {
-    res.status(401).json({ error: '無効なトークンです' });
+    if (respondTokenError(error, res)) return;
+    console.error('Authentication error:', error);
+    res.status(500).json({ error: '認証処理に失敗しました' });
   }
 };
 

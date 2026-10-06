@@ -15,7 +15,7 @@ test('期限切れ動画は認証付きでURLを再発行し、再生位置を�
   const handlers = new Map(), calls = [];
   const video = { currentTime:75, paused:false, src:'old', load(){}, play:async()=>{},
     addEventListener:(name,fn)=>handlers.set(name,fn) };
-  const context={API_URL:'/api',lessonId:1,document:{getElementById:()=>video},
+  const context={API_URL:'/api',lessonId:1,document:{getElementById:()=>video,addEventListener(){}},
     localStorage:{getItem:()=> 'fake-token'},Date,showAlert:()=>assert.fail('unexpected error'),
     fetch:async (url,options)=>{
       calls.push({url,options});
@@ -32,4 +32,20 @@ test('期限切れ動画は認証付きでURLを再発行し、再生位置を�
   assert.equal(video.src,'https://storage.example/private.mp4?signed');
   video.currentTime=0;handlers.get('loadedmetadata')();
   assert.equal(video.currentTime,75);
+  handlers.get('seeking')();handlers.get('error')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.length,1);
+});
+
+test('失敗時のURL再取得は2回までで、再生イベントだけではretry枠をリセットしない',async()=>{
+  const handlers=new Map(), docHandlers=new Map();let calls=0,now=100000;
+  const video={currentTime:50,paused:false,addEventListener:(name,fn)=>handlers.set(name,fn)};
+  const context={document:{getElementById:()=>video,visibilityState:'visible',addEventListener:(name,fn)=>docHandlers.set(name,fn)},
+    mediaExpiresAt:1,Date:{now:()=>now},getMediaUrl:async()=>{calls++;throw new Error('unavailable');},showAlert(){}};
+  const refresh=html.slice(html.indexOf('function attachMediaRefresh()'),html.indexOf('function buildIframe('));
+  vm.runInNewContext(refresh+'\nattachMediaRefresh();',context);
+  docHandlers.get('visibilitychange')();await new Promise(resolve=>setImmediate(resolve));
+  now+=6000;handlers.get('seeking')();await new Promise(resolve=>setImmediate(resolve));
+  now+=6000;handlers.get('error')();handlers.get('play')();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,2);
 });

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const { verifyToken, respondTokenError } = require('../utils/jwtAuth');
 const User = require('../models/User');
 
 // ログイン（ログインIDとして username または email を受け付ける）
@@ -52,7 +53,7 @@ router.post('/change-password', async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: '認証が必要です' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyToken(token);
     const { newPassword } = req.body;
 
     if (!newPassword || newPassword.length < 4) {
@@ -68,6 +69,7 @@ router.post('/change-password', async (req, res) => {
     );
     res.json({ success: true, message: 'パスワードを変更しました', token: refreshedToken });
   } catch (error) {
+    if (respondTokenError(error, res)) return;
     console.error('Change password error:', error);
     res.status(500).json({ error: 'パスワード変更に失敗しました' });
   }
@@ -79,7 +81,7 @@ router.get('/me', async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: '認証が必要です' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyToken(token);
     const user = await User.findById(decoded.id);
     if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
 
@@ -95,8 +97,9 @@ router.get('/me', async (req, res) => {
       needsPasswordChange: !user.password_changed_at
     });
   } catch (error) {
+    if (respondTokenError(error, res)) return;
     console.error('Get user error:', error);
-    res.status(401).json({ error: '認証に失敗しました' });
+    res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
   }
 });
 
