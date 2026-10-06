@@ -29,6 +29,23 @@ router.get('/special', auth, async (req, res) => {
 });
 
 // レッスン詳細取得
+router.get('/:id/media-url', auth, async (req, res) => {
+  try {
+    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error:'レッスンIDが不正です' });
+    const lesson = await Lesson.findById(req.params.id);
+    if (!lesson) return res.status(404).json({ error:'レッスンが見つかりません' });
+    if (req.user.role !== '管理者' && !await Progress.canAccessLesson(req.user.id, lesson.id)) {
+      return res.status(403).json({ error:'前のレッスンを完了してください' });
+    }
+    const kind = req.query.kind || 'video';
+    if (!['video','image'].includes(kind) || lesson.content_type !== kind) return res.status(400).json({ error:'教材形式が一致しません' });
+    res.set('Cache-Control','private, no-store');
+    const media = await require('../services/lessonMedia').mediaUrl(lesson, kind);
+    if (!media) return res.status(404).json({ error:'教材が見つかりません' });
+    res.json(media);
+  } catch (_) { res.status(503).json({ error:'教材URLを取得できません。時間をおいて再試行してください' }); }
+});
+
 router.get('/:id', auth, async (req, res) => {
   try {
     const lessonId = req.params.id;

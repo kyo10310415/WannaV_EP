@@ -2,6 +2,8 @@
 
 WannaV eラーニングシステムをRenderにデプロイする手順
 
+動画配信の帯域削減は [private Object Storage運用ガイド](docs/object-storage.md) に従って段階導入してください。デプロイだけでは既存動画は移行されません。
+
 ---
 
 ## 📋 事前準備

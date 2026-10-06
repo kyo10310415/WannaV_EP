@@ -217,6 +217,8 @@ const createTables = async () => {
       ALTER TABLE lessons ADD COLUMN IF NOT EXISTS thumbnail_url TEXT
     `);
 
+    await db.query('ALTER TABLE lessons ADD COLUMN IF NOT EXISTS video_storage_key TEXT');
+    await db.query('ALTER TABLE lessons ADD COLUMN IF NOT EXISTS image_storage_key TEXT');
     // username / password_changed_at マイグレーション
     await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(255)`);
     await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP`);

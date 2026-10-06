@@ -18,7 +18,7 @@ async function requirePortalAccess(req, res, next) {
 }
 
 function protectMedia(req, res, next) {
-  if (!paymentEnabled()) return next();
+  if (!paymentEnabled() && !req.forceMediaAuth) return next();
   const cookie = (req.headers.cookie || '').split(';').map(part => part.trim())
     .find(part => part.startsWith('portal_media='));
   if (cookie) {
