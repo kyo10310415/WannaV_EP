@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <script src="/js/session-expiry.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>レッスン - WannaV ポータル</title>
@@ -256,8 +257,12 @@
         function attachMediaRefresh() {
             const video = document.getElementById('video-player');
             let refreshing = false, failures = 0;
+            let lastRefreshAt = 0;
             async function refresh() {
                 if (refreshing || failures >= 2) return;
+                // A playing/error oscillation must not create an unbounded request loop.
+                if (lastRefreshAt && Date.now() - lastRefreshAt < 5000) return;
+                lastRefreshAt = Date.now();
                 refreshing = true;
                 const position = video.currentTime, resume = !video.paused;
                 try {
@@ -272,9 +277,18 @@
                 finally { refreshing = false; failures++; }
             }
             video.addEventListener('error', refresh);
-            video.addEventListener('playing', () => { failures = 0; });
-            video.addEventListener('play', () => {
+            // Reset the retry budget only after sustained playback, not immediately
+            // after reload: a playing/error oscillation otherwise retries forever.
+            video.addEventListener('timeupdate', () => {
+                if (!video.paused && Date.now() - lastRefreshAt >= 30000) failures = 0;
+            });
+            const refreshExpired = () => {
                 if (mediaExpiresAt && Date.now() >= mediaExpiresAt - 30000) void refresh();
+            };
+            video.addEventListener('play', refreshExpired);
+            video.addEventListener('seeking', refreshExpired);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && !video.paused) refreshExpired();
             });
         }
 
