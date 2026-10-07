@@ -31,6 +31,12 @@
         <!-- ユーザー進捗一覧 -->
         <div class="card">
             <h2 style="margin-bottom: 30px;">📊 生徒の進捗・利用状況</h2>
+            <form id="progress-search-form" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+                <label for="progress-search">学籍番号・生徒名</label>
+                <input id="progress-search" type="search" class="form-input" maxlength="200" placeholder="学籍番号または生徒名で検索" style="flex:1;min-width:200px">
+                <button type="submit" class="btn btn-primary">検索</button>
+                <button type="button" class="btn btn-secondary" onclick="clearProgressSearch()">クリア</button>
+            </form>
             <div id="progress-container">
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
@@ -47,6 +53,18 @@
         const API_URL = '/api';
         const PAGE_SIZE = 50;
         let currentOffset = 0;
+        let currentSearch = '';
+        let progressRequest = 0;
+        document.getElementById('progress-search-form').addEventListener('submit', event => {
+            event.preventDefault();
+            currentSearch = document.getElementById('progress-search').value.trim();
+            loadProgress(0);
+        });
+        function clearProgressSearch() {
+            document.getElementById('progress-search').value = '';
+            currentSearch = '';
+            loadProgress(0);
+        }
 
         async function checkAuth() {
             const token = localStorage.getItem('token');
@@ -83,16 +101,19 @@
 
         async function loadProgress(offset = currentOffset) {
             const token = localStorage.getItem('token');
+            const request = ++progressRequest;
 
             try {
-                const response = await fetch(`${API_URL}/admin/users/progress?limit=${PAGE_SIZE}&offset=${offset}`, {
+                const response = await fetch(`${API_URL}/admin/users/progress?limit=${PAGE_SIZE}&offset=${offset}&search=${encodeURIComponent(currentSearch)}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (!response.ok) throw new Error('進捗の取得に失敗しました');
-                currentOffset = offset;
                 const payload = await response.json();
+                if (request !== progressRequest) return;
+                currentOffset = offset;
                 renderProgress(payload);
             } catch (error) {
+                if (request !== progressRequest) return;
                 console.error('進捗読み込みエラー:', error);
                 showAlert('進捗の読み込みに失敗しました', 'error');
             }
@@ -115,7 +136,7 @@
 
                 html += `
                     <tr style="${user.learning_status === '要注意' || user.learning_status === '非アクティブ' ? 'background: rgba(243, 156, 18, 0.1);' : ''}">
-                        <td><strong>${escHtml(user.name || '')}</strong><br><button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;margin-top:8px" onclick="openStudentAnalytics(${Number(user.id)})">学習・支払い詳細</button></td>
+                        <td><strong>${escHtml(user.name || '')}</strong><br><small>学籍番号：${escHtml(user.student_number || '-')}</small><br><button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;margin-top:8px" onclick="openStudentAnalytics(${Number(user.id)})">学習・支払い詳細</button></td>
                         <td>${escHtml(user.email || '')}</td>
                         <td><strong>${contract}</strong></td>
                         <td><strong>${Number(user.daily_usage_count) || 0}回</strong><br><small>Active Day：${user.active_today ? '利用あり' : '利用なし'}</small></td>

@@ -9,6 +9,25 @@ const NotionStudent = require('../src/models/NotionStudent');
 
 const root = path.join(__dirname, '..');
 
+test('進捗検索は学籍番号または生徒名をDBで部分一致しページング前に絞る', async () => {
+  const original = db.query;
+  let sql, params;
+  db.query = async (query, values) => { sql = query; params = values; return {rows: []}; };
+  try {
+    await Progress.getAllUsersProgress({search:' 山田%_ ',offset:0});
+    assert.match(sql, /COALESCE\(NULLIF\(ns.student_number, ''\), u.username\) AS student_number/);
+    assert.match(sql, /WHERE name ILIKE \$3 OR student_number ILIKE \$3[\s\S]*LIMIT \$1 OFFSET \$2/);
+    assert.deepEqual(params,[50,0,'%山田\\%\\_%']);
+    await Progress.getAllUsersProgress({search:'   '});
+    assert.deepEqual(params,[50,0]);
+    assert.doesNotMatch(sql,/WHERE name ILIKE/);
+    const html = fs.readFileSync(path.join(root,'views/admin-users.html'),'utf8');
+    assert.match(html,/encodeURIComponent\(currentSearch\)/);
+    assert.match(html,/loadProgress\(0\)/);
+    assert.match(html,/request !== progressRequest/);
+  } finally { db.query = original; }
+});
+
 test('進捗一覧はNotion契約ステータスと学習状況を分離してページングする', async () => {
   const originalQuery = db.query;
   let capturedSql = '';
