@@ -168,9 +168,12 @@ class Progress {
     return result.rows;
   }
 
-  static async getAllUsersProgress({ limit = 50, offset = 0 } = {}) {
+  static async getAllUsersProgress({ limit = 50, offset = 0, search = '' } = {}) {
     const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
     const safeOffset = Math.max(0, Number(offset) || 0);
+    const term = String(search).trim().slice(0, 200);
+    const params = [safeLimit, safeOffset];
+    if (term) params.push(`%${term.replace(/[\\%_]/g, '\\$&')}%`);
     const result = await db.query(`
       WITH eligible_students AS (${ACTIVE_STUDENTS}), lesson_total AS (
         SELECT COUNT(*)::integer AS total_lessons
@@ -213,6 +216,7 @@ class Progress {
         SELECT
           u.id,
           COALESCE(ns.student_name, u.name) AS name,
+          COALESCE(NULLIF(ns.student_number, ''), u.username) AS student_number,
           u.email,
           COALESCE(ns.status, sp.status, '未設定') AS contract_status,
           lt.total_lessons,
@@ -248,9 +252,10 @@ class Progress {
       )
       SELECT *, COUNT(*) OVER()::integer AS total_count
       FROM student_progress
+      ${term ? 'WHERE name ILIKE $3 OR student_number ILIKE $3' : ''}
       ORDER BY completion_percentage DESC NULLS LAST, name ASC
       LIMIT $1 OFFSET $2
-    `, [safeLimit, safeOffset]);
+    `, params);
     return result.rows;
   }
 

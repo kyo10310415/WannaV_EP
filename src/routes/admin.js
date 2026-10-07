@@ -211,7 +211,7 @@ router.get('/users/progress', auth, checkRole('管理者', 'クルー', 'セー�
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
     const [users, summary] = await Promise.all([
-      Progress.getAllUsersProgress({ limit, offset }),
+      Progress.getAllUsersProgress({ limit, offset, search: typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '' }),
       Progress.getAllUsersProgressSummary(),
     ]);
     const total = users[0]?.total_count || 0;
