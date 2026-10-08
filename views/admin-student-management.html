@@ -111,6 +111,11 @@
     </style>
 </head>
 <body>
+    <dialog id="reservations-dialog" style="background:var(--card-bg);color:var(--light-text);padding:24px;max-width:90vw;margin:auto">
+        <button class="btn btn-secondary" onclick="document.getElementById('reservations-dialog').close()">閉じる</button>
+        <h3 id="reservations-title"></h3><p>中央管理DBの当月以降の予約（動画教材の進捗とは別）</p>
+        <div id="reservations-content"></div><div id="reservations-pagination"></div>
+    </dialog>
     <dialog id="social-metrics-dialog" aria-labelledby="social-metrics-popup-title">
         <div class="social-dialog-header">
             <h2 id="social-metrics-popup-title">SNSの推移</h2>
@@ -192,7 +197,7 @@
                 </div>
             </div>
 
-            <p class="notion-source-note">
+            <p class="notion-source-note" id="student-source-note">
                 氏名・ステータス・契約プラン・レッスン開始月は、Notionの同期情報を表示します。ログインIDのみこの画面から変更できます。
             </p>
 
@@ -274,6 +279,7 @@
             if (!TOKEN) { window.location.href = '/'; return; }
             const me = await fetchJSON('/api/auth/me');
             if (!me) return;
+            await loadCentralStatus();
             document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
             canEditLoginId = me.role === '管理者' || me.role === 'セールス';
             canViewSocialMetrics = me.role === '管理者' || me.role === 'クルー';
@@ -338,10 +344,11 @@
             button.textContent = '同期中...';
             const res = await fetchJSON('/api/notion/sync', { method: 'POST' });
             button.disabled = false;
-            button.textContent = '🔄 Notion同期';
+            button.textContent = centralEnabled ? '🔄 中央管理DB同期' : '🔄 Notion同期';
             if (res && !res.error) {
                 showAlert(res.message || 'Notion同期が完了しました', 'success');
                 await loadStudents();
+                await loadCentralStatus();
             } else {
                 showAlert(res?.error || 'Notion同期に失敗しました', 'error');
             }
@@ -431,7 +438,9 @@
                 const satisfaction = s.latest_satisfaction ? renderStars(s.latest_satisfaction) : '-';
                 const flags = [];
                 if (!s.has_account) flags.push('<span class="review-flag">⚠️ アカウント未作成</span>');
-                const sourceBadge = s.record_source === 'notion'
+                const sourceBadge = centralEnabled && s.notion_page_id
+                    ? '<span class="source-badge source-notion">中央管理DB</span>'
+                    : s.record_source === 'notion'
                     ? '<span class="source-badge source-notion">Notion</span>'
                     : s.record_source === 'account+notion'
                         ? '<span class="source-badge source-notion">Notion連携</span>'
@@ -454,7 +463,7 @@
                         ${loginEditButton}
                     </td>
                     <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                    <td>${tutorName}</td>
+                    <td>${tutorName}${centralEnabled && s.student_number ? `<br><button type="button" class="action-btn btn-edit" onclick="openReservations(${index})">予約状況</button>` : ''}</td>
                     <td style="font-size:12px">
                         ${escHtml(plan)}
                         ${lessonStart ? `<div style="font-size:10px;color:var(--gray-text);margin-top:3px">開始: ${lessonStart}</div>` : ''}
@@ -488,6 +497,45 @@
             if (request !== socialMetricsRequest || !dialog.open) return;
             if (!result || result.error) { container.textContent = result?.error || 'SNSデータを取得できませんでした'; return; }
             SocialMetricsWidget.render(container, result.data);
+        }
+
+        let centralEnabled = false, reservationStudent = null, reservationRequest = 0;
+        async function loadCentralStatus() {
+            const result = await fetchJSON('/api/central/status');
+            centralEnabled = result?.enabled === true;
+            if (centralEnabled) {
+                document.getElementById('notion-sync-button').textContent = '🔄 中央管理DB同期';
+                document.getElementById('student-source-note').textContent = '生徒情報・担当Tutorは中央管理DBから同期します。支払いは従来のスプレッドシート連携です。最終同期：' + (result.state?.last_success ? new Date(result.state.last_success).toLocaleString('ja-JP') : '未同期');
+            }
+        }
+        async function openReservations(index) {
+            reservationStudent = visibleStudents[index];
+            document.getElementById('reservations-title').textContent = (reservationStudent.student_name || '') + ' — 予約状況';
+            document.getElementById('reservations-dialog').showModal();
+            await loadReservations(0);
+        }
+        async function loadReservations(offset) {
+            const request = ++reservationRequest;
+            const content = document.getElementById('reservations-content');
+            content.textContent = '読み込み中...';
+            const pager = document.getElementById('reservations-pagination');
+            pager.replaceChildren();
+            const params = new URLSearchParams({studentId:reservationStudent.student_number,offset:String(offset)});
+            const data = await fetchJSON('/api/central/reservations?' + params);
+            if (request !== reservationRequest || !document.getElementById('reservations-dialog').open) return;
+            if (!data || data.error) { content.textContent = data?.error || '取得できませんでした'; return; }
+            content.replaceChildren();
+            if (!data.reservations.length) content.textContent = '当月以降の予約はありません';
+            for (const reservation of data.reservations) {
+                const item = document.createElement('p');
+                item.textContent = [reservation.lesson_date, reservation.lesson_time, reservation.tutor_name, reservation.title].filter(Boolean).join(' ／ ');
+                content.appendChild(item);
+            }
+            for (const [label,next] of [['前へ',offset-50],['次へ',offset+50]]) {
+                if (next < 0 || next >= data.total) continue;
+                const button = document.createElement('button'); button.className = 'btn btn-secondary';
+                button.textContent = label; button.onclick = () => loadReservations(next); pager.appendChild(button);
+            }
         }
         document.getElementById('social-metrics-dialog').addEventListener('close', () => { socialMetricsRequest++; });
 

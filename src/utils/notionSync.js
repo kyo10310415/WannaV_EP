@@ -224,6 +224,7 @@ async function runNotionStudentSync() {
 let activeSyncPromise = null;
 
 function syncNotionStudents() {
+  if (require('../config/centralDatabase').enabled()) return require('../services/centralStudentSync').synchronize();
   if (activeSyncPromise) {
     console.log('⏳ Notion 同期は既に実行中のため、同じ処理の完了を待ちます');
     return activeSyncPromise;

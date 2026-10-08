@@ -24,7 +24,7 @@ class NotionStudent {
    * entries = [{ notionPageId, studentName, nameFurigana, studentNumber,
    *              notionUrl, lessonStartMonth, status, contractPlan, loginId, rawData }]
    */
-  static async upsertMany(entries) {
+  static async upsertMany(entries, { targetPlansOnly = false } = {}) {
     const summary = { upserted: 0, accountsCreated: 0, accountsLinked: 0, accountsSkipped: 0 };
     if (!entries || entries.length === 0) return summary;
 
@@ -123,6 +123,7 @@ class NotionStudent {
     }
 
     for (const e of entries) {
+      if (targetPlansOnly && !TARGET_CONTRACT_PLANS.includes(e.contractPlan)) continue;
       const previous = previousStates.get(e.notionPageId);
       const effectiveLoginId = previous?.login_id_overridden
         ? previous.login_id

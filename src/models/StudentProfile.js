@@ -69,7 +69,7 @@ const DIRECTORY_CTE = `
       a.goal,
       a.notes,
       a.profile_updated_at,
-      a.tutor_name,
+      COALESCE(CASE WHEN ns.raw_data->>'source'='central' THEN ns.raw_data->>'homeroomTutor' END, a.tutor_name) AS tutor_name,
       a.tutor_username,
       CASE WHEN a.user_id IS NULL THEN 'notion' ELSE 'account+notion' END AS record_source,
       (a.user_id IS NOT NULL) AS has_account
