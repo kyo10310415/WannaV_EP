@@ -67,9 +67,15 @@ class User {
     const conditions = [];
     const params = [];
     if (scopeConditions[scope]) conditions.push(scopeConditions[scope]);
-    if (search) {
-      params.push(`%${String(search).trim()}%`);
-      conditions.push(`(name ILIKE $${params.length} OR username ILIKE $${params.length} OR email ILIKE $${params.length})`);
+    const term = typeof search === 'string' ? search.trim().slice(0,200) : '';
+    if (term) {
+      params.push(`%${term.replace(/[\\%_]/g, '\\$&')}%`);
+      const placeholder = `$${params.length}`;
+      const studentMatch = scope === 'students' ? ` OR EXISTS (
+        SELECT 1 FROM student_profiles sp JOIN notion_students ns ON ns.notion_page_id = sp.notion_page_id
+        WHERE sp.user_id = users.id AND (ns.student_number ILIKE ${placeholder} OR ns.student_name ILIKE ${placeholder})
+      )` : '';
+      conditions.push(`(name ILIKE ${placeholder} OR username ILIKE ${placeholder} OR email ILIKE ${placeholder}${studentMatch})`);
     }
     const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
     const safeOffset = Math.max(0, Number(offset) || 0);
