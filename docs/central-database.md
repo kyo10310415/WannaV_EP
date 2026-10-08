@@ -50,6 +50,8 @@ CENTRAL_DATABASE_SSL=true
 
 本番の接続・実データ照合は環境変数設定後に必要。資格情報や個人データはエラーログへ出力しない。
 
+開始日は取得SQLのto_charでYYYY-MM-DDへ統一し、中央DBのDateStyle（SQL/DMY等）に依存しない。NULLは未設定のまま保持する。infinityや存在しない日付はINVALID_DATEとして拒否し、不明な値を推測変換したり元DBの日付を書き換えたりしない。
+
 ## 新規生徒の即時アカウント作成
 
 中央連携有効時、管理者・セールスは生徒管理の「Notionから新規アカウント作成」を押せる。Notionへ登録しただけで自動実行されるWebhookではない。NOTION_TOKEN・NOTION_DATABASE_IDと対象DBの共有権限を維持する。従来の6プランを対象に、学籍番号をログインID、初期PW1111、初回変更必須で新規作成/既存アカウント連携する。

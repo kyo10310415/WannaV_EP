@@ -25,7 +25,11 @@ async function snapshot() {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     stage='source_students';
     const students = (await client.query(`SELECT student_id,name,status,contract_plan,homeroom_tutor,
-      notion_page_id,notion_url,lesson_start_date::text,x_account_id,youtube_channel_id FROM students ORDER BY student_id`)).rows;
+      notion_page_id,notion_url,
+      CASE WHEN lesson_start_date IS NULL THEN NULL
+        WHEN isfinite(lesson_start_date) THEN to_char(lesson_start_date, 'YYYY-MM-DD')
+        ELSE lesson_start_date::text END AS lesson_start_date,
+      x_account_id,youtube_channel_id FROM students ORDER BY student_id`)).rows;
     stage='source_tutors';
     const tutors = (await client.query('SELECT notion_name,name,tutor_name,email FROM tutors')).rows;
     stage='source_reservations';
