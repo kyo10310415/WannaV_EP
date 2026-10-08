@@ -2,6 +2,10 @@ const router = require('express').Router();
 const {auth,checkRole} = require('../middleware/auth');
 const db = require('../config/database');
 router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
+router.get('/my-lessons',auth,checkRole('生徒'),async(req,res)=>{
+  try {res.json(await require('../models/StudentReservations').forStudent(req.user.id));}
+  catch (_) {res.status(503).json({error:'レッスン予約を取得できません'});}
+});
 router.get('/duplicates',auth,checkRole('管理者','セールス'),async(req,res)=>{
   try {
     const rows=(await db.query(`SELECT ns.student_number,ns.student_name,
