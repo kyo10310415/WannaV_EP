@@ -152,6 +152,21 @@
         </div>
 
         <!-- 生徒キャラクター選択 -->
+        <section id="growth-roadmap" class="card" hidden aria-labelledby="growth-title">
+            <h2 id="growth-title">🌱 あなたの成長ロードマップ</h2>
+            <p id="growth-position" style="font-size:20px;font-weight:700;margin:16px 0;"></p>
+            <div id="growth-comparisons" style="display:flex;gap:16px;flex-wrap:wrap;"></div>
+            <p style="margin:16px 0;">目標は成長の道しるべ。あなたのペースで、一歩ずつ進んでいこう！</p>
+            <div style="overflow:auto;max-height:430px;" tabindex="0" role="region" aria-label="18ヶ月の成長指標">
+                <table class="table"><thead><tr><th>月数</th><th>X</th><th>YouTube</th><th>応援メッセージ</th></tr></thead><tbody id="growth-goals-body"></tbody></table>
+            </div>
+        </section>
+        <style>
+            .growth-current { background:rgba(74,144,217,.3);outline:2px solid #51c7ee;outline-offset:-2px;font-weight:700; }
+            .growth-comparison { flex:1;min-width:210px;border:1px solid #3b7095;border-radius:12px;padding:16px; }
+            .growth-comparison progress { width:100%;accent-color:#51c7ee;margin:12px 0; }
+            #growth-goals-body td { overflow-wrap:anywhere; }
+        </style>
         <section id="student-lessons-panel" class="card" hidden aria-label="当月レッスン予約">
             <h2>📅 今月のレッスン日</h2>
             <div id="student-lessons-content" aria-live="polite"></div>
@@ -200,6 +215,7 @@
 
     <script src="/js/social-metrics.js"></script>
     <script src="/js/student-reservations.js"></script>
+    <script src="/js/growth-roadmap.js"></script>
     <link rel="stylesheet" href="/css/social-celebration.css">
     <script src="/js/social-celebration.js"></script>
     <script src="/js/portal-session.js"></script>
@@ -281,6 +297,7 @@
                 window.ImportantMessageReady = loadImportantMessage();
                 if (currentUser.role === '生徒') {
                     StudentReservations.load();
+                    GrowthRoadmap.load();
                     loadSocialMetrics();
                     loadCharacterStatus();
                     PortalSession.start(currentUser);

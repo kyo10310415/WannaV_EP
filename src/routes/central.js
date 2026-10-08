@@ -2,6 +2,10 @@ const router = require('express').Router();
 const {auth,checkRole} = require('../middleware/auth');
 const db = require('../config/database');
 router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
+router.get('/my-growth',auth,checkRole('生徒'),async(req,res)=>{
+  try {res.json(await require('../models/GrowthRoadmap').forStudent(req.user.id));}
+  catch (_) {res.status(503).json({error:'成長指標を取得できません'});}
+});
 router.get('/test-student',auth,checkRole('管理者'),async(req,res)=>{
   try {
     const data=await require('../models/TestStudentSettings').find();
