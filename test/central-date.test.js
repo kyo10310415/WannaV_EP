@@ -1,6 +1,13 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {mapStudents}=require('../src/services/centralStudentSync');
+const {mapStudents,dateDiagnostics}=require('../src/services/centralStudentSync');
+
+test('日付診断は形式別件数のみ返し元の値・生徒情報を漏らさない',()=>{
+  const values=['2026-10-08',null,'2026-02-30','2026-10-08T00:00:00Z','2026/10/8 0:00','2026年10月8日','2026/10','08/10/2026','infinity','private-secret-name','another-secret'];
+  const result=dateDiagnostics(values.map(lesson_start_date=>({lesson_start_date,name:'private-person',student_id:'secret-id'})));
+  assert.deepEqual(result,{INVALID_CALENDAR_DATE:1,DATE_WITH_TIME:1,SLASH_DATE_WITH_TIME:1,JAPANESE_DATE:1,YEAR_MONTH_ONLY:1,DAY_OR_MONTH_FIRST:1,INFINITY:1,OTHER:2});
+  assert.doesNotMatch(JSON.stringify(result),/secret|private|2026/);
+});
 
 test('中央開始日は実在する日付のみ受理し、空欄・閏年と特殊値を区別する',()=>{
   const parse=date=>mapStudents([{student_id:'TEST',name:'日付テスト',lesson_start_date:date}],[])[0];

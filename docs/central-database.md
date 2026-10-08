@@ -52,6 +52,10 @@ CENTRAL_DATABASE_SSL=true
 
 開始日は読み取りトランザクション内のSET LOCAL DateStyleをISOに固定してtextとして取得する（DATE型・文字列型の両方に対応）。文字列は年先頭のYYYY-MM-DDまたはYYYY/MM/DDを受理し、月日1桁もゼロ埋めしてYYYY-MM-DDへ統一する。NULL・空欄は未設定として保持する。月日先頭など曖昧な形式、infinity、存在しない日付はINVALID_DATEとして拒否する。元DBの値・永続設定は変更しない。
 
+## 開始日の診断
+
+INVALID_DATE時はRenderログの「Central student start date diagnostics」に拒否された形式別件数を表示する。DATE_WITH_TIME（日時付き）、SLASH_DATE_WITH_TIME（スラッシュ形式・日時付き）、JAPANESE_DATE（年月日表記）、YEAR_MONTH_ONLY（年月のみ）、DAY_OR_MONTH_FIRST（月日順が曖昧）、INVALID_CALENDAR_DATE（存在しない日付）、INFINITY、OTHERに分類する。日付値・名前・学籍番号は出力しない。診断だけでは日付を補完・変換せず、保存前に同期を中止して既存データを保持する。
+
 ## 新規生徒の即時アカウント作成
 
 中央連携有効時、管理者・セールスは生徒管理の「Notionから新規アカウント作成」を押せる。Notionへ登録しただけで自動実行されるWebhookではない。NOTION_TOKEN・NOTION_DATABASE_IDと対象DBの共有権限を維持する。従来の6プランを対象に、学籍番号をログインID、初期PW1111、初回変更必須で新規作成/既存アカウント連携する。

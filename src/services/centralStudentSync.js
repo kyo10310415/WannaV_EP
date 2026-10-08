@@ -6,6 +6,35 @@ const {CentralSyncError,classify} = require('../utils/centralSyncError');
 let active;
 const syncStatus = {running:false,startedAt:null,lastError:null};
 const normalizedPage = value => String(value || '').replace(/-/g, '').toLowerCase();
+function normalizeStartDate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(text);
+  if (!match) throw new CentralSyncError('INVALID_DATE','student_mapping');
+  const result = `${match[1]}-${match[3].padStart(2,'0')}-${match[4].padStart(2,'0')}`;
+  const date = new Date(result);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== result)
+    throw new CentralSyncError('INVALID_DATE','student_mapping');
+  return result;
+}
+function dateDiagnostics(rows) {
+  const formats = {};
+  for (const row of rows) {
+    try { normalizeStartDate(row.lesson_start_date); continue; } catch (error) {
+      if (error.code !== 'INVALID_DATE') throw error;
+    }
+    const value = String(row.lesson_start_date ?? '').trim();
+    const format = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.test(value) ? 'INVALID_CALENDAR_DATE'
+      : /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value) ? 'DATE_WITH_TIME'
+      : /^\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}/.test(value) ? 'SLASH_DATE_WITH_TIME'
+      : /^\d{4}年\d{1,2}月\d{1,2}日$/.test(value) ? 'JAPANESE_DATE'
+      : /^\d{4}[-/]\d{1,2}$/.test(value) ? 'YEAR_MONTH_ONLY'
+      : /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}$/.test(value) ? 'DAY_OR_MONTH_FIRST'
+      : /^-?infinity$/i.test(value) ? 'INFINITY' : 'OTHER';
+    formats[format] = (formats[format] || 0) + 1;
+  }
+  return formats;
+}
 
 // Curated mapping is the only place to add future source fields. Never copy payment or credentials.
 function mapStudents(rows, existing) {
@@ -21,15 +50,7 @@ function mapStudents(rows, existing) {
     const pageKey = notionPageId.startsWith('central:') ? notionPageId : normalizedPage(notionPageId);
     if (pages.has(pageKey)) throw new CentralSyncError('DUPLICATE_PAGE','student_mapping');
     pages.add(pageKey);
-    let lessonStartMonth = String(row.lesson_start_date ?? '').trim() || null;
-    if (lessonStartMonth) {
-      const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(lessonStartMonth);
-      if (!match) throw new CentralSyncError('INVALID_DATE','student_mapping');
-      lessonStartMonth = `${match[1]}-${match[3].padStart(2,'0')}-${match[4].padStart(2,'0')}`;
-      const date = new Date(lessonStartMonth);
-      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== lessonStartMonth)
-        throw new CentralSyncError('INVALID_DATE','student_mapping');
-    }
+    const lessonStartMonth = normalizeStartDate(row.lesson_start_date);
     return { notionPageId, studentName:row.name, studentNumber:number, loginId:number,
       nameFurigana:matches[0]?.name_furigana || null, notionUrl:row.notion_url || null,
       status:row.status || null, contractPlan:row.contract_plan || null, lessonStartMonth,
@@ -46,6 +67,11 @@ async function run() {
     const {students,tutors,reservations} = await source.snapshot();
     // Empty/invalid snapshot is not a deletion instruction; preserve the previous cache.
     if (!students.length) throw new CentralSyncError('EMPTY_STUDENTS','source_validation');
+    const invalidDateFormats = dateDiagnostics(students);
+    if (Object.keys(invalidDateFormats).length) {
+      console.warn('Central student start date diagnostics', {formats:invalidDateFormats});
+      throw new CentralSyncError('INVALID_DATE','student_mapping');
+    }
     const events = new Set();
     for (const reservation of reservations) {
       if (!reservation.calendar_event_id || !reservation.student_id || !reservation.lesson_date || events.has(reservation.calendar_event_id)) throw new CentralSyncError('INVALID_RESERVATION','source_validation');
@@ -111,4 +137,4 @@ function synchronize() {
   if (!active) active=require('../utils/studentSyncQueue')(run).finally(()=>{active=null;});
   return active;
 }
-module.exports = {synchronize,mapStudents,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};
+module.exports = {synchronize,mapStudents,dateDiagnostics,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};
