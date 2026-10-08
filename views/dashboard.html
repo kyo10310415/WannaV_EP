@@ -75,6 +75,11 @@
     </style>
 </head>
 <body>
+    <dialog id="lesson-reminder-dialog" aria-labelledby="lesson-reminder-title" style="width:min(90vw,640px);padding:32px;border-radius:20px;background:var(--dark-bg);color:#fff;border:2px solid var(--primary-blue);">
+        <h2 id="lesson-reminder-title" style="font-size:30px;">📅 明日はレッスン日です！</h2>
+        <p id="lesson-reminder-body" style="font-size:24px;white-space:pre-wrap;margin:24px 0;"></p>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('lesson-reminder-dialog').close()">確認しました</button>
+    </dialog>
     <dialog id="important-message-dialog" aria-labelledby="important-message-title">
         <h2 id="important-message-title">📢 重要メッセージ</h2>
         <p id="important-message-body"></p>
@@ -147,6 +152,17 @@
         </div>
 
         <!-- 生徒キャラクター選択 -->
+        <section id="student-lessons-panel" class="card" hidden aria-label="当月レッスン予約">
+            <h2>📅 今月のレッスン日</h2>
+            <div id="student-lessons-content" aria-live="polite"></div>
+        </section>
+        <style>
+            #student-lessons-content p { white-space:pre-wrap; margin:12px 0; }
+            #student-lessons-content li { margin:8px 0; overflow-wrap:anywhere; }
+            .lesson-booking-one { color:#ffd54f; font-weight:700; }
+            .lesson-booking-zero { color:#ff7373; font-weight:700; }
+            .lesson-sync-note { color:var(--gray-text); font-size:12px; }
+        </style>
         <div id="student-character-panel" class="card" style="display:none">
             <div id="student-character-content" class="character-panel-content"></div>
         </div>
@@ -183,6 +199,7 @@
     </div>
 
     <script src="/js/social-metrics.js"></script>
+    <script src="/js/student-reservations.js"></script>
     <link rel="stylesheet" href="/css/social-celebration.css">
     <script src="/js/social-celebration.js"></script>
     <script src="/js/portal-session.js"></script>
@@ -263,6 +280,7 @@
                 buildNav('admin-menu', currentUser.role, '/dashboard');
                 window.ImportantMessageReady = loadImportantMessage();
                 if (currentUser.role === '生徒') {
+                    StudentReservations.load();
                     loadSocialMetrics();
                     loadCharacterStatus();
                     PortalSession.start(currentUser);
