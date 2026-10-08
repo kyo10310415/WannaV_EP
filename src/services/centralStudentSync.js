@@ -72,7 +72,7 @@ async function run() {
         FROM jsonb_to_recordset($1::jsonb) AS x(notion_page_id text,tutor_id integer)
         WHERE sp.notion_page_id=x.notion_page_id`,[JSON.stringify(assignments)]);
       await client.query(`UPDATE notion_students SET status='同期対象外'
-        WHERE NOT (notion_page_id=ANY($1::text[]))`,[entries.map(e=>e.notionPageId)]);
+        WHERE NOT (notion_page_id=ANY($1::text[])) AND COALESCE(raw_data->>'source','')<>'notion_pending'`,[entries.map(e=>e.notionPageId)]);
       // Reservation cache replacement is atomic. No operation touches source lessons or portal lesson_schedules.
       stage='reservation_cache_save';
       await client.query('DELETE FROM central_reservations');
@@ -100,7 +100,7 @@ async function run() {
 }
 function synchronize() {
   if (!source.enabled()) return Promise.reject(new Error('中央管理DB連携は無効です'));
-  if (!active) active=run().finally(()=>{active=null;});
+  if (!active) active=require('../utils/studentSyncQueue')(run).finally(()=>{active=null;});
   return active;
 }
 module.exports = {synchronize,mapStudents,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};

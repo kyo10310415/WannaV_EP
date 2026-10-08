@@ -24,7 +24,7 @@ class NotionStudent {
    * entries = [{ notionPageId, studentName, nameFurigana, studentNumber,
    *              notionUrl, lessonStartMonth, status, contractPlan, loginId, rawData }]
    */
-  static async upsertMany(entries, { targetPlansOnly = false } = {}) {
+  static async upsertMany(entries, { targetPlansOnly = false, insertOnly = false } = {}) {
     const summary = { upserted: 0, accountsCreated: 0, accountsLinked: 0, accountsSkipped: 0 };
     if (!entries || entries.length === 0) return summary;
 
@@ -118,7 +118,8 @@ class NotionStudent {
           END,
           raw_data           = EXCLUDED.raw_data,
           synced_at          = CURRENT_TIMESTAMP
-      `, [JSON.stringify(chunk)]);
+        WHERE NOT $2::boolean
+      `, [JSON.stringify(chunk), insertOnly]);
       summary.upserted += chunk.length;
     }
 

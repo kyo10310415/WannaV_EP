@@ -35,7 +35,7 @@ test('中央DBの不足列エラーは失敗したSELECTの段階とコードを
 });
 
 const html=fs.readFileSync(require.resolve('../views/admin-student-management.html'),'utf8');
-const syncFunction=html.slice(html.indexOf('async function syncNotionStudents()'),html.indexOf('function updateStats('));
+const syncFunction=html.slice(html.indexOf('async function syncNotionStudents('),html.indexOf('function updateStats('));
 test('同期結果はボタン付近に継続表示され、エラーの段階・コードとボタン復旧を確認できる',async()=>{
   const output={textContent:''},button={disabled:false,textContent:''};let alerts=0;
   const context={document:{getElementById:id=>id==='notion-sync-button'?button:output},AbortController,setTimeout,clearTimeout,

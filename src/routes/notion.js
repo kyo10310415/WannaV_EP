@@ -4,6 +4,18 @@ const { auth, checkRole } = require('../middleware/auth');
 const NotionStudent = require('../models/NotionStudent');
 const { syncNotionStudents, fetchDatabaseProperties } = require('../utils/notionSync');
 
+// Onboarding only: central updates remain the regular source of truth.
+router.post('/provision-accounts',auth,checkRole('管理者','セールス'),async(req,res)=>{
+  if(!require('../config/centralDatabase').enabled()) return res.status(409).json({error:'中央管理DB連携が有効な場合に使用してください。通常はNotion同期をご利用ください。'});
+  try {
+    const result=await require('../services/notionAccountProvision').provision();
+    res.json({...result,success:true,message:`新規アカウント ${result.accountsCreated} 件作成・${result.accountsLinked} 件連携・${result.accountsSkipped} 件スキップしました（初期PW: 1111）。既存の生徒情報は更新していません。`});
+  } catch (_) {
+    console.error('Notion account provisioning failed');
+    res.status(503).json({error:'Notionからのアカウント作成に失敗しました。NOTION_TOKEN・NOTION_DATABASE_ID・共有権限をご確認ください。'});
+  }
+});
+
 /**
  * GET /api/notion/students
  * 対象6プランの生徒一覧を返す（DBキャッシュから）

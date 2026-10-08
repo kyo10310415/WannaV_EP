@@ -71,7 +71,8 @@ const DIRECTORY_CTE = `
       a.profile_updated_at,
       COALESCE(CASE WHEN ns.raw_data->>'source'='central' THEN ns.raw_data->>'homeroomTutor' END, a.tutor_name) AS tutor_name,
       a.tutor_username,
-      CASE WHEN a.user_id IS NULL THEN 'notion' ELSE 'account+notion' END AS record_source,
+      CASE WHEN ns.raw_data->>'source'='notion_pending' THEN 'notion_pending'
+        WHEN a.user_id IS NULL THEN 'notion' ELSE 'account+notion' END AS record_source,
       (a.user_id IS NOT NULL) AS has_account
     FROM notion_students ns
     LEFT JOIN accounts a ON a.linked_notion_page_id = ns.notion_page_id

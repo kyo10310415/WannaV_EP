@@ -193,6 +193,7 @@
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
                     <button onclick="copyInvitationUrl()" class="btn btn-secondary">🔗 招待URLをコピー</button>
                     <button id="notion-sync-button" onclick="syncNotionStudents()" class="btn btn-primary" style="display:none">🔄 Notion同期</button>
+                    <button id="notion-provision-button" onclick="syncNotionStudents('/api/notion/provision-accounts')" class="btn btn-secondary" style="display:none">👤 Notionから新規アカウント作成</button>
                     <button onclick="window.location='/admin/surveys'" class="btn btn-secondary">⭐ 満足度</button>
                 </div>
             </div>
@@ -280,9 +281,9 @@
             if (!TOKEN) { window.location.href = '/'; return; }
             const me = await fetchJSON('/api/auth/me');
             if (!me) return;
-            await loadCentralStatus();
             document.getElementById('user-name').textContent = me.name + ' (' + me.role + ')';
             canEditLoginId = me.role === '管理者' || me.role === 'セールス';
+            await loadCentralStatus();
             canViewSocialMetrics = me.role === '管理者' || me.role === 'クルー';
             document.getElementById('social-metrics-column').hidden = !canViewSocialMetrics;
             if (canEditLoginId) document.getElementById('notion-sync-button').style.display = '';
@@ -339,16 +340,17 @@
             renderPagination(data.pagination || {});
         }
 
-        async function syncNotionStudents() {
+        async function syncNotionStudents(endpoint = '/api/notion/sync') {
             const button = document.getElementById('notion-sync-button');
             const output = document.getElementById('student-sync-result');
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 60000);
             button.disabled = true;
+            document.getElementById('notion-provision-button').disabled = true;
             button.textContent = '同期中...';
             output.textContent = '同期中です。画面を閉じてもサーバー側の処理は継続します。';
             try {
-                const res = await fetchJSON('/api/notion/sync', { method: 'POST', signal:controller.signal });
+                const res = await fetchJSON(endpoint, { method: 'POST', signal:controller.signal });
                 if (res && !res.error) {
                     output.textContent = res.message || '同期が完了しました';
                     showAlert(output.textContent, 'success');
@@ -364,6 +366,7 @@
             } finally {
                 clearTimeout(timer);
                 button.disabled = false;
+                document.getElementById('notion-provision-button').disabled = false;
                 button.textContent = centralEnabled ? '🔄 中央管理DB同期' : '🔄 Notion同期';
             }
         }
@@ -452,7 +455,9 @@
                 const satisfaction = s.latest_satisfaction ? renderStars(s.latest_satisfaction) : '-';
                 const flags = [];
                 if (!s.has_account) flags.push('<span class="review-flag">⚠️ アカウント未作成</span>');
-                const sourceBadge = centralEnabled && s.notion_page_id
+                const sourceBadge = s.record_source === 'notion_pending'
+                    ? '<span class="source-badge source-notion">Notion受付・中央DB反映待ち</span>'
+                    : centralEnabled && s.notion_page_id
                     ? '<span class="source-badge source-notion">中央管理DB</span>'
                     : s.record_source === 'notion'
                     ? '<span class="source-badge source-notion">Notion</span>'
@@ -477,7 +482,7 @@
                         ${loginEditButton}
                     </td>
                     <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                    <td>${tutorName}${centralEnabled && s.student_number ? `<br><button type="button" class="action-btn btn-edit" onclick="openReservations(${index})">予約状況</button>` : ''}</td>
+                    <td>${tutorName}${centralEnabled && s.student_number && s.record_source !== 'notion_pending' ? `<br><button type="button" class="action-btn btn-edit" onclick="openReservations(${index})">予約状況</button>` : ''}</td>
                     <td style="font-size:12px">
                         ${escHtml(plan)}
                         ${lessonStart ? `<div style="font-size:10px;color:var(--gray-text);margin-top:3px">開始: ${lessonStart}</div>` : ''}
@@ -517,6 +522,7 @@
         async function loadCentralStatus() {
             const result = await fetchJSON('/api/central/status');
             centralEnabled = result?.enabled === true;
+            document.getElementById('notion-provision-button').style.display = centralEnabled && canEditLoginId ? '' : 'none';
             if (centralEnabled) {
                 document.getElementById('notion-sync-button').textContent = '🔄 中央管理DB同期';
                 document.getElementById('student-source-note').textContent = '生徒情報・担当Tutorは中央管理DBから同期します。支払いは従来のスプレッドシート連携です。最終同期：' + (result.state?.last_success ? new Date(result.state.last_success).toLocaleString('ja-JP') : '未同期');
