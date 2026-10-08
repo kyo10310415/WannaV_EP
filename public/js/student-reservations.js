@@ -22,7 +22,7 @@
       for (const lesson of data.lessons) {const item=document.createElement('li');item.textContent=line(lesson);list.append(item);}
       content.append(list);
       const note=document.createElement('p');note.className='lesson-sync-note';
-      note.textContent='予約情報は毎時同期されます。最終同期：'+new Date(data.lastSyncedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'});content.append(note);
+      note.textContent=(data.manual ? 'テスト用の手動予約です。更新：' : '予約情報は毎時同期されます。最終同期：')+new Date(data.lastSyncedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'});content.append(note);
       if (!data.tomorrowLessons.length) return;
       await window.ImportantMessageReady;
       const dialog=document.getElementById('lesson-reminder-dialog');

@@ -9,6 +9,24 @@
     <link rel="stylesheet" href="/css/social-celebration.css">
 </head>
 <body>
+    <dialog id="test-student-dialog" style="background:var(--card-bg);color:var(--gray-text);border-radius:16px;padding:24px;width:min(94vw,700px);max-height:90vh;overflow:auto;margin:auto;">
+        <h2>test_seito の生徒情報・レッスン日</h2>
+        <p>管理者専用・Notion未連携のtest_seitoだけが対象です。ログインIDとパスワードは変更しません。</p>
+        <form id="test-student-form">
+            <label>生徒名<input id="test-student-name" class="form-input" maxlength="100" required></label>
+            <label>学籍番号<input id="test-student-number" class="form-input" maxlength="100"></label>
+            <label>契約プラン<select id="test-student-plan" class="form-input"><option>エントリープラン</option><option>生徒プラン</option><option>スタンダードプラン</option><option>プレミアムプラン</option><option>PROプラン</option><option>永久会員</option></select></label>
+            <label>ステータス<select id="test-student-status" class="form-input"><option>アクティブ</option><option>レッスン準備中</option><option>休会</option><option>正規退会</option><option>強制退会</option></select></label>
+            <label>レッスン開始日<input id="test-student-start" class="form-input" type="date"></label>
+            <h3>予約レッスン日</h3>
+            <p>当月0件・1件・2件、明日の日付で表示を確認できます。エントリープランでは非表示です。</p>
+            <div id="test-student-lessons"></div>
+            <button type="button" id="test-student-add" class="btn btn-secondary">レッスン日を追加</button>
+            <p id="test-student-message" role="status"></p>
+            <button type="submit" id="test-student-save" class="btn btn-primary">保存</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('test-student-dialog').close()">閉じる</button>
+        </form>
+    </dialog>
     <dialog id="test-social-dialog" style="background:var(--card-bg);color:var(--gray-text);border-radius:16px;padding:24px;width:min(92vw,480px);margin:auto;">
         <h2>test_seito のSNS設定</h2>
         <p>Notion未連携のテストアカウント専用です。空欄は未設定として保存します。</p>
@@ -121,6 +139,7 @@
     </div>
 
     <script src="/js/social-celebration.js"></script>
+    <script src="/js/test-student-settings.js"></script>
     <script>
         const API_URL = '/api';
         let currentUser = null;
@@ -325,7 +344,7 @@
                         <td style="font-weight:600;">${user.name}</td>
                         <td>${pwChanged}</td>
                         <td style="color:var(--gray-text); font-size:13px;">${createdDate}</td>
-                        <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}${isAdmin && user.username === 'test_seito' ? '<button class="btn btn-secondary" onclick="openTestSocialSettings()">📈 SNS設定</button>' : ''}</td>
+                        <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}${isAdmin && user.username === 'test_seito' ? '<button class="btn btn-secondary" onclick="openTestSocialSettings()">📈 SNS設定</button><button class="btn btn-secondary" onclick="openTestStudentSettings()">🧪 生徒情報・レッスン日</button>' : ''}</td>
                     </tr>
                 `;
             });

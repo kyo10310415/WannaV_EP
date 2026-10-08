@@ -8,6 +8,13 @@ function calendar(now = new Date()) {
 }
 async function forStudent(userId, now = new Date()) {
   const {month,tomorrow} = calendar(now);
+  const test=await require('./TestStudentSettings').find(userId);
+  if (test?.lessons) {
+    if (!test.contract_plan || test.contract_plan==='エントリープラン') return {eligible:false};
+    const lessons=test.lessons.filter(lesson=>lesson.date.startsWith(month));
+    return {eligible:true,available:true,manual:true,month,lessons,count:lessons.length,
+      tomorrowLessons:test.lessons.filter(lesson=>lesson.date===tomorrow),lastSyncedAt:test.updated_at};
+  }
   const profile = (await db.query(`SELECT COALESCE(ns.contract_plan,sp.contract_plan) AS contract_plan,
     ns.student_number,cs.student_id,
     (SELECT COUNT(*) FROM notion_students other WHERE LOWER(other.student_number)=LOWER(ns.student_number)) AS matches
