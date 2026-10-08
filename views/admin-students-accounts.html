@@ -108,6 +108,11 @@
         <!-- 生徒アカウント一覧 -->
         <div class="card">
             <h2 style="margin-bottom: 30px;">📋 生徒アカウント一覧</h2>
+            <form id="student-search-form" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+                <input id="student-search" type="search" maxlength="200" aria-label="学籍番号・生徒名で検索" placeholder="学籍番号・生徒名で検索" style="flex:1; min-width:180px;">
+                <button type="submit" class="btn btn-primary">検索</button>
+                <button type="button" class="btn btn-secondary" onclick="clearStudentSearch()">クリア</button>
+            </form>
             <div id="users-container">
                 <div class="loading" style="margin: 50px auto;"></div>
             </div>
@@ -221,21 +226,32 @@
         // ===== 生徒ユーザー一覧読み込み =====
         const STUDENT_PAGE_SIZE = 50;
         let studentPageOffset = 0;
+        let studentSearch = '';
+        let studentRequest = 0;
+
+        function clearStudentSearch() {
+            document.getElementById('student-search').value = '';
+            studentSearch = '';
+            loadStudentUsers(0);
+        }
 
         async function loadStudentUsers(offset = studentPageOffset) {
+            const request = ++studentRequest;
             const token = localStorage.getItem('token');
             try {
-                const res = await fetch(`${API_URL}/admin/users?scope=students&limit=${STUDENT_PAGE_SIZE}&offset=${offset}`, {
+                const res = await fetch(`${API_URL}/admin/users?scope=students&limit=${STUDENT_PAGE_SIZE}&offset=${offset}&search=${encodeURIComponent(studentSearch)}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (!res.ok) throw new Error('生徒アカウントの取得に失敗しました');
                 const data = await res.json();
+                if (request !== studentRequest) return;
                 const users = data.users || [];
                 studentPageOffset = offset;
                 // 生徒のみ表示
                 renderUsers(users.filter(u => u.role === '生徒'));
                 renderStudentPagination(data.pagination || {});
             } catch (err) {
+                if (request !== studentRequest) return;
                 console.error('ユーザー読み込みエラー:', err);
                 showAlert('ユーザーの読み込みに失敗しました', 'error');
             }
@@ -263,7 +279,7 @@
             document.getElementById('student-count') && (document.getElementById('student-count').textContent = `${users.length} 名`);
 
             if (users.length === 0) {
-                container.innerHTML = '<p style="color: var(--gray-text);">生徒アカウントがまだありません</p>';
+                container.innerHTML = studentSearch ? '<p style="color: var(--gray-text);">検索条件に一致する生徒アカウントはありません</p>' : '<p style="color: var(--gray-text);">生徒アカウントがまだありません</p>';
                 return;
             }
 
@@ -320,6 +336,11 @@
 
         // ===== ユーザー作成 =====
         document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('student-search-form').addEventListener('submit', e => {
+                e.preventDefault();
+                studentSearch = document.getElementById('student-search').value.trim();
+                loadStudentUsers(0);
+            });
             document.getElementById('create-user-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const token = localStorage.getItem('token');
