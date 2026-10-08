@@ -28,6 +28,7 @@ const scheduleInactiveUserReminders = () => {
 // 既存ジョブ: Notion 同期 (毎日 02:00)
 // ─────────────────────────────────────────────────────────────────────────────
 const scheduleNotionSync = () => {
+  if (require('../config/centralDatabase').enabled()) return;
   if (!process.env.NOTION_TOKEN || !process.env.NOTION_DATABASE_ID) {
     console.log('⏭️  Notion cron skipped: NOTION_TOKEN or NOTION_DATABASE_ID not set');
     return;
@@ -283,6 +284,7 @@ const startAllSchedulers = () => {
   schedulePaymentSync();
   scheduleInactiveUserReminders();
   scheduleNotionSync();
+  scheduleCentralSync();
   scheduleContractExpiryWarnings();
   scheduleActiveStudentInactivityCheck();
   scheduleLogCleanup();
@@ -298,6 +300,14 @@ function scheduleSocialMetrics() {
   void run();
 }
 
+function scheduleCentralSync() {
+  if (!require('../config/centralDatabase').enabled()) return;
+  const run = () => require('../services/centralStudentSync').synchronize()
+    .catch(() => console.error('Hourly central student sync failed'));
+  cron.schedule('0 * * * *', run, {timezone:'Asia/Tokyo'});
+  void run();
+}
+
 function schedulePaymentSync() {
   if (!process.env.GOOGLE_PAYMENT_SPREADSHEET_ID) return;
   const StudentPayment = require('../models/StudentPayment');
@@ -310,6 +320,7 @@ function schedulePaymentSync() {
 }
 
 module.exports = {
+  scheduleCentralSync,
   scheduleSocialMetrics,
   scheduleInactiveUserReminders,
   scheduleNotionSync,

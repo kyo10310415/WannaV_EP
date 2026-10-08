@@ -25,7 +25,8 @@ router.get('/students', auth, checkRole('管理者', 'クルー', 'セールス'
  */
 router.post('/sync', auth, checkRole('管理者', 'セールス'), async (req, res) => {
   try {
-    const result = await syncNotionStudents();
+    const central = require('../config/centralDatabase').enabled();
+    const result = await (central ? require('../services/centralStudentSync').synchronize() : syncNotionStudents());
     res.json({
       success: true,
       message: `${result.synced} 件を同期し、${result.accountsCreated} 件のアカウントを作成しました（初期PW: 1111）`,
@@ -36,6 +37,9 @@ router.post('/sync', auth, checkRole('管理者', 'セールス'), async (req, r
       timestamp: result.timestamp
     });
   } catch (error) {
+    if (require('../config/centralDatabase').enabled()) {
+      return res.status(503).json({error:'中央管理DBの同期に失敗しました。接続設定・データをご確認ください。'});
+    }
     console.error('Notion sync error:', error);
     if (error.message.includes('NOTION_TOKEN') || error.message.includes('DATABASE_ID')) {
       return res.status(503).json({

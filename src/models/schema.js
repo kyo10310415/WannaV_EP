@@ -2,6 +2,13 @@ const db = require('../config/database');
 
 const createTables = async () => {
   try {
+    await db.query(`CREATE TABLE IF NOT EXISTS central_students (
+      student_id TEXT PRIMARY KEY, notion_page_id TEXT NOT NULL UNIQUE, tutor_name TEXT, synced_at TIMESTAMP NOT NULL)`);
+    await db.query(`CREATE TABLE IF NOT EXISTS central_reservations (
+      event_id TEXT PRIMARY KEY, student_id TEXT NOT NULL, tutor_name TEXT, lesson_date TEXT NOT NULL, lesson_time TEXT, title TEXT)`);
+    await db.query('CREATE INDEX IF NOT EXISTS idx_central_reservation_student ON central_reservations(student_id,lesson_date)');
+    await db.query(`CREATE TABLE IF NOT EXISTS central_sync_state (
+      id INTEGER PRIMARY KEY CHECK(id=1),last_success TIMESTAMP,student_count INTEGER,reservation_count INTEGER)`);
     // Users table
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
