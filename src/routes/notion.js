@@ -41,7 +41,8 @@ router.post('/sync', auth, checkRole('管理者', 'セールス'), async (req, r
     const result = await (central ? require('../services/centralStudentSync').synchronize() : syncNotionStudents());
     res.json({
       success: true,
-      message: `${result.synced} 件を同期し、${result.accountsCreated} 件のアカウントを作成しました（初期PW: 1111）`,
+      message: `${result.synced} 件を同期し、${result.accountsCreated} 件のアカウントを作成しました（初期PW: 1111）` + (result.heldStudents ? `。重複する ${result.heldStudents} 名は更新を保留しました` : ''),
+      heldStudents: result.heldStudents || 0,
       synced: result.synced,
       accountsCreated: result.accountsCreated,
       accountsLinked: result.accountsLinked,

@@ -2,6 +2,17 @@ const router = require('express').Router();
 const {auth,checkRole} = require('../middleware/auth');
 const db = require('../config/database');
 router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
+router.get('/duplicates',auth,checkRole('管理者','セールス'),async(req,res)=>{
+  try {
+    const rows=(await db.query(`SELECT ns.student_number,ns.student_name,
+      (SELECT COUNT(*)::integer FROM student_profiles sp WHERE sp.notion_page_id=ns.notion_page_id) AS account_count
+      FROM notion_students ns WHERE LOWER(ns.student_number) IN (
+        SELECT LOWER(student_number) FROM notion_students WHERE student_number IS NOT NULL AND student_number<>''
+        GROUP BY LOWER(student_number) HAVING COUNT(*)>1)
+      ORDER BY LOWER(ns.student_number),ns.student_name`)).rows;
+    res.json({duplicates:rows,duplicateNumbers:new Set(rows.map(row=>row.student_number.toLowerCase())).size});
+  } catch (_) {res.status(503).json({error:'学籍番号の重複を取得できません'});}
+});
 router.get('/status',auth,checkRole('管理者','セールス','クルー'),async(req,res)=>{
   try {
     res.json({enabled:require('../config/centralDatabase').enabled(),state:(await db.query('SELECT * FROM central_sync_state WHERE id=1')).rows[0] || null,
