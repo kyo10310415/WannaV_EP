@@ -41,6 +41,31 @@ function dateDiagnostics(rows) {
   return formats;
 }
 
+function studentMatches(row, existing) {
+  const number = String(row.student_id || '').trim().toLowerCase();
+  const notionMatches = existing.filter(e => row.notion_page_id && normalizedPage(e.notion_page_id) === normalizedPage(row.notion_page_id));
+  const numberMatches = existing.filter(e => String(e.student_number || '').toLowerCase() === number);
+  return {notionMatches,numberMatches,matches:[...new Set([...notionMatches,...numberMatches])]};
+}
+function identityDiagnostics(rows, existing) {
+  const types = {};
+  let affectedStudents = 0;
+  for (const row of rows) {
+    if (!String(row.student_id || '').trim() || !row.name) continue;
+    const {notionMatches,numberMatches,matches} = studentMatches(row,existing);
+    if (matches.length <= 1) continue;
+    affectedStudents++;
+    const categories = [];
+    if (notionMatches.length > 1) categories.push('NOTION_ID_DUPLICATE');
+    if (numberMatches.length > 1) categories.push('STUDENT_NUMBER_DUPLICATE');
+    if (notionMatches.length === 1 && numberMatches.length === 1 && notionMatches[0] !== numberMatches[0])
+      categories.push('NOTION_NUMBER_CONFLICT');
+    if (!categories.length) categories.push('MULTIPLE_MATCHES');
+    for (const category of categories) types[category] = (types[category] || 0) + 1;
+  }
+  return {affectedStudents,types};
+}
+
 // Curated mapping is the only place to add future source fields. Never copy payment or credentials.
 function mapStudents(rows, existing) {
   const seen = new Set(), pages = new Set();
@@ -48,8 +73,7 @@ function mapStudents(rows, existing) {
     const number = String(row.student_id || '').trim();
     if (!number || seen.has(number.toLowerCase()) || !row.name) throw new CentralSyncError('INVALID_STUDENT','student_mapping');
     seen.add(number.toLowerCase());
-    const matches = existing.filter(e => normalizedPage(e.notion_page_id) === normalizedPage(row.notion_page_id) && row.notion_page_id
-      || String(e.student_number || '').toLowerCase() === number.toLowerCase());
+    const {matches} = studentMatches(row,existing);
     if (matches.length > 1) throw new CentralSyncError('AMBIGUOUS_STUDENT','student_mapping');
     const notionPageId = matches[0]?.notion_page_id || row.notion_page_id || `central:${number}`;
     const pageKey = notionPageId.startsWith('central:') ? notionPageId : normalizedPage(notionPageId);
@@ -84,6 +108,8 @@ async function run() {
     }
     stage='local_students_read';
     const existing = (await db.query('SELECT notion_page_id,student_number,name_furigana FROM notion_students')).rows;
+    const identityConflicts = identityDiagnostics(students,existing);
+    if (identityConflicts.affectedStudents) console.warn('Central student identity diagnostics',identityConflicts);
     const entries = mapStudents(students,existing);
     stage='student_accounts_save';
     const summary = await NotionStudent.upsertMany(entries, { targetPlansOnly:true });
@@ -142,4 +168,4 @@ function synchronize() {
   if (!active) active=require('../utils/studentSyncQueue')(run).finally(()=>{active=null;});
   return active;
 }
-module.exports = {synchronize,mapStudents,dateDiagnostics,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};
+module.exports = {synchronize,mapStudents,dateDiagnostics,identityDiagnostics,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};
