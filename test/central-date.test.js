@@ -40,7 +40,7 @@ test('中央DBのDateStyleが異なっても開始日はISO形式で読み取る
   const pool=source.getPool(),original=pool.connect;
   try {
     await pg.exec(`CREATE TABLE students(student_id text,name text,status text,contract_plan text,homeroom_tutor text,
-      notion_page_id text,notion_url text,lesson_start_date date,x_account_id text,youtube_channel_id text);
+      notion_page_id text,notion_url text,lesson_start_date date,x_account_id text,youtube_channel_id text,text_type text);
       CREATE TABLE tutors(notion_name text,name text,tutor_name text,email text);
       CREATE TABLE lessons(calendar_event_id text,student_id text,tutor_name text,lesson_date timestamp,lesson_time text,title text);
       INSERT INTO students(student_id,name,lesson_start_date) VALUES('A','日付テスト',DATE '2026-10-08'),('B','未設定',NULL),('C','特殊値','infinity');`);

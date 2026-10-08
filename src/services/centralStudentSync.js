@@ -99,7 +99,7 @@ function mapStudents(rows, existing) {
       nameFurigana:matches[0]?.name_furigana || null, notionUrl:row.notion_url || null,
       status:row.status || null, contractPlan:row.contract_plan || null, lessonStartMonth,
       xUsername:row.x_account_id?.trim().replace(/^@/,'') || null, youtubeChannelId:row.youtube_channel_id?.trim() || null,
-      rawData:{source:'central',studentId:number,homeroomTutor:row.homeroom_tutor || null} };
+      rawData:{source:'central',studentId:number,homeroomTutor:row.homeroom_tutor || null,textType:row.text_type || null} };
   });
 }
 

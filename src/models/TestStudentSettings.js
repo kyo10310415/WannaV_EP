@@ -7,16 +7,17 @@ function validate(data) {
   if (!data || typeof data.name!=='string' || !data.name.trim() || data.name.length>100 ||
     typeof data.studentNumber!=='string' || data.studentNumber.length>100 ||
     !TARGET_CONTRACT_PLANS.includes(data.contractPlan) || !statuses.includes(data.status) ||
+    (data.textType!==undefined && !['新','旧'].includes(data.textType)) ||
     (data.lessonStartDate!=='' && !validDate(data.lessonStartDate)) ||
     !Array.isArray(data.lessons) || data.lessons.length>50 || data.lessons.some(row=>!row || !validDate(row.date) ||
       typeof row.time!=='string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(row.time) ||
       typeof row.tutorName!=='string' || row.tutorName.length>100)) return null;
   return {name:data.name.trim(),studentNumber:data.studentNumber.trim(),contractPlan:data.contractPlan,status:data.status,
-    lessonStartDate:data.lessonStartDate || null,lessons:data.lessons.map(row=>({date:row.date,time:row.time,tutorName:row.tutorName.trim()}))};
+    textType:data.textType || '旧',lessonStartDate:data.lessonStartDate || null,lessons:data.lessons.map(row=>({date:row.date,time:row.time,tutorName:row.tutorName.trim()}))};
 }
 async function find(userId=null, queryable=db) {
   return (await queryable.query(`SELECT u.id,u.name,sp.contract_plan,sp.status,sp.lesson_start_date::text,
-    settings.student_number,settings.lessons,settings.updated_at
+    settings.student_number,settings.lessons,settings.updated_at,settings.text_type
     FROM users u LEFT JOIN student_profiles sp ON sp.user_id=u.id
     LEFT JOIN test_student_settings settings ON settings.user_id=u.id
     WHERE u.username='test_seito' AND u.role='生徒' AND sp.notion_page_id IS NULL
@@ -35,9 +36,9 @@ async function save(data) {
       VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET contract_plan=EXCLUDED.contract_plan,
       status=EXCLUDED.status,lesson_start_date=EXCLUDED.lesson_start_date,updated_at=CURRENT_TIMESTAMP`,
       [user.id,data.contractPlan,data.status,data.lessonStartDate]);
-    await client.query(`INSERT INTO test_student_settings(user_id,student_number,lessons) VALUES($1,$2,$3::jsonb)
-      ON CONFLICT(user_id) DO UPDATE SET student_number=EXCLUDED.student_number,lessons=EXCLUDED.lessons,updated_at=CURRENT_TIMESTAMP`,
-      [user.id,data.studentNumber,JSON.stringify(data.lessons)]);
+    await client.query(`INSERT INTO test_student_settings(user_id,student_number,lessons,text_type) VALUES($1,$2,$3::jsonb,$4)
+      ON CONFLICT(user_id) DO UPDATE SET student_number=EXCLUDED.student_number,lessons=EXCLUDED.lessons,text_type=EXCLUDED.text_type,updated_at=CURRENT_TIMESTAMP`,
+      [user.id,data.studentNumber,JSON.stringify(data.lessons),data.textType]);
     await client.query('COMMIT');return true;
   } catch (error) {await client.query('ROLLBACK').catch(()=>{});throw error;} finally {client.release();}
 }

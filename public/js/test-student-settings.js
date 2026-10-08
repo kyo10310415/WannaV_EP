@@ -19,6 +19,7 @@
     try {
       const data=await request('GET');get('name').value=data.name;get('number').value=data.student_number || '';
       get('plan').value=data.contract_plan || 'スタンダードプラン';get('status').value=data.status || 'アクティブ';
+      get('text-type').value=data.text_type || '旧';
       get('start').value=data.lesson_start_date || '';get('lessons').replaceChildren();
       for(const lesson of data.lessons || []) addLesson(lesson);
       get('message').textContent='';get('dialog').showModal();
@@ -30,7 +31,7 @@
     try {
       const lessons=[...get('lessons').children].map(row=>Object.fromEntries([...row.querySelectorAll('input')].map(input=>[input.dataset.field,input.value])));
       const data=await request('PUT',{name:get('name').value,studentNumber:get('number').value,contractPlan:get('plan').value,
-        status:get('status').value,lessonStartDate:get('start').value,lessons});
+        status:get('status').value,textType:get('text-type').value,lessonStartDate:get('start').value,lessons});
       get('message').textContent=data.message;
       if (typeof loadStudentUsers==='function') await loadStudentUsers();
     } catch(error) {get('message').textContent=error.message;} finally {get('save').disabled=false;}
