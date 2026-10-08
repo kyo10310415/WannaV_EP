@@ -4,7 +4,8 @@ const db = require('../config/database');
 router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
 router.get('/status',auth,checkRole('管理者','セールス','クルー'),async(req,res)=>{
   try {
-    res.json({enabled:require('../config/centralDatabase').enabled(),state:(await db.query('SELECT * FROM central_sync_state WHERE id=1')).rows[0] || null});
+    res.json({enabled:require('../config/centralDatabase').enabled(),state:(await db.query('SELECT * FROM central_sync_state WHERE id=1')).rows[0] || null,
+      sync:require('../services/centralStudentSync').getStatus()});
   } catch (_) {res.status(503).json({error:'同期状況を取得できません'});}
 });
 router.get('/reservations',auth,checkRole('管理者','セールス','クルー'),async(req,res)=>{
