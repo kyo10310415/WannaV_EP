@@ -1,6 +1,16 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {identityDiagnostics,mapStudents}=require('../src/services/centralStudentSync');
+const {identityDiagnostics,mapStudents,partitionStudents}=require('../src/services/centralStudentSync');
+
+test('重複生徒だけ保留し、全候補を保護する。元データ重複は隠さない',()=>{
+  const rows=[{student_id:'DUP',name:'重複'},{student_id:'OK',name:'正常'}];
+  const existing=[{student_number:'dup',notion_page_id:'one'},{student_number:'DUP',notion_page_id:'two'}];
+  const result=partitionStudents(rows,existing);
+  assert.deepEqual(result.heldNumbers,['DUP']);assert.deepEqual(result.heldPages,['one','two']);
+  assert.deepEqual(result.entries.map(e=>e.studentNumber),['OK']);
+  assert.throws(()=>partitionStudents([...rows,rows[0]],existing),e=>e.code==='INVALID_STUDENT');
+  assert.throws(()=>partitionStudents([rows[0],{student_id:'OK',notion_page_id:'one',name:'正常'}],existing),e=>e.code==='AMBIGUOUS_STUDENT');
+});
 
 test('生徒照合診断は重複キーと別レコードへの一致を区別し識別子を出さない',()=>{
   const rows=[{student_id:'NUMBER-A',notion_page_id:'page-a',name:'private-person'},

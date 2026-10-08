@@ -60,9 +60,13 @@ INVALID_DATE時はRenderログの「Central student start date diagnostics」に
 
 ## 生徒照合の診断
 
-Renderログ「Central student identity diagnostics」は複数候補がある中央生徒数（affectedStudents）と種類別件数（types）のみを出力する。NOTION_ID_DUPLICATEは正規化したNotion IDが複数一致、STUDENT_NUMBER_DUPLICATEは学籍番号が複数一致、NOTION_NUMBER_CONFLICTは各キーが1件ずつ一致するが別レコードを指す状態。その他はMULTIPLE_MATCHES。1人が複数種類に該当する場合があるため種類別件数の合計は人数と一致しないことがある。名前・学籍番号・Notion ID・元データは出力しない。診断は候補を選択・統合・削除せず、従来どおりAMBIGUOUS_STUDENTで保存前に停止する。
+Renderログ「Central student identity diagnostics」は複数候補がある中央生徒数（affectedStudents）と種類別件数（types）のみを出力する。NOTION_ID_DUPLICATEは正規化したNotion IDが複数一致、STUDENT_NUMBER_DUPLICATEは学籍番号が複数一致、NOTION_NUMBER_CONFLICTは各キーが1件ずつ一致するが別レコードを指す状態。その他はMULTIPLE_MATCHES。1人が複数種類に該当する場合があるため種類別件数の合計は人数と一致しないことがある。名前・学籍番号・Notion ID・元データは出力しない。候補を選択・統合・削除せず、当該生徒を更新保留する。
 
 ## 新規生徒の即時アカウント作成
+
+複数の既存候補がある中央生徒のみ更新を保留し、他の生徒は同期する。保留候補の情報・アカウント・担当・中央紐付け・予約キャッシュを保持し、同期対象外にも変更しない。手動同期結果に保留人数を表示する。元データ自体の重複や他の検証エラーは引き続き全体を停止する。保留候補と更新候補が同じNotionレコードを指す場合も安全のため停止する。
+
+管理者・セールスは生徒管理ページの「学籍番号の重複を確認」を開くと、学籍番号・生徒名・紐付けアカウント数を確認できる。GET /api/central/duplicatesはローカルDBのみを読み、クルー・生徒には許可しない。個人情報は認証済み画面にだけ表示し、ログへ出さない。重複解消の自動削除・統合は行わない。
 
 中央連携有効時、管理者・セールスは生徒管理の「Notionから新規アカウント作成」を押せる。Notionへ登録しただけで自動実行されるWebhookではない。NOTION_TOKEN・NOTION_DATABASE_IDと対象DBの共有権限を維持する。従来の6プランを対象に、学籍番号をログインID、初期PW1111、初回変更必須で新規作成/既存アカウント連携する。
 

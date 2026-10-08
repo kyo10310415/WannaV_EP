@@ -202,6 +202,11 @@
                 氏名・ステータス・契約プラン・レッスン開始月は、Notionの同期情報を表示します。ログインIDのみこの画面から変更できます。
             </p>
             <p id="student-sync-result" role="status" aria-live="polite" style="margin:12px 0;white-space:pre-wrap"></p>
+            <details id="duplicate-students" hidden style="margin:12px 0;">
+                <summary>学籍番号の重複を確認</summary>
+                <p>重複している生徒は中央同期で更新を保留します。削除・統合は自動で行いません。</p>
+                <div id="duplicate-students-content" style="white-space:pre-wrap"></div>
+            </details>
 
             <!-- 契約プランタブ -->
             <div class="plan-tabs" id="plan-tabs" role="tablist" aria-label="契約プラン"></div>
@@ -533,6 +538,18 @@
                     document.getElementById('student-sync-result').textContent = '中央管理DBの同期を実行中です。';
                 }
             }
+            if (canEditLoginId && centralEnabled) await loadDuplicateStudents();
+        }
+        async function loadDuplicateStudents() {
+            const container = document.getElementById('duplicate-students');
+            const content = document.getElementById('duplicate-students-content');
+            const result = await fetchJSON('/api/central/duplicates');
+            container.hidden = false;
+            if (!result || result.error) { content.textContent = '学籍番号の重複を取得できません。'; return; }
+            const rows = result.duplicates || [];
+            content.textContent = rows.length
+                ? `重複する学籍番号：${result.duplicateNumbers} 件\n` + rows.map(row => `${row.student_number} ／ ${row.student_name || '名前未設定'} ／ 紐付けアカウント ${row.account_count} 件`).join('\n')
+                : '重複する学籍番号はありません。';
         }
         async function openReservations(index) {
             reservationStudent = visibleStudents[index];

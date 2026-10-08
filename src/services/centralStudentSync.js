@@ -65,6 +65,21 @@ function identityDiagnostics(rows, existing) {
   }
   return {affectedStudents,types};
 }
+function partitionStudents(rows, existing) {
+  mapStudents(rows,[]); // Validate the source before excluding any held rows.
+  const ready = [], heldNumbers = [], heldPages = new Set();
+  for (const row of rows) {
+    const {matches} = studentMatches(row,existing);
+    if (matches.length > 1) {
+      heldNumbers.push(String(row.student_id).trim());
+      for (const match of matches) heldPages.add(match.notion_page_id);
+    } else ready.push(row);
+  }
+  const entries = mapStudents(ready,existing);
+  if (entries.some(entry => [...heldPages].some(page => normalizedPage(page) === normalizedPage(entry.notionPageId))))
+    throw new CentralSyncError('AMBIGUOUS_STUDENT','student_mapping');
+  return {entries,heldNumbers,heldPages:[...heldPages]};
+}
 
 // Curated mapping is the only place to add future source fields. Never copy payment or credentials.
 function mapStudents(rows, existing) {
@@ -110,7 +125,9 @@ async function run() {
     const existing = (await db.query('SELECT notion_page_id,student_number,name_furigana FROM notion_students')).rows;
     const identityConflicts = identityDiagnostics(students,existing);
     if (identityConflicts.affectedStudents) console.warn('Central student identity diagnostics',identityConflicts);
-    const entries = mapStudents(students,existing);
+    const {entries,heldNumbers,heldPages} = partitionStudents(students,existing);
+    const heldKeys = heldNumbers.map(number=>number.toLowerCase());
+    const updatedReservations = reservations.filter(row=>!heldKeys.includes(String(row.student_id).trim().toLowerCase()));
     stage='student_accounts_save';
     const summary = await NotionStudent.upsertMany(entries, { targetPlansOnly:true });
     stage='local_cache_connect';
@@ -120,7 +137,7 @@ async function run() {
       stage='student_cache_save';
       const payload = entries.map(entry => ({student_id:entry.studentNumber,notion_page_id:entry.notionPageId,
         tutor_name:entry.rawData.homeroomTutor}));
-      await client.query('DELETE FROM central_students WHERE NOT (student_id=ANY($1::text[]))',[entries.map(e=>e.studentNumber)]);
+      await client.query('DELETE FROM central_students WHERE NOT (student_id=ANY($1::text[])) AND NOT (LOWER(student_id)=ANY($2::text[]))',[entries.map(e=>e.studentNumber),heldKeys]);
       await client.query(`INSERT INTO central_students (student_id,notion_page_id,tutor_name,synced_at)
         SELECT student_id,notion_page_id,tutor_name,CURRENT_TIMESTAMP FROM jsonb_to_recordset($1::jsonb)
         AS x(student_id text,notion_page_id text,tutor_name text)
@@ -137,15 +154,15 @@ async function run() {
         FROM jsonb_to_recordset($1::jsonb) AS x(notion_page_id text,tutor_id integer)
         WHERE sp.notion_page_id=x.notion_page_id`,[JSON.stringify(assignments)]);
       await client.query(`UPDATE notion_students SET status='同期対象外'
-        WHERE NOT (notion_page_id=ANY($1::text[])) AND COALESCE(raw_data->>'source','')<>'notion_pending'`,[entries.map(e=>e.notionPageId)]);
+        WHERE NOT (notion_page_id=ANY($1::text[])) AND COALESCE(raw_data->>'source','')<>'notion_pending'`,[entries.map(e=>e.notionPageId).concat(heldPages)]);
       // Reservation cache replacement is atomic. No operation touches source lessons or portal lesson_schedules.
       stage='reservation_cache_save';
-      await client.query('DELETE FROM central_reservations');
-      for (let start=0;start<reservations.length;start+=200) {
+      await client.query('DELETE FROM central_reservations WHERE NOT (LOWER(student_id)=ANY($1::text[]))',[heldKeys]);
+      for (let start=0;start<updatedReservations.length;start+=200) {
         await client.query(`INSERT INTO central_reservations(event_id,student_id,tutor_name,lesson_date,lesson_time,title)
           SELECT calendar_event_id,student_id,tutor_name,lesson_date,lesson_time,title FROM jsonb_to_recordset($1::jsonb)
           AS x(calendar_event_id text,student_id text,tutor_name text,lesson_date text,lesson_time text,title text)`,
-        [JSON.stringify(reservations.slice(start,start+200))]);
+        [JSON.stringify(updatedReservations.slice(start,start+200))]);
       }
       stage='sync_state_save';
       await client.query(`INSERT INTO central_sync_state(id,last_success,student_count,reservation_count)
@@ -154,8 +171,8 @@ async function run() {
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK').catch(()=>{});throw classify(error,stage); }
     finally {client.release();}
-    console.info('Central student sync completed', {students:summary.upserted,reservations:reservations.length});
-    return {synced:summary.upserted,...summary,reservations:reservations.length,timestamp:new Date()};
+    console.info('Central student sync completed', {students:summary.upserted,reservations:updatedReservations.length,heldStudents:heldNumbers.length});
+    return {synced:summary.upserted,...summary,reservations:updatedReservations.length,heldStudents:heldNumbers.length,timestamp:new Date()};
   } catch (error) {
     const safe=classify(error,stage);
     syncStatus.lastError={code:safe.code,stage:safe.stage,message:safe.message,at:new Date().toISOString()};
@@ -168,4 +185,4 @@ function synchronize() {
   if (!active) active=require('../utils/studentSyncQueue')(run).finally(()=>{active=null;});
   return active;
 }
-module.exports = {synchronize,mapStudents,dateDiagnostics,identityDiagnostics,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};
+module.exports = {synchronize,mapStudents,partitionStudents,dateDiagnostics,identityDiagnostics,getStatus:()=>({...syncStatus,lastError:syncStatus.lastError ? {...syncStatus.lastError} : null})};
