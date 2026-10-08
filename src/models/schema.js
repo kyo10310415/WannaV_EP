@@ -301,6 +301,11 @@ const createTables = async () => {
       WHERE login_id_overridden = FALSE
         AND login_id IS DISTINCT FROM NULLIF(TRIM(student_number), '')
     `);
+    await db.query(`CREATE TABLE IF NOT EXISTS test_student_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      student_number VARCHAR(100), lessons JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
     await db.query(`CREATE TABLE IF NOT EXISTS test_student_social_accounts (
       notion_page_id VARCHAR(255) PRIMARY KEY,
       user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,

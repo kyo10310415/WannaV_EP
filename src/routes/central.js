@@ -2,6 +2,21 @@ const router = require('express').Router();
 const {auth,checkRole} = require('../middleware/auth');
 const db = require('../config/database');
 router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
+router.get('/test-student',auth,checkRole('管理者'),async(req,res)=>{
+  try {
+    const data=await require('../models/TestStudentSettings').find();
+    if (!data) return res.status(404).json({error:'Notion未連携のtest_seitoが見つかりません'});
+    res.json(data);
+  } catch (_) {res.status(503).json({error:'テスト生徒設定を取得できません'});}
+});
+router.put('/test-student',auth,checkRole('管理者'),async(req,res)=>{
+  const model=require('../models/TestStudentSettings'),data=model.validate(req.body);
+  if (!data) return res.status(400).json({error:'生徒情報・日付・時刻を確認してください（予約は最大50件）'});
+  try {
+    if (!await model.save(data)) return res.status(404).json({error:'Notion未連携のtest_seitoが見つかりません'});
+    res.json({message:'テスト生徒情報とレッスン日を保存しました'});
+  } catch (_) {res.status(503).json({error:'テスト生徒設定を保存できません'});}
+});
 router.get('/my-lessons',auth,checkRole('生徒'),async(req,res)=>{
   try {res.json(await require('../models/StudentReservations').forStudent(req.user.id));}
   catch (_) {res.status(503).json({error:'レッスン予約を取得できません'});}
