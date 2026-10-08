@@ -38,7 +38,8 @@ router.post('/sync', auth, checkRole('管理者', 'セールス'), async (req, r
     });
   } catch (error) {
     if (require('../config/centralDatabase').enabled()) {
-      return res.status(503).json({error:'中央管理DBの同期に失敗しました。接続設定・データをご確認ください。'});
+      const safe=require('../utils/centralSyncError').classify(error,'manual_sync');
+      return res.status(503).json({error:safe.message,code:safe.code,stage:safe.stage});
     }
     console.error('Notion sync error:', error);
     if (error.message.includes('NOTION_TOKEN') || error.message.includes('DATABASE_ID')) {

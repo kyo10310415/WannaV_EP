@@ -1,9 +1,10 @@
 const { Pool } = require('pg');
+const {CentralSyncError,classify} = require('../utils/centralSyncError');
 let pool;
 const enabled = () => process.env.CENTRAL_STUDENT_SYNC_ENABLED === 'true';
 function getPool() {
-  if (!enabled() || !process.env.CENTRAL_DATABASE_URL) throw new Error('Central database is not configured');
-  if (process.env.CENTRAL_DATABASE_URL === process.env.DATABASE_URL) throw new Error('Central database must use a separate read-only connection');
+  if (!enabled() || !process.env.CENTRAL_DATABASE_URL) throw new CentralSyncError('CONFIG_MISSING','configuration');
+  if (process.env.CENTRAL_DATABASE_URL === process.env.DATABASE_URL) throw new CentralSyncError('CONFIG_SAME_DATABASE','configuration');
   if (!pool) {
     pool = new Pool({
     connectionString: process.env.CENTRAL_DATABASE_URL,
@@ -17,20 +18,26 @@ function getPool() {
   return pool;
 }
 async function snapshot() {
-  const client = await getPool().connect();
+  let client, stage='source_connect';
   try {
+    client = await getPool().connect();
+    stage='source_transaction';
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    stage='source_students';
     const students = (await client.query(`SELECT student_id,name,status,contract_plan,homeroom_tutor,
       notion_page_id,notion_url,lesson_start_date::text,x_account_id,youtube_channel_id FROM students ORDER BY student_id`)).rows;
+    stage='source_tutors';
     const tutors = (await client.query('SELECT notion_name,name,tutor_name,email FROM tutors')).rows;
+    stage='source_reservations';
     const reservations = (await client.query(`SELECT calendar_event_id,student_id,tutor_name,
       lesson_date::text,lesson_time,title FROM lessons
       WHERE lesson_date >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo') ORDER BY lesson_date`)).rows;
+    stage='source_commit';
     await client.query('COMMIT');
     return { students, tutors, reservations };
-  } catch (_) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw new Error('中央管理DBの読み取りに失敗しました');
-  } finally { client.release(); }
+  } catch (error) {
+    if(client) await client.query('ROLLBACK').catch(() => {});
+    throw classify(error,stage);
+  } finally { client?.release(); }
 }
 module.exports = { enabled, getPool, snapshot };

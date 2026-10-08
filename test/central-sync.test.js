@@ -54,6 +54,7 @@ test('中央同期はアカウントを保持し担当・予約を更新、失�
     await assert.rejects(service.synchronize());
     assert.equal((await db.query('SELECT COUNT(*)::integer AS count FROM central_reservations')).rows[0].count,1);
     const express=require('express'),jwt=require('jsonwebtoken'),app=express();app.use('/api/central',require('../src/routes/central'));
+    app.use('/api/notion',require('../src/routes/notion'));
     server=app.listen(0);await new Promise(resolve=>server.once('listening',resolve));const base='http://127.0.0.1:'+server.address().port;
     const url=base+'/api/central/reservations?studentId=S001';
     assert.equal((await fetch(url)).status,401);
@@ -61,6 +62,11 @@ test('中央同期はアカウントを保持し担当・予約を更新、失�
     assert.equal((await call('クルー')).status,403);assert.equal((await call('生徒')).status,403);
     const response=await call('管理者');assert.equal(response.status,200);assert.equal((await response.json()).reservations.length,1);
     const own=await fetch(url,{headers:{Authorization:'Bearer '+jwt.sign({id:tutor.id,role:'クルー'},process.env.JWT_SECRET)}});assert.equal(own.status,200);
+    const headers={Authorization:'Bearer '+jwt.sign({id:999,role:'管理者'},process.env.JWT_SECRET)};
+    const manual=await fetch(base+'/api/notion/sync',{method:'POST',headers});
+    assert.equal(manual.status,503);const failure=await manual.json();assert.equal(failure.code,'EMPTY_STUDENTS');assert.equal(failure.stage,'source_validation');
+    const status=await (await fetch(base+'/api/central/status',{headers})).json();
+    assert.equal(status.sync.running,false);assert.equal(status.sync.lastError.code,'EMPTY_STUDENTS');
   } finally {
     if(server)await new Promise(resolve=>server.close(resolve));
     db.query=original.query;db.pool.connect=original.connect;source.snapshot=original.snapshot;
