@@ -152,6 +152,17 @@
         </div>
 
         <!-- 生徒キャラクター選択 -->
+        <div id="student-character-panel" class="card" style="display:none">
+            <div id="student-character-content" class="character-panel-content"></div>
+        </div>
+
+        <!-- 今月のレッスン日 -->
+        <section id="student-lessons-panel" class="card" hidden aria-label="当月レッスン予約">
+            <h2>📅 今月のレッスン日</h2>
+            <div id="student-lessons-content" aria-live="polite"></div>
+        </section>
+
+        <!-- 成長ロードマップ -->
         <section id="growth-roadmap" class="card" hidden aria-labelledby="growth-title">
             <h2 id="growth-title">🌱 あなたの成長ロードマップ</h2>
             <p id="growth-position" style="font-size:20px;font-weight:700;margin:16px 0;"></p>
@@ -167,10 +178,6 @@
             .growth-comparison progress { width:100%;accent-color:#51c7ee;margin:12px 0; }
             #growth-goals-body td { overflow-wrap:anywhere; }
         </style>
-        <section id="student-lessons-panel" class="card" hidden aria-label="当月レッスン予約">
-            <h2>📅 今月のレッスン日</h2>
-            <div id="student-lessons-content" aria-live="polite"></div>
-        </section>
         <style>
             #student-lessons-content p { white-space:pre-wrap; margin:12px 0; }
             #student-lessons-content li { margin:8px 0; overflow-wrap:anywhere; }
@@ -178,9 +185,6 @@
             .lesson-booking-zero { color:#ff7373; font-weight:700; }
             .lesson-sync-note { color:var(--gray-text); font-size:12px; }
         </style>
-        <div id="student-character-panel" class="card" style="display:none">
-            <div id="student-character-content" class="character-panel-content"></div>
-        </div>
 
         <!-- 進捗統計 -->
         <div class="dashboard-grid">
