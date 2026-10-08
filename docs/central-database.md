@@ -50,7 +50,7 @@ CENTRAL_DATABASE_SSL=true
 
 本番の接続・実データ照合は環境変数設定後に必要。資格情報や個人データはエラーログへ出力しない。
 
-開始日は取得SQLのto_charでYYYY-MM-DDへ統一し、中央DBのDateStyle（SQL/DMY等）に依存しない。NULLは未設定のまま保持する。infinityや存在しない日付はINVALID_DATEとして拒否し、不明な値を推測変換したり元DBの日付を書き換えたりしない。
+開始日は読み取りトランザクション内のSET LOCAL DateStyleをISOに固定してtextとして取得する（DATE型・文字列型の両方に対応）。文字列は年先頭のYYYY-MM-DDまたはYYYY/MM/DDを受理し、月日1桁もゼロ埋めしてYYYY-MM-DDへ統一する。NULL・空欄は未設定として保持する。月日先頭など曖昧な形式、infinity、存在しない日付はINVALID_DATEとして拒否する。元DBの値・永続設定は変更しない。
 
 ## 新規生徒の即時アカウント作成
 

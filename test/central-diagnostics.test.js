@@ -5,12 +5,13 @@ const vm=require('vm');
 const {classify}=require('../src/utils/centralSyncError');
 
 test('中央同期診断は固定の分類だけ返し、秘密情報・SQL・個人情報を返さない',()=>{
-  for(const code of ['28P01','42501','42703','ENOTFOUND','ETIMEDOUT','UNABLE_TO_VERIFY_LEAF_SIGNATURE','malicious-secret']) {
+  for(const code of ['28P01','42501','42703','42883','42804','ENOTFOUND','ETIMEDOUT','UNABLE_TO_VERIFY_LEAF_SIGNATURE','malicious-secret']) {
     const raw=Object.assign(new Error('postgres://user:secret@private/db SELECT student_name private-person'),{code});
     const safe=classify(raw,'source_students');
     assert.equal(safe.stage,'source_students');
     assert.ok(!safe.message.includes('secret'));assert.ok(!safe.message.includes('private-person'));assert.ok(!safe.message.includes('SELECT'));
     assert.notEqual(safe.code,'malicious-secret');
+    if (['42883','42804'].includes(code)) assert.equal(safe.code,code);
   }
   assert.equal(classify(new Error('The server does not support SSL connections'),'source_connect').code,'TLS_MODE_MISMATCH');
 });

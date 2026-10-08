@@ -6,7 +6,10 @@ test('中央開始日は実在する日付のみ受理し、空欄・閏年と�
   const parse=date=>mapStudents([{student_id:'TEST',name:'日付テスト',lesson_start_date:date}],[])[0];
   assert.equal(parse('2024-02-29').lessonStartMonth,'2024-02-29');
   assert.equal(parse(null).lessonStartMonth,null);
-  for(const value of ['2026-02-29','2026-02-30','08/10/2026','infinity','-infinity','2026-13-01']) {
+  assert.equal(parse('  ').lessonStartMonth,null);
+  assert.equal(parse(' 2026/9/1 ').lessonStartMonth,'2026-09-01');
+  assert.equal(parse('2026-9-1').lessonStartMonth,'2026-09-01');
+  for(const value of ['2026-02-29','2026-02-30','2026/2/30','2026/10-08','08/10/2026','infinity','-infinity','2026-13-01']) {
     assert.throws(()=>parse(value),error=>error.code==='INVALID_DATE');
   }
 });
@@ -30,7 +33,15 @@ test('中央DBのDateStyleが異なっても開始日はISO形式で読み取る
       assert.equal(result.students[1].lesson_start_date,null);
       assert.equal(result.students[2].lesson_start_date,'infinity');
       assert.equal(mapStudents([result.students[0]],[])[0].lessonStartMonth,'2026-10-08');
+      assert.equal((await pg.query('SHOW DateStyle')).rows[0].DateStyle,style);
     }
+    await pg.exec(`ALTER TABLE students ALTER COLUMN lesson_start_date TYPE text USING lesson_start_date::text;
+      UPDATE students SET lesson_start_date=' 2026/10/8 ' WHERE student_id='A';
+      INSERT INTO students(student_id,name,lesson_start_date) VALUES('D','空欄','');`);
+    const result=await source.snapshot();
+    assert.equal(mapStudents([result.students[0]],[])[0].lessonStartMonth,'2026-10-08');
+    assert.equal(mapStudents([result.students[3]],[])[0].lessonStartMonth,null);
+    assert.throws(()=>mapStudents([result.students[2]],[]),error=>error.code==='INVALID_DATE');
   } finally {
     pool.connect=original;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);await pg.close();
   }

@@ -21,14 +21,18 @@ function mapStudents(rows, existing) {
     const pageKey = notionPageId.startsWith('central:') ? notionPageId : normalizedPage(notionPageId);
     if (pages.has(pageKey)) throw new CentralSyncError('DUPLICATE_PAGE','student_mapping');
     pages.add(pageKey);
-    if (row.lesson_start_date) {
-      const date = new Date(row.lesson_start_date);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.lesson_start_date) || !Number.isFinite(date.getTime())
-          || date.toISOString().slice(0,10) !== row.lesson_start_date) throw new CentralSyncError('INVALID_DATE','student_mapping');
+    let lessonStartMonth = String(row.lesson_start_date ?? '').trim() || null;
+    if (lessonStartMonth) {
+      const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(lessonStartMonth);
+      if (!match) throw new CentralSyncError('INVALID_DATE','student_mapping');
+      lessonStartMonth = `${match[1]}-${match[3].padStart(2,'0')}-${match[4].padStart(2,'0')}`;
+      const date = new Date(lessonStartMonth);
+      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== lessonStartMonth)
+        throw new CentralSyncError('INVALID_DATE','student_mapping');
     }
     return { notionPageId, studentName:row.name, studentNumber:number, loginId:number,
       nameFurigana:matches[0]?.name_furigana || null, notionUrl:row.notion_url || null,
-      status:row.status || null, contractPlan:row.contract_plan || null, lessonStartMonth:row.lesson_start_date || null,
+      status:row.status || null, contractPlan:row.contract_plan || null, lessonStartMonth,
       xUsername:row.x_account_id?.trim().replace(/^@/,'') || null, youtubeChannelId:row.youtube_channel_id?.trim() || null,
       rawData:{source:'central',studentId:number,homeroomTutor:row.homeroom_tutor || null} };
   });
