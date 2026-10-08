@@ -3,10 +3,22 @@ const assert=require('node:assert/strict');
 const {mapStudents,dateDiagnostics}=require('../src/services/centralStudentSync');
 
 test('日付診断は形式別件数のみ返し元の値・生徒情報を漏らさない',()=>{
-  const values=['2026-10-08',null,'2026-02-30','2026-10-08T00:00:00Z','2026/10/8 0:00','2026年10月8日','2026/10','08/10/2026','infinity','private-secret-name','another-secret'];
+  const values=['2026-10-08',null,'2026-02-30','2026-10-08T99:00:00Z','2026/10/8 0:00','2026年10月8日','2026/10','08/10/2026','infinity','private-secret-name','another-secret'];
   const result=dateDiagnostics(values.map(lesson_start_date=>({lesson_start_date,name:'private-person',student_id:'secret-id'})));
   assert.deepEqual(result,{INVALID_CALENDAR_DATE:1,DATE_WITH_TIME:1,SLASH_DATE_WITH_TIME:1,JAPANESE_DATE:1,YEAR_MONTH_ONLY:1,DAY_OR_MONTH_FIRST:1,INFINITY:1,OTHER:2});
   assert.doesNotMatch(JSON.stringify(result),/secret|private|2026/);
+});
+
+test('日時付き開始日は時差変換せず年月日を保持し、不正な日時は拒否する',()=>{
+  const parse=lesson_start_date=>mapStudents([{student_id:'TEST',name:'日時テスト',lesson_start_date}],[])[0].lessonStartMonth;
+  for (const value of ['2026-10-08T00:00:00.000Z','2026-10-08 00:00:00',
+    '2026-10-08T00:00:00+09:00','2026-10-08T23:59:59-0900','2026-10-08 00:00:00.123456+09','2026-10-08T00:00']) {
+    assert.equal(parse(value),'2026-10-08');
+  }
+  for (const value of ['2026-02-30T00:00:00Z','2026-10-08T24:00:00Z','2026-10-08T00:60:00Z',
+    '2026-10-08T00:00:60Z','2026-10-08T00:00:00+14:01','2026-10-08T00:00:00+09:99',
+    '2026-10-08T00:00:00garbage']) assert.throws(()=>parse(value),error=>error.code==='INVALID_DATE');
+  assert.deepEqual(dateDiagnostics(Array.from({length:1797},()=>({lesson_start_date:'2026-10-08T00:00:00.000Z'}))),{});
 });
 
 test('中央開始日は実在する日付のみ受理し、空欄・閏年と特殊値を区別する',()=>{
@@ -42,6 +54,9 @@ test('中央DBのDateStyleが異なっても開始日はISO形式で読み取る
       assert.equal(mapStudents([result.students[0]],[])[0].lessonStartMonth,'2026-10-08');
       assert.equal((await pg.query('SHOW DateStyle')).rows[0].DateStyle,style);
     }
+    await pg.exec(`ALTER TABLE students ALTER COLUMN lesson_start_date TYPE timestamp USING lesson_start_date::timestamp;`);
+    const timestampResult=await source.snapshot();
+    assert.equal(mapStudents([timestampResult.students[0]],[])[0].lessonStartMonth,'2026-10-08');
     await pg.exec(`ALTER TABLE students ALTER COLUMN lesson_start_date TYPE text USING lesson_start_date::text;
       UPDATE students SET lesson_start_date=' 2026/10/8 ' WHERE student_id='A';
       INSERT INTO students(student_id,name,lesson_start_date) VALUES('D','空欄','');`);

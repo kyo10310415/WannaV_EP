@@ -9,8 +9,13 @@ const normalizedPage = value => String(value || '').replace(/-/g, '').toLowerCas
 function normalizeStartDate(value) {
   const text = String(value ?? '').trim();
   if (!text) return null;
-  const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(text);
+  const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|([+-])(\d{2})(?::?(\d{2}))?)?)?$/.exec(text);
   if (!match) throw new CentralSyncError('INVALID_DATE','student_mapping');
+  if (match[5] !== undefined && (Number(match[5]) > 23 || Number(match[6]) > 59
+      || Number(match[7] || 0) > 59 || Number(match[9] || 0) > 14
+      || Number(match[10] || 0) > 59 || (Number(match[9]) === 14 && Number(match[10] || 0) !== 0)))
+    throw new CentralSyncError('INVALID_DATE','student_mapping');
+  // A lesson start date is a calendar date, not an instant: do not shift it through UTC.
   const result = `${match[1]}-${match[3].padStart(2,'0')}-${match[4].padStart(2,'0')}`;
   const date = new Date(result);
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== result)

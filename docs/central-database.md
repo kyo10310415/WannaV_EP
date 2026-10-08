@@ -54,6 +54,8 @@ CENTRAL_DATABASE_SSL=true
 
 ## 開始日の診断
 
+年先頭の日付に続く日時（Tまたは空白区切り、時分・秒・小数秒、Zまたは数値オフセット）も受理する。日時をUTCへ変換せず、記載された年月日を開始日として保持する。時間・オフセットの範囲と実在する日付を検証し、単なる先頭10文字切り取りで不正値を受理しない。
+
 INVALID_DATE時はRenderログの「Central student start date diagnostics」に拒否された形式別件数を表示する。DATE_WITH_TIME（日時付き）、SLASH_DATE_WITH_TIME（スラッシュ形式・日時付き）、JAPANESE_DATE（年月日表記）、YEAR_MONTH_ONLY（年月のみ）、DAY_OR_MONTH_FIRST（月日順が曖昧）、INVALID_CALENDAR_DATE（存在しない日付）、INFINITY、OTHERに分類する。日付値・名前・学籍番号は出力しない。診断だけでは日付を補完・変換せず、保存前に同期を中止して既存データを保持する。
 
 ## 新規生徒の即時アカウント作成
