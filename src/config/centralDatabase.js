@@ -28,7 +28,7 @@ async function snapshot() {
     const students = (await client.query(`SELECT student_id,name,status,contract_plan,homeroom_tutor,
       notion_page_id,notion_url,
       lesson_start_date::text AS lesson_start_date,
-      x_account_id,youtube_channel_id FROM students ORDER BY student_id`)).rows;
+      x_account_id,youtube_channel_id,text_type FROM students ORDER BY student_id`)).rows;
     stage='source_tutors';
     const tutors = (await client.query('SELECT notion_name,name,tutor_name,email FROM tutors')).rows;
     stage='source_reservations';

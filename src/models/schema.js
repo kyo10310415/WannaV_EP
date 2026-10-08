@@ -306,6 +306,7 @@ const createTables = async () => {
       student_number VARCHAR(100), lessons JSONB NOT NULL DEFAULT '[]'::jsonb,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
+    await db.query("ALTER TABLE test_student_settings ADD COLUMN IF NOT EXISTS text_type VARCHAR(10) NOT NULL DEFAULT '旧'");
     await db.query(`CREATE TABLE IF NOT EXISTS test_student_social_accounts (
       notion_page_id VARCHAR(255) PRIMARY KEY,
       user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,

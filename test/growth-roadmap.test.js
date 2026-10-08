@@ -36,7 +36,8 @@ test('対象プラン・本人・開始月を確認しSNSの最新成功値を�
   try {
     await require('../src/models/schema').createTables();
     await pg.exec(`INSERT INTO users(id,email,password,name,username,role) VALUES(1,'one@local','unused','生徒','test_seito','生徒');
-      INSERT INTO student_profiles(user_id,contract_plan,lesson_start_date) VALUES(1,'スタンダードプラン','2026-06-30');`);
+      INSERT INTO student_profiles(user_id,contract_plan,lesson_start_date) VALUES(1,'スタンダードプラン','2026-06-30');
+      INSERT INTO test_student_settings(user_id,text_type) VALUES(1,'新');`);
     const now=new Date('2026-10-08T00:00:00Z');let result=await model.forStudent(1,now);
     assert.equal(result.eligible,true);assert.equal(result.currentMonth,5);assert.equal(result.goals.length,18);assert.equal(result.current.x.count,120);assert.equal(result.current.youtube.count,null);
     await db.query("UPDATE student_profiles SET contract_plan='生徒プラン'");assert.equal((await model.forStudent(1,now)).eligible,true);
@@ -44,9 +45,17 @@ test('対象プラン・本人・開始月を確認しSNSの最新成功値を�
       await db.query('UPDATE student_profiles SET contract_plan=$1',[plan]);assert.equal((await model.forStudent(1,now)).eligible,false);
     }
     assert.equal(calls,2);
+    await db.query("UPDATE test_student_settings SET text_type='旧'");assert.equal((await model.forStudent(1,now)).eligible,false);
+    await db.query("UPDATE test_student_settings SET text_type='新'");
     await db.query("UPDATE student_profiles SET contract_plan='スタンダードプラン',lesson_start_date='2026-05-01'");assert.equal((await model.forStudent(1,now)).eligible,false);
     await db.query("UPDATE student_profiles SET lesson_start_date='2026-11-01'");assert.equal((await model.forStudent(1,now)).eligible,false);
     await db.query("UPDATE student_profiles SET lesson_start_date=NULL");assert.equal((await model.forStudent(1,now)).eligible,false);
+    await db.query(`INSERT INTO notion_students(notion_page_id,student_number,student_name,contract_plan,lesson_start_month,raw_data)
+      VALUES('central-page','S1','生徒','スタンダードプラン','2026-06-01','{"source":"central","textType":"新"}')`);
+    await db.query("UPDATE student_profiles SET notion_page_id='central-page'");assert.equal((await model.forStudent(1,now)).eligible,true);
+    for(const raw of [{source:'central',textType:'旧'},{source:'central'},{source:'notion_pending',textType:'新'}]) {
+      await db.query('UPDATE notion_students SET raw_data=$1::jsonb',[JSON.stringify(raw)]);assert.equal((await model.forStudent(1,now)).eligible,false);
+    }
     const express=require('express'),jwt=require('jsonwebtoken'),app=express();app.use('/api/central',require('../src/routes/central'));
     server=app.listen(0);await new Promise(resolve=>server.once('listening',resolve));const url='http://127.0.0.1:'+server.address().port+'/api/central/my-growth?userId=1';
     for(const role of ['管理者','セールス','クルー']) assert.equal((await fetch(url,{headers:{Authorization:'Bearer '+jwt.sign({id:1,role},process.env.JWT_SECRET)}})).status,403);

@@ -4,10 +4,11 @@ const source=require('../src/config/centralDatabase');
 const service=require('../src/services/centralStudentSync');
 
 test('中央生徒の変換は既存IDを保持し支払いを持ち込まず重複を拒否する',()=>{
-  const row={student_id:'S001',name:'山田',notion_page_id:'abcdef',lesson_start_date:'2026-10-01',x_account_id:'@test',payment_status_current_month:'paid'};
+  const row={student_id:'S001',name:'山田',notion_page_id:'abcdef',lesson_start_date:'2026-10-01',x_account_id:'@test',text_type:'新',payment_status_current_month:'paid'};
   const mapped=service.mapStudents([row],[{notion_page_id:'abc-def',student_number:'S001',name_furigana:'やまだ'}])[0];
   assert.equal(mapped.notionPageId,'abc-def');assert.equal(mapped.nameFurigana,'やまだ');assert.equal(mapped.xUsername,'test');
   assert.equal(mapped.loginId,'S001');assert.ok(!JSON.stringify(mapped).includes('paid'));
+  assert.equal(mapped.rawData.textType,'新');
   assert.throws(()=>service.mapStudents([row,row],[]));
   assert.throws(()=>service.mapStudents([row,{...row,student_id:'S002',notion_page_id:'abc-def'}],[]));
   assert.throws(()=>service.mapStudents([row],[{notion_page_id:'abc-def'},{notion_page_id:'other',student_number:'S001'}]));

@@ -19,10 +19,13 @@ function latestMetric(metric) {
 }
 async function forStudent(userId,now=new Date()) {
   const profile=(await db.query(`SELECT sp.notion_page_id,COALESCE(ns.contract_plan,sp.contract_plan) AS contract_plan,
+    CASE WHEN ns.raw_data->>'source'='central' THEN ns.raw_data->>'textType' ELSE settings.text_type END AS text_type,
     to_char(COALESCE(ns.lesson_start_month,sp.lesson_start_date),'YYYY-MM-DD') AS start_date
     FROM student_profiles sp JOIN users u ON u.id=sp.user_id
-    LEFT JOIN notion_students ns ON ns.notion_page_id=sp.notion_page_id WHERE sp.user_id=$1 AND u.role='生徒'`,[userId])).rows[0];
-  if (!['スタンダードプラン','生徒プラン'].includes(profile?.contract_plan)) return {eligible:false};
+    LEFT JOIN notion_students ns ON ns.notion_page_id=sp.notion_page_id
+    LEFT JOIN test_student_settings settings ON settings.user_id=u.id AND u.username='test_seito' AND sp.notion_page_id IS NULL
+    WHERE sp.user_id=$1 AND u.role='生徒'`,[userId])).rows[0];
+  if (profile?.text_type!=='新' || !['スタンダードプラン','生徒プラン'].includes(profile?.contract_plan)) return {eligible:false};
   const month=currentMonth(profile.start_date,now);
   if (month===null || month<1 || month>5) return {eligible:false};
   const {SocialMetrics}=require('./SocialMetrics');

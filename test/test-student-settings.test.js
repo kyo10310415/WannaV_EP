@@ -5,7 +5,8 @@ const settings={name:'テスト生徒',studentNumber:'TEST-001',contractPlan:'�
   lessons:[{date:'2026-10-09',time:'20:00',tutorName:'先生'}]};
 test('テスト生徒設定はプラン・状態・実在日付・時刻・件数を検証する',()=>{
   assert.ok(model.validate(settings));
-  for(const change of [{contractPlan:'unknown'},{status:'unknown'},{name:''},{lessonStartDate:'2026-02-30'},
+  assert.equal(model.validate({...settings,textType:'新'}).textType,'新');
+  for(const change of [{textType:'unknown'},{contractPlan:'unknown'},{status:'unknown'},{name:''},{lessonStartDate:'2026-02-30'},
     {lessons:[{date:'2026-10-09',time:'24:00',tutorName:''}]},{lessons:Array(51).fill(settings.lessons[0])}])
     assert.equal(model.validate({...settings,...change}),null);
 });
