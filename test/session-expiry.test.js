@@ -9,6 +9,11 @@ test('JWT期限切れ・不正・設定異常とDB障害を区別し、通常の
   const saved = process.env.JWT_SECRET;
   process.env.JWT_SECRET = 'isolated-test-secret';
   const User = require('../src/models/User');
+  const db = require('../src/config/database'), originalQuery = db.query;
+  db.query = async sql => {
+    assert.match(sql,/SELECT staff_password_reset_nonce FROM users/);
+    return {rows:[{staff_password_reset_nonce:null}]};
+  };
   const originalFind = User.findById, originalError = console.error;
   const errors = [];
   console.error = (...args) => errors.push(args);
@@ -40,6 +45,7 @@ test('JWT期限切れ・不正・設定異常とDB障害を区別し、通常の
     assert.equal(errors.length,2);
   } finally {
     User.findById=originalFind;console.error=originalError;
+    db.query=originalQuery;
     if(saved === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET=saved;
     await new Promise(resolve => server.close(resolve));
   }

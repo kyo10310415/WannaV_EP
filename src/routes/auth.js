@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { verifyToken, respondTokenError } = require('../utils/jwtAuth');
+const { verifyToken, verifyStaffReset, respondTokenError } = require('../utils/jwtAuth');
 const User = require('../models/User');
 
 // ログイン（ログインIDとして username または email を受け付ける）
@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
     const needsPasswordChange = !user.password_changed_at;
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: needsPasswordChange },
+      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: needsPasswordChange,staffResetNonce:user.staff_password_reset_nonce || undefined },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -54,16 +54,22 @@ router.post('/change-password', async (req, res) => {
     if (!token) return res.status(401).json({ error: '認証が必要です' });
 
     const decoded = verifyToken(token);
+    await verifyStaffReset(decoded);
     const { newPassword } = req.body;
 
     if (!newPassword || newPassword.length < 4) {
       return res.status(400).json({ error: 'パスワードは4文字以上で入力してください' });
     }
+    if (decoded.passwordChangeRequired && decoded.role!=='生徒' && newPassword==='1111')
+      return res.status(400).json({error:'初期パスワードとは異なるパスワードを設定してください'});
 
-    await User.resetPassword(decoded.id, newPassword);
+    const changed=await User.resetPassword(decoded.id, newPassword, decoded.staffResetNonce || null);
+    if (!changed) throw new jwt.JsonWebTokenError('Session invalidated by password reset');
     const user = await User.findById(decoded.id);
+    if (!user || (user.staff_password_reset_nonce || null)!==(decoded.staffResetNonce || null) || !user.password_changed_at)
+      throw new jwt.JsonWebTokenError('Session invalidated by password reset');
     const refreshedToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: false },
+      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: false,staffResetNonce:user.staff_password_reset_nonce || undefined },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -82,6 +88,7 @@ router.get('/me', async (req, res) => {
     if (!token) return res.status(401).json({ error: '認証が必要です' });
 
     const decoded = verifyToken(token);
+    await verifyStaffReset(decoded);
     const user = await User.findById(decoded.id);
     if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
 
@@ -92,8 +99,9 @@ router.get('/me', async (req, res) => {
       maxAge: Math.max(0, decoded.exp * 1000 - Date.now()) });
 
     // needsPasswordChange をレスポンスに含める
+    const {staff_password_reset_nonce,...publicUser}=user;
     res.json({
-      ...user,
+      ...publicUser,
       needsPasswordChange: !user.password_changed_at
     });
   } catch (error) {

@@ -1,4 +1,4 @@
-const { verifyToken, respondTokenError } = require('../utils/jwtAuth');
+const { verifyToken, verifyStaffReset, respondTokenError } = require('../utils/jwtAuth');
 
 const auth = async (req, res, next) => {
   try {
@@ -9,6 +9,7 @@ const auth = async (req, res, next) => {
     }
 
     const decoded = verifyToken(token);
+    await verifyStaffReset(decoded);
     if (decoded.passwordChangeRequired) {
       return res.status(403).json({
         error: '初回ログイン時のパスワード変更が必要です',
