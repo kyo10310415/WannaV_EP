@@ -4,6 +4,12 @@ function verifyToken(token) {
   if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is not configured');
   return jwt.verify(token, process.env.JWT_SECRET);
 }
+async function verifyStaffReset(decoded) {
+  if (!['管理者','クルー','セールス'].includes(decoded.role)) return;
+  const row=(await require('../config/database').query('SELECT staff_password_reset_nonce FROM users WHERE id=$1',[decoded.id])).rows[0];
+  if (row?.staff_password_reset_nonce && row.staff_password_reset_nonce!==decoded.staffResetNonce)
+    throw new jwt.JsonWebTokenError('Session invalidated by password reset');
+}
 
 function respondTokenError(error, res) {
   const expired = error instanceof jwt.TokenExpiredError;
@@ -16,4 +22,4 @@ function respondTokenError(error, res) {
   return true;
 }
 
-module.exports = { verifyToken, respondTokenError };
+module.exports = { verifyToken, verifyStaffReset, respondTokenError };

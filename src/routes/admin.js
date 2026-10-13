@@ -277,6 +277,13 @@ router.delete('/users/:id', auth, checkRole('管理者'), async (req, res) => {
 });
 
 // パスワードリセット（管理者が直接変更）
+router.post('/users/:id/reset-password', auth, checkRole('管理者'), async(req,res)=>{
+  if (!/^[1-9]\d*$/.test(req.params.id) || Number(req.params.id)>2147483647) return res.status(400).json({error:'アカウントを正しく指定してください'});
+  try {
+    if (!await User.resetStaffToInitialPassword(req.params.id)) return res.status(404).json({error:'管理者用アカウントが見つかりません'});
+    res.json({success:true,message:'パスワードを1111にリセットしました。次回ログイン時にパスワード変更が必要です。'});
+  } catch (_) {res.status(500).json({error:'パスワードリセットに失敗しました'});}
+});
 router.patch('/users/:id/password', auth, checkRole('管理者'), async (req, res) => {
   try {
     const { newPassword } = req.body;

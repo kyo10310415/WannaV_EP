@@ -26,6 +26,7 @@ const createTables = async () => {
     `);
 
     // 生徒がアプリを開いた回数（日付は日本時間）
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_password_reset_nonce UUID');
     await db.query(`
       CREATE TABLE IF NOT EXISTS app_usage_daily (
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

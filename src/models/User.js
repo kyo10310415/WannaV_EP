@@ -36,7 +36,7 @@ class User {
 
   static async findById(id) {
     const result = await db.query(
-      `SELECT id, email, name, username, role, created_at, last_login, password_changed_at
+      `SELECT id, email, name, username, role, created_at, last_login, password_changed_at, staff_password_reset_nonce
        FROM users WHERE id = $1`,
       [id]
     );
@@ -132,14 +132,22 @@ class User {
     return await bcrypt.compare(password, hashedPassword);
   }
 
-  static async resetPassword(id, newPassword) {
+  static async resetPassword(id, newPassword, expectedNonce = undefined) {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await db.query(
+    const result=await db.query(
       `UPDATE users
        SET password = $1, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
-      [hashedPassword, id]
+       WHERE id = $2${expectedNonce === undefined ? '' : ' AND staff_password_reset_nonce IS NOT DISTINCT FROM $3::uuid'} RETURNING id`,
+      expectedNonce === undefined ? [hashedPassword, id] : [hashedPassword, id, expectedNonce]
     );
+    return result.rows[0] || null;
+  }
+  static async resetStaffToInitialPassword(id) {
+    const hashedPassword=await bcrypt.hash('1111',10);
+    const nonce=require('node:crypto').randomUUID();
+    const result=await db.query(`UPDATE users SET password=$1,password_changed_at=NULL,
+      staff_password_reset_nonce=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3 AND role<>'生徒' RETURNING id`,[hashedPassword,nonce,id]);
+    return result.rows[0] || null;
   }
 
   // 初回パスワード変更済みかどうか
