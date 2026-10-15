@@ -143,10 +143,17 @@ class User {
     return result.rows[0] || null;
   }
   static async resetStaffToInitialPassword(id) {
+    return this.resetToInitialPassword(id,'staff');
+  }
+  static async resetStudentToInitialPassword(id) {
+    return this.resetToInitialPassword(id,'students');
+  }
+  static async resetToInitialPassword(id,scope) {
+    if (!['staff','students'].includes(scope)) throw new Error('Invalid reset scope');
     const hashedPassword=await bcrypt.hash('1111',10);
     const nonce=require('node:crypto').randomUUID();
     const result=await db.query(`UPDATE users SET password=$1,password_changed_at=NULL,
-      staff_password_reset_nonce=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3 AND role<>'生徒' RETURNING id`,[hashedPassword,nonce,id]);
+      staff_password_reset_nonce=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$3 AND ${scope==='students' ? "role='生徒'" : "role<>'生徒'"} RETURNING id`,[hashedPassword,nonce,id]);
     return result.rows[0] || null;
   }
 

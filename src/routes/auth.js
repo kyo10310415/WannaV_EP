@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { verifyToken, verifyStaffReset, respondTokenError } = require('../utils/jwtAuth');
+const { verifyToken, verifyPasswordReset, respondTokenError } = require('../utils/jwtAuth');
 const User = require('../models/User');
 
 // ログイン（ログインIDとして username または email を受け付ける）
@@ -54,13 +54,13 @@ router.post('/change-password', async (req, res) => {
     if (!token) return res.status(401).json({ error: '認証が必要です' });
 
     const decoded = verifyToken(token);
-    await verifyStaffReset(decoded);
+    await verifyPasswordReset(decoded);
     const { newPassword } = req.body;
 
     if (!newPassword || newPassword.length < 4) {
       return res.status(400).json({ error: 'パスワードは4文字以上で入力してください' });
     }
-    if (decoded.passwordChangeRequired && decoded.role!=='生徒' && newPassword==='1111')
+    if (decoded.passwordChangeRequired && newPassword==='1111')
       return res.status(400).json({error:'初期パスワードとは異なるパスワードを設定してください'});
 
     const changed=await User.resetPassword(decoded.id, newPassword, decoded.staffResetNonce || null);
@@ -88,7 +88,7 @@ router.get('/me', async (req, res) => {
     if (!token) return res.status(401).json({ error: '認証が必要です' });
 
     const decoded = verifyToken(token);
-    await verifyStaffReset(decoded);
+    await verifyPasswordReset(decoded);
     const user = await User.findById(decoded.id);
     if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
 

@@ -181,6 +181,20 @@
 
         // ===== パスワードリセットモーダル（管理者のみ） =====
         let resetTargetId = null;
+        async function resetStudentToInitialPassword(userId, button) {
+            if (currentUser?.role !== '管理者' || !confirm('この生徒アカウントのパスワードを1111にリセットします。既存のログインは無効になり、次回ログイン時にパスワード変更が必要です。実行しますか？')) return;
+            button.disabled = true;
+            try {
+                const response = await fetch(`${API_URL}/admin/students/${userId}/reset-password`, {
+                    method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'パスワードリセットに失敗しました');
+                showAlert(data.message, 'success');
+                await loadStudentUsers();
+            } catch (error) { showAlert(error.message, 'error'); }
+            finally { button.disabled = false; }
+        }
 
         function openPasswordReset(userId, userName) {
             resetTargetId = userId;
@@ -329,6 +343,9 @@
                 const actionCell = isAdmin
                     ? `<button onclick="openPasswordReset(${user.id}, '${user.name}')" class="btn btn-warning" style="padding:8px 16px; font-size:13px; min-width:auto; min-height:auto;">
                           🔑 PW変更
+                       </button>
+                       <button onclick="resetStudentToInitialPassword(${user.id}, this)" class="btn btn-warning" style="padding:8px 16px;font-size:13px;min-width:auto;min-height:auto;">
+                          🔄 PWリセット
                        </button>
                        <button onclick="deleteUser(${user.id}, '${user.name}')" class="btn btn-danger" style="padding:8px 16px; font-size:13px; min-width:auto; min-height:auto;">
                           🗑️ 削除
