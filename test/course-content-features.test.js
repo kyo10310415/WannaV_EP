@@ -93,7 +93,7 @@ test('動画アップロード上限は既定2GBで設定可能かつ画面で�
   const adminPage = fs.readFileSync(path.join(root, 'views', 'admin-contents.html'), 'utf8');
   const envExample = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
   assert.match(adminRoutes, /MAX_VIDEO_UPLOAD_MB \|\| '2048'/);
-  assert.match(adminRoutes, /limits: \{ fileSize: MAX_VIDEO_UPLOAD_BYTES \}/);
+  assert.match(adminRoutes, /limits: \{ fileSize: MAX_VIDEO_UPLOAD_BYTES, fieldArrayIndexLimit: 100 \}/);
   assert.match(adminRoutes, /LIMIT_FILE_SIZE/);
   assert.match(adminPage, /validateVideoFileSize/);
   assert.match(adminPage, /new XMLHttpRequest\(\)/);

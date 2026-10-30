@@ -209,3 +209,9 @@ ISC
 **開発者**: AI Developer
 **作成日**: 2026-03-18
 **ステータス**: ✅ 完成 - Renderデプロイ準備完了
+
+## 2026-10 security verification
+
+HTTP JSON/form parsers reject compressed request bodies (`Content-Encoding`) with 415; uncompressed request contracts remain unchanged. This prevents the vulnerable decompression path in CVE-2026-111181 without changing body limits. Clients must send uncompressed JSON/form bodies. Multer is locked to the patched 2.5.x line; existing disk upload authentication and content filters remain in place. Run `node --test test/compressed-body-security.test.js` without starting the production server or migrations. Real DB/provider and deployed upload checks remain separate.
+
+Multipart array field indices above 100 are rejected. Existing scalar form fields and file-size limits are retained.
