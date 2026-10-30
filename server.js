@@ -26,8 +26,8 @@ global.CHARACTERS_DIR = CHARACTERS_DIR;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ inflate: false }));
+app.use(express.urlencoded({ extended: true, inflate: false }));
 
 // Static files
 app.use(express.static('public'));
