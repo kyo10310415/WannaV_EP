@@ -27,4 +27,5 @@ module.exports=async function createToolTables(){
   await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS image_calls INTEGER');
   await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS image_model TEXT');
   await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS usage_known BOOLEAN');
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS cost_details JSONB');
 };

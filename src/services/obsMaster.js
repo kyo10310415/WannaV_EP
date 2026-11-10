@@ -17,13 +17,8 @@ function config() {
   const model=process.env.OPENAI_OBS_MODEL;
   return {enabled:!!(process.env.OPENAI_API_KEY && model),model};
 }
-function estimate(usage, searches) {
-  const names=['TOOLS_INPUT_USD_PER_MILLION','TOOLS_CACHED_USD_PER_MILLION','TOOLS_OUTPUT_USD_PER_MILLION','TOOLS_SEARCH_USD_PER_CALL'];
-  const rates=names.map(name=>process.env[name]===undefined ? NaN : Number(process.env[name]));
-  if(rates.some(x=>!Number.isFinite(x)||x<0)) return null;
-  const cached=Math.min(usage.input_tokens,usage.input_tokens_details?.cached_tokens||0);
-  return ((usage.input_tokens-cached)*rates[0]+cached*rates[1]+usage.output_tokens*rates[2])/1e6+searches*rates[3];
-}
+const pricing=require('./toolPricing');
+function estimate(usage,searches){return pricing.estimate({usage,searches}).usd;}
 function safeUrl(value) {try {const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password ? u.href : null;}catch(_){return null;}}
 async function answer(messages, transport=fetch, instructions=PROMPT, options={}) {
   const {enabled,model}=config();if(!enabled) throw new Error('NOT_CONFIGURED');
@@ -41,7 +36,8 @@ async function answer(messages, transport=fetch, instructions=PROMPT, options={}
   const text=parts.map(x=>x.text).join('\n');
   const citations=parts.flatMap(x=>x.annotations||[]).filter(x=>x.type==='url_citation').map(x=>({title:String(x.title||'出典').slice(0,300),url:safeUrl(x.url)})).filter(x=>x.url);
   const searches=(result.output||[]).filter(x=>x.type==='web_search_call').length;
-  return {text,citations,usage,searches,model:result.model||model,usd:estimate(usage,searches),complete:result.status==='completed'&&!!text};
+  const cost=pricing.estimate({usage,searches});
+  return {text,citations,usage,searches,model:result.model||model,usd:cost.usd,costDetails:cost.details,complete:result.status==='completed'&&!!text};
 }
 function attachment(file) {
   const b=file.buffer,name=String(file.originalname||'添付').replace(/[\x00-\x1f]/g,'').slice(0,150);
