@@ -2,10 +2,13 @@ const express=require('express'),multer=require('multer'),{randomUUID}=require('
 const db=require('../config/database'),{auth,checkRole}=require('../middleware/auth'),obs=require('../services/obsMaster');
 const active=new Set();
 function createToolRouter(toolKey='obs-master') {
-if(!['obs-master','vtube-studio'].includes(toolKey)) throw new Error('Unknown tool');
-const service=toolKey==='obs-master'?obs:require('../services/vtubeStudioMaster');
-const title=toolKey==='obs-master'?'OBSマスター':'VTube Studioマスター';
-const defaultTitle=toolKey==='obs-master'?'OBSの相談':'VTube Studioの相談';
+const definitions={
+  'obs-master':{service:obs,title:'OBSマスター',defaultTitle:'OBSの相談'},
+  'vtube-studio':{service:require('../services/vtubeStudioMaster'),title:'VTube Studioマスター',defaultTitle:'VTube Studioの相談'},
+  'streaming-gear':{service:require('../services/streamingGearConcierge'),title:'配信機材コンシェルジュ',defaultTitle:'配信機材の相談'}
+};
+if(!Object.hasOwn(definitions,toolKey)) throw new Error('Unknown tool');
+const {service,title,defaultTitle}=definitions[toolKey];
 const router=express.Router();router.use(auth,checkRole('生徒','管理者','クルー','セールス'));
 router.use((_q,r,n)=>{r.set('Cache-Control','no-store');n();});
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:2,fields:3,fieldSize:24000,parts:5,fieldArrayIndexLimit:10}}).array('attachments',2);
