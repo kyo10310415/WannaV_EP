@@ -6,14 +6,16 @@ const definitions={
   'obs-master':{service:obs,title:'OBSマスター',defaultTitle:'OBSの相談'},
   'vtube-studio':{service:require('../services/vtubeStudioMaster'),title:'VTube Studioマスター',defaultTitle:'VTube Studioの相談'},
   'streaming-gear':{service:require('../services/streamingGearConcierge'),title:'配信機材コンシェルジュ',defaultTitle:'配信機材の相談'},
-  'kanau':{service:require('../services/kanau'),title:'かなうさん',defaultTitle:'イラスト制作の相談'}
+  'kanau':{service:require('../services/kanau'),title:'かなうさん',defaultTitle:'イラスト制作の相談'},
+  'youtube-analyst':{service:require('../services/youtubeAnalyst'),title:'YouTubeアナリティクス分析官',defaultTitle:'YouTube分析の相談'}
 };
 if(!Object.hasOwn(definitions,toolKey)) throw new Error('Unknown tool');
 const {service,title,defaultTitle}=definitions[toolKey];
 const isKanau=toolKey==='kanau';
+const isYoutube=toolKey==='youtube-analyst',fileLimit=isYoutube?3:2;
 const router=express.Router();router.use(auth,checkRole('生徒','管理者','クルー','セールス'));
 router.use((_q,r,n)=>{r.set('Cache-Control','no-store');n();});
-const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:2,fields:3,fieldSize:24000,parts:5,fieldArrayIndexLimit:10}}).array('attachments',2);
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:fileLimit,fields:isYoutube?4:3,fieldSize:24000,parts:isYoutube?7:5,fieldArrayIndexLimit:10}}).array('attachments',fileLimit);
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 const route=fn=>async(q,r)=>{try{await fn(q,r);}catch(e){if(!r.headersSent)r.status(e.status||500).json({error:e.status?e.message:'処理に失敗しました。時間をおいて再度お試しください。'});}};
@@ -22,7 +24,7 @@ const own=async(q)=>{
   const row=(await db.query('SELECT * FROM tool_threads WHERE id=$1 AND user_id=$2 AND tool_key=$3 AND deleted_at IS NULL',[q.params.id,q.user.id,toolKey])).rows[0];
   if(!row) throw fail(404,'会話が見つかりません');return row;
 };
-router.get('/config',(_q,r)=>r.json({enabled:service.config().enabled}));
+router.get('/config',(_q,r)=>r.json({enabled:service.config().enabled,...(isYoutube?{imageEnabled:service.config().imageEnabled}:{})}));
 router.get('/threads',route(async(q,r)=>r.json((await db.query('SELECT id,title,created_at FROM tool_threads WHERE user_id=$1 AND tool_key=$2 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100',[q.user.id,toolKey])).rows)));
 router.post('/threads',route(async(q,r)=>{
   const id=randomUUID();
@@ -58,12 +60,16 @@ router.post('/threads/:id/messages',(q,r,n)=>{
   // Authenticate before parsing multipart and refuse parallel uploads per user in this process.
   if(active.has(q.user.id)||active.size>=4) return r.status(429).json({error:'回答処理が混み合っています。少しお待ちください。'});
   active.add(q.user.id);r.once('finish',()=>active.delete(q.user.id));r.once('close',()=>active.delete(q.user.id));
-  upload(q,r,e=>e?r.status(400).json({error:'添付は2件、各2MBまで。文章は6000文字までです。'}):n());
+  upload(q,r,e=>e?r.status(400).json({error:`添付は${fileLimit}件、各2MBまで。文章は6000文字までです。`}):n());
 },route(async(q,r)=>{
   const t=await own(q),text=typeof q.body.text==='string'?q.body.text.trim():'',requestId=q.body.requestId;
   if(!uuid(requestId)||text.length>6000||(!text&&!q.files?.length)) throw fail(400,'相談内容または添付を入力してください（6000文字以内）');
-  let files;try{files=(q.files||[]).map(obs.attachment);}catch(e){throw fail(400,e.message);}
-  const metadata=isKanau?{size:q.body.size||'1536x864'}:{};
+  let files;try{files=(q.files||[]).map(isYoutube?service.attachment:obs.attachment);}catch(e){throw fail(400,e.message);}
+  const metadata=isKanau?{size:q.body.size||'1536x864'}:isYoutube?{mode:q.body.mode||'analyze',size:'1536x864'}:{};
+  if(isYoutube&&!['analyze','thumbnail'].includes(metadata.mode))throw fail(400,'分析または改善サムネイル作成を選んでください');
+  const imageMode=isKanau||(isYoutube&&metadata.mode==='thumbnail');
+  if(isYoutube&&imageMode&&!service.config().imageEnabled)throw fail(503,'画像生成は準備中です。分析モードは利用できます');
+  if(isYoutube&&imageMode&&!text)throw fail(400,'動画タイトル・内容・希望する改善を入力してください');
   if(isKanau&&(!text||!service.SIZES.includes(metadata.size)||files.some(a=>a.kind!=='image')))throw fail(400,'希望デザインと画像を指定してください。サイズは横長・正方形・縦長から選べます');
   const client=await db.pool.connect();let reserved=false;
   try{
@@ -75,19 +81,19 @@ router.post('/threads/:id/messages',(q,r,n)=>{
     const quota=(await client.query(`SELECT count(*) FILTER(WHERE user_id=$1 AND created_at>=date_trunc('day',CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo') AT TIME ZONE 'Asia/Tokyo') AS daily,
       count(*) AS monthly FROM tool_usage WHERE created_at>=date_trunc('month',CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo') AT TIME ZONE 'Asia/Tokyo'`,[q.user.id])).rows[0];
     if(Number(quota.daily)>=30||Number(quota.monthly)>=10000) throw fail(429,'利用回数の上限に達しました（本人1日30回・全体月10000回）');
-    if(isKanau){
-      const count=Number((await client.query("SELECT count(*) AS n FROM tool_usage WHERE user_id=$1 AND tool_key='kanau' AND created_at>=date_trunc('day',CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo') AT TIME ZONE 'Asia/Tokyo'",[q.user.id])).rows[0].n);
+    if(imageMode){
+      const count=Number((await client.query("SELECT count(*) AS n FROM tool_usage WHERE user_id=$1 AND (tool_key='kanau' OR (tool_key='youtube-analyst' AND image_model IS NOT NULL)) AND created_at>=date_trunc('day',CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo') AT TIME ZONE 'Asia/Tokyo'",[q.user.id])).rows[0].n);
       if(count>=3)throw fail(429,'画像生成は本人1日3回までです（失敗・結果不明の送信も含みます）');
       const refs=Number((await client.query("SELECT count(*) AS n FROM tool_attachments a JOIN tool_messages m ON m.id=a.message_id WHERE m.thread_id=$1 AND m.role='user' AND a.kind='image'",[t.id])).rows[0].n);
-      if(!refs&&!files.length)throw fail(400,'最初に立ち絵の画像を添付してください');
+      if(!refs&&!files.some(a=>a.kind==='image'))throw fail(400,isYoutube?'元のサムネイルまたは立ち絵の画像を添付してください':'最初に立ち絵の画像を添付してください');
     }
     const sizes=(await client.query(`SELECT (SELECT count(*) FROM tool_messages WHERE thread_id=$1) AS n,
       COALESCE((SELECT sum(octet_length(a.data)) FROM tool_attachments a JOIN tool_messages m ON m.id=a.message_id WHERE m.thread_id=$1),0) AS bytes`,[t.id])).rows[0];
-    if(Number(sizes.n)>=40||Number(sizes.bytes)+files.reduce((n,a)=>n+a.data.length,0)+(isKanau?service.MAX_OUTPUT_BYTES:0)>10*1024*1024) throw fail(400,'この会話の上限に達しました。新しい相談を作成してください');
-    await client.query('INSERT INTO tool_usage(id,user_id,thread_id,model,tool_key,image_model) VALUES($1,$2,$3,$4,$5,$6)',[requestId,q.user.id,t.id,service.config().model,toolKey,isKanau?service.config().imageModel:null]);
+    if(Number(sizes.n)>=40||Number(sizes.bytes)+files.reduce((n,a)=>n+a.data.length,0)+(imageMode?service.MAX_OUTPUT_BYTES:0)>10*1024*1024) throw fail(400,'この会話の上限に達しました。新しい相談を作成してください');
+    await client.query('INSERT INTO tool_usage(id,user_id,thread_id,model,tool_key,image_model) VALUES($1,$2,$3,$4,$5,$6)',[requestId,q.user.id,t.id,service.config().model,toolKey,imageMode?service.config().imageModel:null]);
     const mid=randomUUID();await client.query("INSERT INTO tool_messages(id,thread_id,role,text,metadata) VALUES($1,$2,'user',$3,$4)",[mid,t.id,text,JSON.stringify(metadata)]);
     for(const a of files) await client.query('INSERT INTO tool_attachments(id,message_id,name,kind,mime,data) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),mid,a.name,a.kind,a.mime,a.data]);
-    await client.query("UPDATE tool_threads SET busy_until=CURRENT_TIMESTAMP+$4::interval,title=CASE WHEN title=$3 THEN $2 ELSE title END WHERE id=$1",[t.id,text.slice(0,60)||'添付についての相談',defaultTitle,isKanau?'6 minutes':'3 minutes']);
+    await client.query("UPDATE tool_threads SET busy_until=CURRENT_TIMESTAMP+$4::interval,title=CASE WHEN title=$3 THEN $2 ELSE title END WHERE id=$1",[t.id,text.slice(0,60)||'添付についての相談',defaultTitle,imageMode?'6 minutes':'3 minutes']);
     await client.query('COMMIT');reserved=true;
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   try{
@@ -97,9 +103,9 @@ router.post('/threads/:id/messages',(q,r,n)=>{
     // Persist billing metadata even if a response is incomplete. No automatic billable retry.
     await db.query(`UPDATE tool_usage SET status=$2,model=$3,input_tokens=$4,cached_tokens=$5,output_tokens=$6,searches=$7,estimated_usd=$8 WHERE id=$1`,
       [requestId,result.complete?'completed':'incomplete',result.model,result.usageKnown===false?null:result.usage.input_tokens,result.usageKnown===false?null:result.usage.input_tokens_details?.cached_tokens||0,result.usageKnown===false?null:result.usage.output_tokens,result.searches,result.usd]);
-    if(isKanau)await db.query('UPDATE tool_usage SET image_calls=$2,image_model=$3,usage_known=$4 WHERE id=$1',[requestId,result.imageCalls,result.imageModel,result.usageKnown]);
-    if(!result.complete) throw fail(502,isKanau?'画像生成が完了しませんでした。課金が発生している可能性があります。自動再送はしていません。':'回答が完了しませんでした。最新情報は確認済みとは限りません。履歴を確認してから相談を続けてください');
-    if(isKanau){const save=await db.pool.connect();try{
+    if(imageMode)await db.query('UPDATE tool_usage SET image_calls=$2,image_model=$3,usage_known=$4 WHERE id=$1',[requestId,result.imageCalls,result.imageModel,result.usageKnown]);
+    if(!result.complete) throw fail(502,imageMode?'画像生成が完了しませんでした。課金が発生している可能性があります。自動再送はしていません。':'回答が完了しませんでした。最新情報は確認済みとは限りません。履歴を確認してから相談を続けてください');
+    if(imageMode){const save=await db.pool.connect();try{
       await save.query('BEGIN');const mid=randomUUID();
       await save.query("INSERT INTO tool_messages(id,thread_id,role,text,citations) VALUES($1,$2,'assistant',$3,$4)",[mid,t.id,result.text,'[]']);
       for(const image of result.images)await save.query('INSERT INTO tool_attachments(id,message_id,name,kind,mime,data) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),mid,image.name,image.kind,image.mime,image.data]);
