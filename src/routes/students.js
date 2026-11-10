@@ -9,6 +9,7 @@ const LessonSchedule = require('../models/LessonSchedule');
 const User = require('../models/User');
 const NotionStudent = require('../models/NotionStudent');
 const db = require('../config/database');
+const ToolUsage = require('../models/ToolUsage');
 
 function validateLoginId(value) {
   const loginId = typeof value === 'string' ? value.trim() : '';
@@ -103,7 +104,8 @@ router.get('/', auth, checkRole('管理者', 'クルー', 'セールス'), async
       }),
       StudentProfile.getDirectorySummary({ tutorId: filterTutorId }),
     ]);
-    res.json({ ...page, summary });
+    const usage = await ToolUsage.forStudents(page.students.map(student => student.user_id));
+    res.json({ ...page, students: page.students.map(student => ({ ...student, tool_usage: usage.get(Number(student.user_id)) || null })), summary });
   } catch (error) {
     console.error('Get students error:', error);
     res.status(500).json({ error: '生徒一覧の取得に失敗しました' });

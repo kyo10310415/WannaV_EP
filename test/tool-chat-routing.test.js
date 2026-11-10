@@ -8,8 +8,13 @@ test('共通チャットJSはページのツール識別に従って履歴・新
       fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>url==='/api/auth/me'?{role:'生徒'}:url===base+'/config'?{enabled:true}:url===base+'/threads'?(options.method==='POST'?{id:'example'}:[]):url===base+'/threads/example'?{thread:{title:'相談'},messages:[]}:{success:true}};}};
     vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/js/tools.js'),'utf8'),context);
     await new Promise(resolve=>setImmediate(resolve));assert.ok(calls.some(x=>x.url===base+'/config'));assert.ok(calls.some(x=>x.url===base+'/threads'));
-    await get('new-thread').onclick();get('tool-text').value='接続できません';await get('chat-form').onsubmit({preventDefault(){}});
+    assert.equal(get('send').disabled,false);
+    get('tool-text').value='接続できません';await get('chat-form').onsubmit({preventDefault(){}});
     assert.ok(calls.some(x=>x.url===base+'/threads/example/messages'&&x.options.method==='POST'));
+    assert.equal(calls.filter(x=>x.url===base+'/threads'&&x.options.method==='POST').length,1);
+    get('tool-text').value='同じ相談の続き';await get('chat-form').onsubmit({preventDefault(){}});
+    assert.equal(calls.filter(x=>x.url===base+'/threads'&&x.options.method==='POST').length,1);
+    await get('new-thread').onclick();assert.equal(calls.filter(x=>x.url===base+'/threads'&&x.options.method==='POST').length,2);
     if(key==='youtube-analyst')assert.equal(calls.find(x=>x.url===base+'/threads/example/messages').options.body.get('mode'),'analyze');
     const wrong=key==='obs-master'?'/api/tools/vtube-studio/threads':'/api/tools/threads';assert.equal(calls.some(x=>x.url===wrong),false);
   }

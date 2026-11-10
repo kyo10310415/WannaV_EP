@@ -25,7 +25,7 @@ const own=async(q)=>{
   const row=(await db.query('SELECT * FROM tool_threads WHERE id=$1 AND user_id=$2 AND tool_key=$3 AND deleted_at IS NULL',[q.params.id,q.user.id,toolKey])).rows[0];
   if(!row) throw fail(404,'会話が見つかりません');return row;
 };
-router.get('/config',(_q,r)=>r.json({enabled:service.config().enabled,...(isYoutube?{imageEnabled:service.config().imageEnabled}:{})}));
+router.get('/config',(_q,r)=>r.json({enabled:service.config().enabled,...(isYoutube?{imageEnabled:service.config().imageEnabled}:{}),...(isGame?{initialMessage:service.initialMessage}:{})}));
 router.get('/threads',route(async(q,r)=>r.json((await db.query('SELECT id,title,created_at FROM tool_threads WHERE user_id=$1 AND tool_key=$2 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100',[q.user.id,toolKey])).rows)));
 router.post('/threads',route(async(q,r)=>{
   const id=randomUUID();
