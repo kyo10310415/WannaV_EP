@@ -51,6 +51,7 @@ app.use('/api/portal', require('./src/routes/portal'));
 app.use('/api/usage', require('./src/routes/usage'));
 app.use('/api/tools', require('./src/routes/tools'));
 app.get('/tools', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'tools.html')));
+app.get('/tools/obs-master', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'obs-master.html')));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
