@@ -49,9 +49,11 @@ app.use('/api/students', require('./src/routes/students'));
 app.use('/api/characters', require('./src/routes/characters'));
 app.use('/api/portal', require('./src/routes/portal'));
 app.use('/api/usage', require('./src/routes/usage'));
+app.use('/api/tools/vtube-studio', require('./src/routes/tools').createToolRouter('vtube-studio'));
 app.use('/api/tools', require('./src/routes/tools'));
 app.get('/tools', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'tools.html')));
 app.get('/tools/obs-master', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'obs-master.html')));
+app.get('/tools/vtube-studio', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'vtube-studio-master.html')));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
