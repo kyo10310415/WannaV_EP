@@ -123,6 +123,11 @@
         </div>
         <div id="social-metrics-popup-content"></div>
     </dialog>
+    <dialog id="tool-usage-dialog" aria-labelledby="tool-usage-title" style="width:min(700px,94vw);max-height:85vh;overflow:auto;margin:auto;background:var(--card-bg);color:var(--light-text);border:1px solid var(--accent-cyan);border-radius:14px;padding:24px;">
+        <div class="social-dialog-header"><h2 id="tool-usage-title">ツール利用回数</h2><button type="button" class="btn btn-secondary" onclick="document.getElementById('tool-usage-dialog').close()">閉じる</button></div>
+        <p>回答が完了した送信を1回と集計します（入力案内を含む）。失敗・処理中・新しい相談の作成は含みません。当月は日本時間です。会話を削除しても利用回数は残ります。</p>
+        <div id="tool-usage-content"></div>
+    </dialog>
     <!-- ログインID編集モーダル -->
     <div id="login-id-modal" class="modal-overlay">
         <div class="modal-box" style="max-width:480px">
@@ -247,6 +252,7 @@
                             <th>進捗</th>
                             <th>満足度</th>
                             <th>フラグ</th>
+                            <th>ツール利用</th>
                             <th id="social-metrics-column" hidden>SNS</th>
                         </tr>
                     </thead>
@@ -332,7 +338,7 @@
             if (currentPlanFilter) params.set('contractPlan', currentPlanFilter);
 
             const tbody = document.getElementById('students-tbody');
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px"><div class="loading" style="margin:auto"></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px"><div class="loading" style="margin:auto"></div></td></tr>';
             const data = await fetchJSON(`/api/students?${params.toString()}`);
             if (loadId !== latestLoadId) return;
             if (!data) return;
@@ -500,9 +506,27 @@
                     </td>
                     <td>${satisfaction}</td>
                     <td>${flags.join(' ') || '-'}</td>
+                    <td>${s.user_id ? `<button type="button" class="action-btn btn-edit" onclick="openToolUsage(${index})">🧰 ツール別回数</button><div style="font-size:11px;margin-top:5px">当月 ${Array.isArray(s.tool_usage) ? s.tool_usage.reduce((n,u)=>n+Number(u.current_month),0) : '—'}回 / 累計 ${Array.isArray(s.tool_usage) ? s.tool_usage.reduce((n,u)=>n+Number(u.total),0) : '—'}回</div>` : 'アカウント未作成'}</td>
                     ${canViewSocialMetrics ? `<td><button type="button" class="action-btn btn-edit" onclick="openSocialMetrics(${index})">📈 SNS推移</button></td>` : ''}
                 </tr>`;
             }).join('');
+        }
+
+        function openToolUsage(index) {
+            const student = visibleStudents[index];
+            if (!student || !student.user_id) return;
+            document.getElementById('tool-usage-title').textContent = `${student.student_number || ''} ${student.student_name || ''} — ツール利用回数`;
+            const container = document.getElementById('tool-usage-content');
+            container.replaceChildren();
+            if (!Array.isArray(student.tool_usage)) container.textContent = '利用回数を取得できませんでした。ページを再読み込みしてください。';
+            else {
+                const table = document.createElement('table');table.className = 'table';
+                const head = document.createElement('thead'),header = document.createElement('tr');
+                for (const label of ['ツール','当月','累計']) {const cell=document.createElement('th');cell.textContent=label;header.append(cell);}head.append(header);table.append(head);
+                const body = document.createElement('tbody');
+                for (const usage of student.tool_usage) {const row=document.createElement('tr');for(const value of [usage.name,`${usage.current_month}回`,`${usage.total}回`]) {const cell=document.createElement('td');cell.textContent=value;row.append(cell);}body.append(row);}table.append(body);container.append(table);
+            }
+            document.getElementById('tool-usage-dialog').showModal();
         }
 
         async function openSocialMetrics(index) {
