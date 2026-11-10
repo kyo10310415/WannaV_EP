@@ -19,4 +19,8 @@ module.exports=async function createToolTables(){
   await db.query('CREATE INDEX IF NOT EXISTS idx_tool_threads_user ON tool_threads(user_id,created_at)');
   await db.query('CREATE INDEX IF NOT EXISTS idx_tool_messages_thread ON tool_messages(thread_id,created_at)');
   await db.query('CREATE INDEX IF NOT EXISTS idx_tool_usage_user_date ON tool_usage(user_id,created_at)');
+  // Existing records were created exclusively by OBS Master; preserve their meaning.
+  await db.query("ALTER TABLE tool_threads ADD COLUMN IF NOT EXISTS tool_key TEXT NOT NULL DEFAULT 'obs-master'");
+  await db.query("ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS tool_key TEXT NOT NULL DEFAULT 'obs-master'");
+  await db.query('CREATE INDEX IF NOT EXISTS idx_tool_threads_user_tool ON tool_threads(user_id,tool_key,created_at)');
 };
