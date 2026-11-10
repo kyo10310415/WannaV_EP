@@ -668,6 +668,7 @@ const createTables = async () => {
       );
     END $$`);
 
+    await require('./toolSchema')();
     console.log('✅ All database tables created successfully');
   } catch (error) {
     console.error('❌ Error creating tables:', error);
