@@ -1,5 +1,20 @@
 # OBSマスター（ツール第1弾）
 
+## 第6弾：YouTubeゲーム配信 戦略分析官
+
+- 一覧カードから`/tools/youtube-game-strategy`。APIは`/api/tools/youtube-game-strategy/...`。専用指示・初回文・入力受付は`src/services/youtubeGameStrategy.js`。
+- 新しい相談では指定のモード選択文だけを自動表示（APIなし）。①/1/１でチャンネル詳細分析、②/2/２で新規ゲーム探索。選択後はチャンネルURL＋内容が異なるCSV3件が揃うまで指定のデータ提出案内と受領数だけを返す。分割送信・モード切り替えで同じ入力を再利用できる。同じCSVのコピーは1件として扱い、別チャンネル・4件以上の異なるCSVは新しい相談へ案内する。
+- チャンネルURLはHTTPSのyoutube.comの`/@...`、`/channel/...`、`/c/...`、`/user/...`のみ。動画URL・外部URL・認証付きURLは対象外。クエリーを除いて公開チャンネルURLを正規化する。
+- CSVは1回3件・各2MBまで（会話全体10MB上限は維持）。UTF-8、読み取れない場合はShift-JISとしてデコードしUTF-8で保存。NUL・空データ・CSV以外は拒否。列・行・期間・結合キー・3種類の役割の本点検はPythonで行い、ファイル名では決めない。意味・期間・分類が曖昧なら質問を返して停止する。文字コードの補正は意味の補完ではない。Excel・ZIPは非対応。
+- 本分析は①Code InterpreterでCSV点検・実計算（最大8呼び出し）→②公開チャンネル・市場のWeb調査（最大3呼び出し）→③計算結果と公開情報からモード別の戦略提案。検索用の別リクエストには正規化した公開チャンネルURLとモードだけを渡し、CSV・集計結果・会話本文は渡さない。計算コンテナは外向きネットワークを無効化する。
+- 指標を集客／視聴の質／ファン化に分け、加重CTR・登録者/1000再生・n・欠損・重複・合計行・少数標本・時系列を点検する指示を固定。相関を因果にせず、公開情報と内部Analyticsを区別。候補は根拠が取れたものを最低10・可能なら20件目標とするが、取得不足時に水増ししない。公開YouTube全履歴や市場全体の網羅は保証しない。
+- OpenAI Docsの[Code Interpreter](https://developers.openai.com/api/docs/guides/tools-code-interpreter)、[Files](https://developers.openai.com/api/reference/resources/files/methods/create)、[Containers](https://developers.openai.com/api/reference/resources/containers/methods/create)に基づく。既存`OPENAI_API_KEY`と`OPENAI_OBS_MODEL`を共用し、モデルとプロジェクトにはResponses API・Code Interpreter・web_search・JSON Schemaの利用対応が必要。新規環境変数・依存・DB列は追加しない。
+- 利用ごとに1GBの一時コンテナとCSVファイル3件を作成。処理後は成功／失敗とも削除を試みる。アップロードファイルは1時間の有効期限、コンテナは20分無操作で失効する設定を付ける。障害時は削除完了を保証せず、安全な固定文でログを残す。`store:false`はOpenAIの全保持をゼロにする保証ではない。
+- 入力案内は`local-intake`（token/検索/費用0）。本分析の最大3つのモデル応答のtoken・検索回数を合算し、Code Interpreterの追加料金を含む金額は未算出。利用上限は他ツールと同じ全ツール合算の本人1日30送信・全体月10000送信。失敗・入力案内も送信回数に含み、最初の自動モード選択文だけは送信回数に含めない。
+- 計算・検索・回答が未完了なら成功扱いせず、自動再試行しない。入力受付済みの内容は履歴に残す。途中で使用量が不明になったら不明扱いとし、ゼロ円とは表示しない。全処理は最大7分＋片付け、画面は最大8分を案内。同期HTTPのため、ホスティング側のタイムアウト・ブラウザー切断・再起動後の再開は未対応。切断時は送信を繰り返す前に履歴を確認する。
+- サムネイルは組み込みImageGenで生成。「ゲームをしている女性VTuber、コントローラー・ヘッドセット、ゲーム配信スタジオ、YouTubeゲーム配信 戦略分析官の文字、16:9」。保存先`public/images/tools/youtube-game-strategy.webp`。
+- テストはAPIモックと隔離PGlite。実APIのPython実行結果・市場情報の取得精度・モデル利用権限・実ブラウザー操作・Render長時間応答は未確認。ゲーミフィケーションと脆弱性対応はこの差分に含めない。
+
 ## 第4弾：かなうさん（完成画像まで生成）
 
 - カード：`/tools`、制作画面：`/tools/kanau`、API：`/api/tools/kanau/...`。既存3ツールの履歴・添付とは分離。

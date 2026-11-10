@@ -7,15 +7,16 @@ const definitions={
   'vtube-studio':{service:require('../services/vtubeStudioMaster'),title:'VTube Studioマスター',defaultTitle:'VTube Studioの相談'},
   'streaming-gear':{service:require('../services/streamingGearConcierge'),title:'配信機材コンシェルジュ',defaultTitle:'配信機材の相談'},
   'kanau':{service:require('../services/kanau'),title:'かなうさん',defaultTitle:'イラスト制作の相談'},
-  'youtube-analyst':{service:require('../services/youtubeAnalyst'),title:'YouTubeアナリティクス分析官',defaultTitle:'YouTube分析の相談'}
+  'youtube-analyst':{service:require('../services/youtubeAnalyst'),title:'YouTubeアナリティクス分析官',defaultTitle:'YouTube分析の相談'},
+  'youtube-game-strategy':{service:require('../services/youtubeGameStrategy'),title:'YouTubeゲーム配信 戦略分析官',defaultTitle:'ゲーム配信戦略の相談'}
 };
 if(!Object.hasOwn(definitions,toolKey)) throw new Error('Unknown tool');
 const {service,title,defaultTitle}=definitions[toolKey];
 const isKanau=toolKey==='kanau';
-const isYoutube=toolKey==='youtube-analyst',fileLimit=isYoutube?3:2;
+const isYoutube=toolKey==='youtube-analyst',isGame=toolKey==='youtube-game-strategy',fileLimit=isYoutube||isGame?3:2;
 const router=express.Router();router.use(auth,checkRole('生徒','管理者','クルー','セールス'));
 router.use((_q,r,n)=>{r.set('Cache-Control','no-store');n();});
-const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:fileLimit,fields:isYoutube?4:3,fieldSize:24000,parts:isYoutube?7:5,fieldArrayIndexLimit:10}}).array('attachments',fileLimit);
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:fileLimit,fields:isYoutube?4:3,fieldSize:24000,parts:isYoutube||isGame?7:5,fieldArrayIndexLimit:10}}).array('attachments',fileLimit);
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 const route=fn=>async(q,r)=>{try{await fn(q,r);}catch(e){if(!r.headersSent)r.status(e.status||500).json({error:e.status?e.message:'処理に失敗しました。時間をおいて再度お試しください。'});}};
@@ -30,7 +31,8 @@ router.post('/threads',route(async(q,r)=>{
   const id=randomUUID();
   const count=Number((await db.query('SELECT count(*) AS n FROM tool_threads WHERE user_id=$1 AND deleted_at IS NULL',[q.user.id])).rows[0].n);
   if(count>=100) throw fail(429,'会話は100件までです。不要な会話を削除してください');
-  await db.query('INSERT INTO tool_threads(id,user_id,title,tool_key) VALUES($1,$2,$3,$4)',[id,q.user.id,defaultTitle,toolKey]);r.status(201).json({id});
+  if(isGame)await db.query("WITH t AS (INSERT INTO tool_threads(id,user_id,title,tool_key) VALUES($1,$2,$3,$4) RETURNING id) INSERT INTO tool_messages(id,thread_id,role,text) SELECT $5,id,'assistant',$6 FROM t",[id,q.user.id,defaultTitle,toolKey,randomUUID(),service.initialMessage]);
+  else await db.query('INSERT INTO tool_threads(id,user_id,title,tool_key) VALUES($1,$2,$3,$4)',[id,q.user.id,defaultTitle,toolKey]);r.status(201).json({id});
 }));
 router.get('/threads/:id',route(async(q,r)=>{
   const thread=await own(q);
@@ -64,7 +66,7 @@ router.post('/threads/:id/messages',(q,r,n)=>{
 },route(async(q,r)=>{
   const t=await own(q),text=typeof q.body.text==='string'?q.body.text.trim():'',requestId=q.body.requestId;
   if(!uuid(requestId)||text.length>6000||(!text&&!q.files?.length)) throw fail(400,'相談内容または添付を入力してください（6000文字以内）');
-  let files;try{files=(q.files||[]).map(isYoutube?service.attachment:obs.attachment);}catch(e){throw fail(400,e.message);}
+  let files;try{files=(q.files||[]).map(isYoutube||isGame?service.attachment:obs.attachment);}catch(e){throw fail(400,e.message);}
   const metadata=isKanau?{size:q.body.size||'1536x864'}:isYoutube?{mode:q.body.mode||'analyze',size:'1536x864'}:{};
   if(isYoutube&&!['analyze','thumbnail'].includes(metadata.mode))throw fail(400,'分析または改善サムネイル作成を選んでください');
   const imageMode=isKanau||(isYoutube&&metadata.mode==='thumbnail');
@@ -93,7 +95,7 @@ router.post('/threads/:id/messages',(q,r,n)=>{
     await client.query('INSERT INTO tool_usage(id,user_id,thread_id,model,tool_key,image_model) VALUES($1,$2,$3,$4,$5,$6)',[requestId,q.user.id,t.id,service.config().model,toolKey,imageMode?service.config().imageModel:null]);
     const mid=randomUUID();await client.query("INSERT INTO tool_messages(id,thread_id,role,text,metadata) VALUES($1,$2,'user',$3,$4)",[mid,t.id,text,JSON.stringify(metadata)]);
     for(const a of files) await client.query('INSERT INTO tool_attachments(id,message_id,name,kind,mime,data) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),mid,a.name,a.kind,a.mime,a.data]);
-    await client.query("UPDATE tool_threads SET busy_until=CURRENT_TIMESTAMP+$4::interval,title=CASE WHEN title=$3 THEN $2 ELSE title END WHERE id=$1",[t.id,text.slice(0,60)||'添付についての相談',defaultTitle,imageMode?'6 minutes':'3 minutes']);
+    await client.query("UPDATE tool_threads SET busy_until=CURRENT_TIMESTAMP+$4::interval,title=CASE WHEN title=$3 THEN $2 ELSE title END WHERE id=$1",[t.id,text.slice(0,60)||'添付についての相談',defaultTitle,isGame?'10 minutes':imageMode?'6 minutes':'3 minutes']);
     await client.query('COMMIT');reserved=true;
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   try{
@@ -104,7 +106,7 @@ router.post('/threads/:id/messages',(q,r,n)=>{
     await db.query(`UPDATE tool_usage SET status=$2,model=$3,input_tokens=$4,cached_tokens=$5,output_tokens=$6,searches=$7,estimated_usd=$8 WHERE id=$1`,
       [requestId,result.complete?'completed':'incomplete',result.model,result.usageKnown===false?null:result.usage.input_tokens,result.usageKnown===false?null:result.usage.input_tokens_details?.cached_tokens||0,result.usageKnown===false?null:result.usage.output_tokens,result.searches,result.usd]);
     if(imageMode)await db.query('UPDATE tool_usage SET image_calls=$2,image_model=$3,usage_known=$4 WHERE id=$1',[requestId,result.imageCalls,result.imageModel,result.usageKnown]);
-    if(!result.complete) throw fail(502,imageMode?'画像生成が完了しませんでした。課金が発生している可能性があります。自動再送はしていません。':'回答が完了しませんでした。最新情報は確認済みとは限りません。履歴を確認してから相談を続けてください');
+    if(!result.complete) throw fail(502,isGame?'CSV計算または公開情報の調査・分析が完了しませんでした。課金が発生している可能性があります。自動再送せず停止しました。履歴を確認してください。':imageMode?'画像生成が完了しませんでした。課金が発生している可能性があります。自動再送はしていません。':'回答が完了しませんでした。最新情報は確認済みとは限りません。履歴を確認してから相談を続けてください');
     if(imageMode){const save=await db.pool.connect();try{
       await save.query('BEGIN');const mid=randomUUID();
       await save.query("INSERT INTO tool_messages(id,thread_id,role,text,citations) VALUES($1,$2,'assistant',$3,$4)",[mid,t.id,result.text,'[]']);
@@ -123,7 +125,7 @@ router.get('/usage',checkRole('管理者'),route(async(q,r)=>{
     sum(input_tokens) AS input_tokens,sum(cached_tokens) AS cached_tokens,sum(output_tokens) AS output_tokens,sum(searches) AS searches,sum(image_calls) AS image_calls,image_model,
     sum(estimated_usd) AS estimated_usd,count(*) FILTER(WHERE estimated_usd IS NULL) AS unpriced
     FROM tool_usage WHERE created_at>=CURRENT_TIMESTAMP-INTERVAL '62 days' GROUP BY day,tool_key,model,status,image_model ORDER BY day DESC`;
-  r.json({rows:(await db.query(sql)).rows,notice:'このアプリ経由の直近62日分。USD概算は設定単価による推計で、請求額ではありません。画像生成を含む金額は未算出です。画像生成回数はAPIが返した呼び出し数で、保存成功枚数とは異なります。unknown/pendingは課金・使用量が不明です。税・為替・他アプリの利用は含みません。'});
+  r.json({rows:(await db.query(sql)).rows,notice:'このアプリ経由の直近62日分。USD概算は設定単価による推計で、請求額ではありません。画像生成・Code Interpreterを含む金額は未算出です。回数は利用者の送信回数で、ゲーム配信戦略の計算・調査・提案のtoken使用量は合算です。local-intakeはAPI呼び出しなし。画像生成回数はAPIが返した呼び出し数で、保存成功枚数とは異なります。unknown/pendingは課金・使用量が不明です。税・為替・他アプリの利用は含みません。'});
 }));
 return router;
 }
