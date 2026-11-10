@@ -106,6 +106,7 @@ router.post('/threads/:id/messages',(q,r,n)=>{
     await db.query(`UPDATE tool_usage SET status=$2,model=$3,input_tokens=$4,cached_tokens=$5,output_tokens=$6,searches=$7,estimated_usd=$8 WHERE id=$1`,
       [requestId,result.complete?'completed':'incomplete',result.model,result.usageKnown===false?null:result.usage.input_tokens,result.usageKnown===false?null:result.usage.input_tokens_details?.cached_tokens||0,result.usageKnown===false?null:result.usage.output_tokens,result.searches,result.usd]);
     if(imageMode)await db.query('UPDATE tool_usage SET image_calls=$2,image_model=$3,usage_known=$4 WHERE id=$1',[requestId,result.imageCalls,result.imageModel,result.usageKnown]);
+    if(isGame&&!result.complete&&result.diagnostic){const d=result.diagnostic;throw fail(502,`分析を完了できませんでした。処理：${d.stage}／コード：${d.code}／HTTP：${d.httpStatus||'—'}／API：${d.providerCode||'—'}。課金が発生している可能性があります。自動再送はしていません。`);}
     if(!result.complete) throw fail(502,isGame?'CSV計算または公開情報の調査・分析が完了しませんでした。課金が発生している可能性があります。自動再送せず停止しました。履歴を確認してください。':imageMode?'画像生成が完了しませんでした。課金が発生している可能性があります。自動再送はしていません。':'回答が完了しませんでした。最新情報は確認済みとは限りません。履歴を確認してから相談を続けてください');
     if(imageMode){const save=await db.pool.connect();try{
       await save.query('BEGIN');const mid=randomUUID();
