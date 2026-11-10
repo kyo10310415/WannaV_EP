@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),vm=require('vm');
 test('共通チャットJSはページのツール識別に従って履歴・新規作成・送信先を選ぶ',async()=>{
-  for(const key of ['obs-master','vtube-studio','streaming-gear','kanau']) {
+  for(const key of ['obs-master','vtube-studio','streaming-gear','kanau','youtube-analyst']) {
     const base=key==='obs-master'?'/api/tools':'/api/tools/'+key,calls=[],nodes={};
     const node=()=>({children:[],value:'',files:[],hidden:true,append(...items){this.children.push(...items);},replaceChildren(){this.children=[];}});
     const get=id=>nodes[id]||(nodes[id]=node());
@@ -10,6 +10,7 @@ test('共通チャットJSはページのツール識別に従って履歴・新
     await new Promise(resolve=>setImmediate(resolve));assert.ok(calls.some(x=>x.url===base+'/config'));assert.ok(calls.some(x=>x.url===base+'/threads'));
     await get('new-thread').onclick();get('tool-text').value='接続できません';await get('chat-form').onsubmit({preventDefault(){}});
     assert.ok(calls.some(x=>x.url===base+'/threads/example/messages'&&x.options.method==='POST'));
+    if(key==='youtube-analyst')assert.equal(calls.find(x=>x.url===base+'/threads/example/messages').options.body.get('mode'),'analyze');
     const wrong=key==='obs-master'?'/api/tools/vtube-studio/threads':'/api/tools/threads';assert.equal(calls.some(x=>x.url===wrong),false);
   }
 });

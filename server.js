@@ -52,12 +52,14 @@ app.use('/api/usage', require('./src/routes/usage'));
 app.use('/api/tools/vtube-studio', require('./src/routes/tools').createToolRouter('vtube-studio'));
 app.use('/api/tools/streaming-gear', require('./src/routes/tools').createToolRouter('streaming-gear'));
 app.use('/api/tools/kanau', require('./src/routes/tools').createToolRouter('kanau'));
+app.use('/api/tools/youtube-analyst', require('./src/routes/tools').createToolRouter('youtube-analyst'));
 app.use('/api/tools', require('./src/routes/tools'));
 app.get('/tools', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'tools.html')));
 app.get('/tools/obs-master', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'obs-master.html')));
 app.get('/tools/vtube-studio', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'vtube-studio-master.html')));
 app.get('/tools/streaming-gear', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'streaming-gear.html')));
 app.get('/tools/kanau', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'kanau.html')));
+app.get('/tools/youtube-analyst', (_req, res) => res.sendFile(path.join(__dirname, 'views', 'youtube-analyst.html')));
 
 // Serve HTML pages
 app.get('/', (req, res) => {
