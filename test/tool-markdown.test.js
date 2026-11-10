@@ -29,3 +29,8 @@ test('全ツールに丁寧で親しみのある口調を指示し、ゲーム�
  }
  assert.ok(require('../src/services/youtubeGameStrategy').INTRO.startsWith('分析モードを選択してください。'));
 });
+test('太字の中にコードやリンクがあっても記号を残さず安全に表示する',()=>{
+ const nodes=render('**`設定 → 音声`を開く**\n**[公式](https://example.com)**');
+ const strong=nodes.find(n=>n.tag==='strong');assert.ok(strong.children.some(n=>n.tag==='code'&&n.textContent==='設定 → 音声'));
+ assert.equal(nodes.filter(n=>n.tag==='a').length,1);
+});
