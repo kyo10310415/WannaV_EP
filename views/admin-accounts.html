@@ -407,6 +407,7 @@
         // ===== ロールに応じたナビ生成 =====
         function buildNav(elementId, role, activePath) {
             const links = [
+                { href:'/tools', label:'🧰 ツール / API使用量', roles:['管理者','クルー','セールス'] },
                 { href:'/dashboard',                label:'📊 ダッシュボード',      roles:['管理者','クルー','セールス'] },
                 { href:'/admin/student-management', label:'👥 生徒管理',             roles:['管理者','クルー','セールス'] },
                 { href:'/admin/characters',         label:'🎭 キャラクター管理',     roles:['管理者','セールス'] },
