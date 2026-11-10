@@ -1,4 +1,4 @@
-const {createHash}=require('crypto'),obs=require('./obsMaster');
+const {createHash}=require('crypto'),obs=require('./obsMaster'),pricing=require('./toolPricing');
 const INTRO=`分析モードを選択してください。
 
 ① チャンネル詳細分析モード
@@ -73,7 +73,7 @@ async function answer(messages,transport=fetch){
   const add=usage=>{if(!usage||!Number.isFinite(usage.input_tokens)||!Number.isFinite(usage.output_tokens)){known=false;return;}accumulated.input_tokens+=usage.input_tokens;accumulated.output_tokens+=usage.output_tokens;accumulated.input_tokens_details.cached_tokens+=usage.input_tokens_details?.cached_tokens||0;};
   const json=async(path,body,timeout=30000)=>{const r=await checked(await transport('https://api.openai.com/v1'+path,{method:'POST',headers:body instanceof FormData?headers:{...headers,'Content-Type':'application/json'},body:body instanceof FormData?body:JSON.stringify(body),signal:AbortSignal.any([total,AbortSignal.timeout(timeout)])}));return r.json();};
   const textOf=r=>(r.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n');
-  const result=(text,complete,citations=[])=>({text,complete,citations,usage:accumulated,usageKnown:known,model,searches,usd:null});
+  const result=(text,complete,citations=[])=>{const cost=pricing.estimate({usage:accumulated,usageKnown:known,partialUsage:true,searches,containers:containers.length});return {text,complete,citations,usage:accumulated,usageKnown:known,model,searches,usd:cost.usd,costDetails:cost.details};};
   const stopped=(code,error={})=>{const diagnostic={stage,code,httpStatus:Number.isInteger(error.httpStatus)&&error.httpStatus>=100&&error.httpStatus<=599?error.httpStatus:null,providerCode:codes.has(error.providerCode)?error.providerCode:null};console.error('Game strategy analysis failed',diagnostic);return {...result('',false),diagnostic};};
   try{
     const container=await json('/containers',{name:'youtube-game-strategy',memory_limit:'1g',network_policy:{type:'disabled'},expires_after:{anchor:'last_active_at',minutes:20}});if(!/^cntr_[A-Za-z0-9_-]+$/.test(container.id))throw new Error('INVALID_CONTAINER');containers.push(container.id);

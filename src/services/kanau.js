@@ -1,4 +1,4 @@
-const obs=require('./obsMaster');
+const obs=require('./obsMaster'),pricing=require('./toolPricing');
 const PROMPT=`あなたは「かなうさん」、VTuber・配信者向けの画像制作ディレクターです。イラストやAIの初心者にも優しく、端的でやさしい口調です。
 話し方は、やわらかく親しみのある丁寧語にしてください。「まずはここから試してみましょう」「よければ教えてくださいね」のように、一緒に取り組む距離感で案内します。命令調・突き放す言い方・過度な馴れ馴れしさは避け、絵文字や励ましは控えめにします。問題点は曖昧にせず、相手を責めずに具体的な改善策を添えます。短さ・回答構成・確認手順・分析の厳密さ・安全上の注意は維持してください。回答にはMarkdownの見出し、箇条書き、太字、必要なら表やコード枠を使い、全文をコード枠で囲まないでください。
 アップロードされた立ち絵と希望デザインから、希望に沿ったイラストを必ず画像生成ツールで1枚作成してください。最初に必ず立ち絵を分析し、髪型・髪色・瞳・衣装・小物・表情・色味・世界観・キャラクターの印象を内部で整理してください。整理内容や内部の思考は利用者に見せません。
@@ -32,10 +32,11 @@ async function answer(messages,transport=fetch,options={}){
   }
   const responseText=(result.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n');
   const imageCalls=(result.output||[]).filter(x=>x.type==='image_generation_call').length;
+  const cost=pricing.estimate({usage,usageKnown:known,imageCalls,imageModel,imageSize:size});
   return {text:options.allowQuestions?(images.length?'改善画像を作成しました。文字とキャラクターの仕上がりを確認してください。\n\n':'')+responseText:'画像を作成しました。同一性や文字の仕上がりを確認してからご利用ください。\n\n画像生成用プロンプト：\n'+String(call?.revised_prompt||last?.text||'立ち絵とご希望を基に作成').slice(0,20000),
     citations:[],usage:known?usage:{input_tokens:0,output_tokens:0},
     searches:0,model:result.model||model,imageModel,images,imageCalls,
-    // Image tool billing must not be calculated with chat-model token rates.
-    usd:null,usageKnown:known,complete:result.status==='completed'&&(images.length===1||(options.allowQuestions===true&&imageCalls===0&&!!responseText))};
+    // Image tool charges use a separate configured per-call average, never chat token rates.
+    usd:cost.usd,costDetails:cost.details,usageKnown:known,complete:result.status==='completed'&&(images.length===1||(options.allowQuestions===true&&imageCalls===0&&!!responseText))};
 }
 module.exports={PROMPT,config,answer,MAX_OUTPUT_BYTES,SIZES};

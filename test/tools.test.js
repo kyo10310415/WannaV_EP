@@ -44,6 +44,14 @@ test('本人限定の会話・添付・削除、管理者限定集計、二重�
     const detail=await(await req('/threads/'+thread.id)).json();assert.equal(detail.messages.length,2);const attachment=detail.messages[0].attachments[0].id;
     assert.equal((await req('/attachments/'+attachment,b)).status,404);assert.equal(await(await req('/attachments/'+attachment)).text(),'test log');
     const report=await(await req('/usage',admin)).json();assert.equal(Number(report.rows[0].input_tokens),50);assert.equal(report.rows[0].estimated_usd,null);
+    process.env.TOOLS_USD_TO_JPY='150';
+    await pg.query('UPDATE tool_usage SET cost_details=$2 WHERE id=$1',[rid,JSON.stringify({known_usd:0.03,image_method:'configured_average'})]);
+    const pricedId=randomUUID();await pg.query("INSERT INTO tool_usage(id,user_id,tool_key,model,status,estimated_usd) VALUES($1,$2,'obs-master','test-model','completed',0.02)",[pricedId,a.id]);
+    const partialReport=await(await req('/usage',admin)).json(),partial=partialReport.rows[0];
+    assert.equal(partialReport.exchangeRate,150);assert.equal(Number(partial.known_usd),0.05);assert.equal(partial.known_jpy,7.5);assert.equal(Number(partial.unpriced),1);assert.equal(Number(partial.image_estimates),1);
+    assert.ok(partialReport.missingPrices.includes('TOOLS_IMAGE_USD_PER_CALL'));
+    await pg.query('DELETE FROM tool_usage WHERE id=$1',[pricedId]);
+
     delete process.env.OPENAI_API_KEY;assert.equal((await req('/threads/'+thread.id+'/messages',a,'POST',form(randomUUID()))).status,503);process.env.OPENAI_API_KEY='dummy';
     await pg.query("UPDATE tool_threads SET busy_until=CURRENT_TIMESTAMP+INTERVAL '3 minutes' WHERE id=$1",[thread.id]);
     assert.equal((await req('/threads/'+thread.id+'/messages',a,'POST',form(randomUUID()))).status,409);assert.equal(calls,1);

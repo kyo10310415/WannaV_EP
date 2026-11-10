@@ -1,5 +1,5 @@
 const express=require('express'),multer=require('multer'),{randomUUID}=require('crypto');
-const db=require('../config/database'),{auth,checkRole}=require('../middleware/auth'),obs=require('../services/obsMaster');
+const db=require('../config/database'),{auth,checkRole}=require('../middleware/auth'),obs=require('../services/obsMaster'),pricing=require('../services/toolPricing');
 const active=new Set();
 function createToolRouter(toolKey='obs-master') {
 const definitions={
@@ -103,8 +103,8 @@ router.post('/threads/:id/messages',(q,r,n)=>{
     for(const m of messages) m.attachments=(await db.query('SELECT kind,mime,data FROM tool_attachments WHERE message_id=$1',[m.id])).rows.map(a=>({...a,data:Buffer.from(a.data)}));
     const result=await service.answer(messages);
     // Persist billing metadata even if a response is incomplete. No automatic billable retry.
-    await db.query(`UPDATE tool_usage SET status=$2,model=$3,input_tokens=$4,cached_tokens=$5,output_tokens=$6,searches=$7,estimated_usd=$8 WHERE id=$1`,
-      [requestId,result.complete?'completed':'incomplete',result.model,result.usageKnown===false?null:result.usage.input_tokens,result.usageKnown===false?null:result.usage.input_tokens_details?.cached_tokens||0,result.usageKnown===false?null:result.usage.output_tokens,result.searches,result.usd]);
+    await db.query(`UPDATE tool_usage SET status=$2,model=$3,input_tokens=$4,cached_tokens=$5,output_tokens=$6,searches=$7,estimated_usd=$8,cost_details=$9 WHERE id=$1`,
+      [requestId,result.complete?'completed':'incomplete',result.model,result.usageKnown===false?null:result.usage.input_tokens,result.usageKnown===false?null:result.usage.input_tokens_details?.cached_tokens||0,result.usageKnown===false?null:result.usage.output_tokens,result.searches,result.usd,JSON.stringify(result.costDetails||null)]);
     if(imageMode)await db.query('UPDATE tool_usage SET image_calls=$2,image_model=$3,usage_known=$4 WHERE id=$1',[requestId,result.imageCalls,result.imageModel,result.usageKnown]);
     if(isGame&&!result.complete&&result.diagnostic){const d=result.diagnostic;throw fail(502,`分析を完了できませんでした。処理：${d.stage}／コード：${d.code}／HTTP：${d.httpStatus||'—'}／API：${d.providerCode||'—'}。課金が発生している可能性があります。自動再送はしていません。`);}
     if(!result.complete) throw fail(502,isGame?'CSV計算または公開情報の調査・分析が完了しませんでした。課金が発生している可能性があります。自動再送せず停止しました。履歴を確認してください。':imageMode?'画像生成が完了しませんでした。課金が発生している可能性があります。自動再送はしていません。':'回答が完了しませんでした。最新情報は確認済みとは限りません。履歴を確認してから相談を続けてください');
@@ -124,9 +124,12 @@ router.post('/threads/:id/messages',(q,r,n)=>{
 router.get('/usage',checkRole('管理者'),route(async(q,r)=>{
   const sql=`SELECT (created_at AT TIME ZONE 'Asia/Tokyo')::date AS day,tool_key,model,status,count(*) AS requests,
     sum(input_tokens) AS input_tokens,sum(cached_tokens) AS cached_tokens,sum(output_tokens) AS output_tokens,sum(searches) AS searches,sum(image_calls) AS image_calls,image_model,
-    sum(estimated_usd) AS estimated_usd,count(*) FILTER(WHERE estimated_usd IS NULL) AS unpriced
+    sum(estimated_usd) AS estimated_usd,sum(COALESCE((cost_details->>'known_usd')::numeric,estimated_usd)) AS known_usd,sum((cost_details->>'image_method'='configured_average')::int) AS image_estimates,count(*) FILTER(WHERE estimated_usd IS NULL) AS unpriced
     FROM tool_usage WHERE created_at>=CURRENT_TIMESTAMP-INTERVAL '62 days' GROUP BY day,tool_key,model,status,image_model ORDER BY day DESC`;
-  r.json({rows:(await db.query(sql)).rows,notice:'このアプリ経由の直近62日分。USD概算は設定単価による推計で、請求額ではありません。画像生成・Code Interpreterを含む金額は未算出です。回数は利用者の送信回数で、ゲーム配信戦略の計算・調査・提案のtoken使用量は合算です。local-intakeはAPI呼び出しなし。画像生成回数はAPIが返した呼び出し数で、保存成功枚数とは異なります。unknown/pendingは課金・使用量が不明です。税・為替・他アプリの利用は含みません。'});
+  const fx=pricing.exchangeRate(),rows=(await db.query(sql)).rows.map(row=>({...row,estimated_jpy:pricing.jpy(row.estimated_usd,fx),known_jpy:pricing.jpy(row.known_usd,fx)}));
+  const names=['TOOLS_INPUT_USD_PER_MILLION','TOOLS_CACHED_USD_PER_MILLION','TOOLS_OUTPUT_USD_PER_MILLION','TOOLS_SEARCH_USD_PER_CALL','TOOLS_IMAGE_USD_PER_CALL','TOOLS_CODE_INTERPRETER_USD_PER_CONTAINER'];
+  const missing=names.filter(name=>pricing.rate(name)===null);if(fx===null)missing.push('TOOLS_USD_TO_JPY');
+  r.json({rows,exchangeRate:fx,missingPrices:missing,notice:'このアプリ経由の直近62日分。USDは送信時の設定単価による概算で、実際の請求額ではありません。画像生成は1呼び出しあたりの設定平均額（入力・出力を含む画像モデル分）を加算し、文章モデル分は別途計算します。CSV計算は新規1GBコンテナの料金を加算します。単価・使用量が不明な部分は未算出として区別します。円換算は現在設定のレートを全期間に適用します（カード会社の為替・手数料・税は含みません）。過去の未算出金額は自動再計算しません。unknown/pendingは追加費用が発生している可能性があります。'});
 }));
 return router;
 }

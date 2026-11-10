@@ -95,3 +95,5 @@ test('隔離DB：指定の初回文・段階送信・履歴分離・本人制御
     assert.equal((await req('/youtube-game-strategy/threads/'+thread.id,a,'DELETE')).status,200);assert.equal((await req('/youtube-game-strategy/attachments/'+attachment.id)).status,404);assert.equal(Number((await pg.query('SELECT count(*) AS n FROM tool_attachments')).rows[0].n),0);
   }finally{db.query=old.query;db.pool.connect=old.connect;game.answer=old.answer;process.env=old.env;if(server)await new Promise(r=>server.close(r));await pg.close();}
 });
+
+test('本分析の計算・検索・提案トークンとコンテナ料金を概算する',async()=>{const before={...process.env};try{setup();Object.assign(process.env,{TOOLS_INPUT_USD_PER_MILLION:'0.75',TOOLS_CACHED_USD_PER_MILLION:'0.075',TOOLS_OUTPUT_USD_PER_MILLION:'4.5',TOOLS_SEARCH_USD_PER_CALL:'0.01',TOOLS_CODE_INTERPRETER_USD_PER_CONTAINER:'0.03'});const {transport}=provider();const result=await game.answer(ready(),transport);assert.equal(result.complete,true);assert.ok(result.usd>0.04);assert.equal(result.costDetails.parts.find(p=>p.name==='container_1gb').quantity,1);}finally{process.env=before;}});
