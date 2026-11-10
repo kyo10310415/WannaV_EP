@@ -2,13 +2,14 @@
   // Display-only Markdown: create safe DOM nodes, never interpret model HTML.
   function render(value){
     const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
-    function inline(node,text){
+    function inline(node,text,depth=0){
+      if(depth>=8){node.append(document.createTextNode(text));return;}
       const tokens=/`([^`\n]+)`|\[([^\]\n]{1,300})\]\((https:\/\/[^\s)]+)\)|\*\*([^*\n]+)\*\*|__([^_\n]+)__|\*([^*\n]+)\*|_([^_\n]+)_|~~([^~\n]+)~~|(https:\/\/[^\s<>"|)]+)/g;let match,from=0;
       while((match=tokens.exec(text))){node.append(document.createTextNode(text.slice(from,match.index)));from=tokens.lastIndex;
         if(match[1]){node.append(el('code',match[1]));continue;}
-        if(match[4]||match[5]){node.append(el('strong',match[4]||match[5]));continue;}
-        if(match[6]||match[7]){node.append(el('em',match[6]||match[7]));continue;}
-        if(match[8]){node.append(el('del',match[8]));continue;}
+        if(match[4]||match[5]){const strong=el('strong');inline(strong,match[4]||match[5],depth+1);node.append(strong);continue;}
+        if(match[6]||match[7]){const emphasis=el('em');inline(emphasis,match[6]||match[7],depth+1);node.append(emphasis);continue;}
+        if(match[8]){const strike=el('del');inline(strike,match[8],depth+1);node.append(strike);continue;}
         try{const url=new URL(match[3]||match[9]);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Unsafe URL');
           const a=el('a',match[2]||match[9]);a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';node.append(a);
         }catch(_){node.append(document.createTextNode(match[0]));}
