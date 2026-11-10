@@ -24,7 +24,7 @@ test('機材の表・見出し・リンクを安全なDOMで表示しHTMLや危�
 test('機材カード・サムネイル・専用相談画面と比較表スタイルを用意する',()=>{
   const read=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');assert.match(read('views/tools.html'),/href="\/tools\/streaming-gear"/);
   const html=read('views/streaming-gear.html');assert.match(html,/data-tool="streaming-gear"/);assert.match(html,/src="\/js\/tool-markdown.js"/);assert.match(html,/href="\/tools"/);
-  assert.doesNotMatch(read('views/obs-master.html'),/tool-markdown.js/);assert.doesNotMatch(read('views/vtube-studio-master.html'),/tool-markdown.js/);
+  assert.match(read('views/obs-master.html'),/tool-markdown.js/);assert.match(read('views/vtube-studio-master.html'),/tool-markdown.js/);
   const img=fs.readFileSync(path.join(__dirname,'../public/images/tools/streaming-gear-concierge.webp'));assert.equal(img.toString('ascii',8,12),'WEBP');
 });
 test('3ツールの本人履歴・添付を混在させず、機材回答と使用量を正しく記録する',{skip:!process.env.PGLITE_TEST_MODULE},async()=>{

@@ -28,7 +28,7 @@
   }catch(_){if(version===renderVersion)box.append(element('p','プレビューを表示できません。添付を保存ボタンからダウンロードできます。'));}}
   async function open(id){const data=await api('/tools/threads/'+id);const version=++renderVersion;for(const url of previews.splice(0))URL.revokeObjectURL(url);current=id;$('thread-title').textContent=data.thread.title;$('delete-thread').hidden=false;$('messages').replaceChildren();
     for(const m of data.messages){const box=element('article','');box.className='tool-message '+m.role;box.append(element('strong',m.role==='user'?'あなた':toolName));
-      if((isGear||isYoutube||isGame) && m.role==='assistant' && window.ToolMarkdown)box.append(window.ToolMarkdown.render(m.text));else box.append(element('p',m.text));
+      if(m.role==='assistant' && window.ToolMarkdown)box.append(window.ToolMarkdown.render(m.text));else box.append(element('p',m.text));
       for(const a of m.attachments||[]){const b=element('button',(a.kind==='generated'?'画像をダウンロード：':'添付を保存：')+a.name);b.className='btn btn-secondary';b.onclick=()=>download(a.id,a.name);box.append(b);if((isKanau||isYoutube)&&a.kind==='generated')previewImage(a,box,version);}
       if(m.citations?.length)box.append(element('strong','参照した情報のソース'));
       for(const c of m.citations||[]){try{const u=new URL(c.url);if(u.protocol!=='https:'||u.username||u.password)continue;const a=element('a',c.title+' — '+u.hostname);a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}catch(_){}}
