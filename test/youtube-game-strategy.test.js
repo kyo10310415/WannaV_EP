@@ -3,7 +3,7 @@ const game=require('../src/services/youtubeGameStrategy');
 const csv=i=>game.attachment({originalname:'different-name-'+i+'.csv',buffer:Buffer.from('Content,Metric'+i+'\nvideo1,'+i)});
 const ready=(mode='②')=>[{role:'user',text:mode,attachments:[]},{role:'user',text:'https://www.youtube.com/@test-channel PRIVATE_CONVERSATION_SENTINEL',attachments:[csv(1),csv(2),csv(3)]}];
 const setup=()=>Object.assign(process.env,{OPENAI_API_KEY:'dummy',OPENAI_OBS_MODEL:'test-model'});
-function provider({auditReady=true,code=true,search=true,failStage=0}={}){
+function provider({auditReady=true,code=true,search=true,failStage=0,wrongMode=false}={}){
   const calls=[];let file=0,response=0;
   const transport=async(url,options)=>{
     const body=options.body instanceof FormData?options.body:options.body?JSON.parse(options.body):null;calls.push({url,options,body});
@@ -13,7 +13,7 @@ function provider({auditReady=true,code=true,search=true,failStage=0}={}){
     if(url.endsWith('/containers/cntr_test/files'))return ok({id:'cfile_test',path:'/mnt/data/random-prefix-analytics-'+file+'.csv'});
     assert.ok(url.endsWith('/responses'));response++;if(response===failStage)throw new Error('network failed');
     const message=text=>({type:'message',content:[{type:'output_text',text,annotations:response===2&&search?[{type:'url_citation',url:'https://example.com/game-release',title:'公式リリース'}]:[]}]});
-    return ok({status:'completed',usage:{input_tokens:10,output_tokens:5,input_tokens_details:{cached_tokens:2}},output:response===1?[...(code?[{type:'code_interpreter_call',status:'completed'}]:[]),message(JSON.stringify({ready:auditReady,question:'3種類のCSVの役割と対象期間を教えてください',report:'Python計算結果：n=3、合計視聴回数300、欠損なし'}))]:response===2?[...(search?[{type:'web_search_call',status:'completed'}]:[]),message('公開ゲーム情報：公式で更新日を確認')]:[message('## 結論\n次の10配信で仮説を検証します。')]});
+    return ok({status:'completed',usage:{input_tokens:10,output_tokens:5,input_tokens_details:{cached_tokens:2}},output:response===1?[...(code?[{type:'code_interpreter_call',status:'completed'}]:[]),message(JSON.stringify({ready:auditReady,question:'3種類のCSVの役割と対象期間を教えてください',report:'Python計算結果：n=3、合計視聴回数300、欠損なし'}))]:response===2?[...(search?[{type:'web_search_call',status:'completed'}]:[]),message('公開ゲーム情報：公式で更新日を確認')]:[message(wrongMode?'## 結論\n次の10配信で仮説を検証します。':'## 結論\n## 新規候補\nテスト候補\n## 最優先テスト\n次の10配信で仮説を検証します。')]});
   };return {calls,transport};
 }
 test('初回は指定文だけ、モード・URL・内容が異なるCSV3つが揃うまではAPIを呼ばない',async()=>{
@@ -44,11 +44,17 @@ test('Python計算→公開情報調査→戦略提案を実行し、検索に�
     assert.match(responses[0].body.input[0].content,/\/mnt\/data\/random-prefix-analytics-3.csv/);
     assert.equal(responses[1].body.tools[0].type,'web_search');assert.doesNotMatch(JSON.stringify(responses[1].body),/PRIVATE_CONVERSATION_SENTINEL|Metric1|計算結果/);
     assert.equal(responses[2].body.tools,undefined);assert.match(JSON.stringify(responses[2].body),/Python計算結果/);assert.equal(responses[2].body.max_output_tokens,10000);
+    assert.match(responses[2].body.instructions,/今回の確定モードは②/);assert.match(responses[1].body.instructions,/ゲーム市場そのものを必ず検索/);
     assert.equal(calls.filter(x=>x.options.method==='DELETE').length,4);assert.equal(result.citations[0].url,'https://example.com/game-release');
   }finally{process.env=before;}
 });
 test('CSVの意味が不明なら質問で止まり、市場調査へ進まない',async()=>{
   const before={...process.env};try{setup();const {calls,transport}=provider({auditReady:false});const result=await game.answer(ready('①'),transport);assert.equal(result.complete,true);assert.match(result.text,/対象期間/);assert.equal(calls.filter(x=>x.url.endsWith('/responses')).length,1);assert.equal(calls.filter(x=>x.options.method==='DELETE').length,4);}finally{process.env=before;}
+});
+test('探索モードでチャンネル詳細形式の回答が返ったら成功扱いしない',async()=>{
+  const before={...process.env},oldError=console.error;console.error=()=>{};
+  try{setup();const {transport}=provider({wrongMode:true});const result=await game.answer([...ready('①'),{role:'user',text:'②'}],transport);assert.equal(result.complete,false);assert.equal(result.diagnostic.stage,'strategy_answer');assert.equal(result.diagnostic.code,'ANSWER_MODE_MISMATCH');assert.equal(result.usageKnown,true);}
+  finally{console.error=oldError;process.env=before;}
 });
 test('計算未実行・検索未実行・途中の接続障害を完成扱いせず、再試行せずに片付ける',async()=>{
   const before={...process.env};try{setup();for(const options of [{code:false},{search:false},{failStage:2}]){const {calls,transport}=provider(options);const result=await game.answer(ready(),transport);assert.equal(result.complete,false);assert.equal(result.usd,null);assert.equal(calls.filter(x=>x.options.method==='DELETE').length,4);assert.ok(calls.filter(x=>x.url.endsWith('/responses')).length<=2);if(options.failStage)assert.equal(result.usageKnown,false);}}finally{process.env=before;}
