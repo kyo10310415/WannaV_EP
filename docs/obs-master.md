@@ -9,6 +9,8 @@
 
 ## 第6弾：YouTubeゲーム配信 戦略分析官
 
+失敗時は`Game strategy analysis failed`に処理段階（container_create/file_upload/file_link/csv_audit/public_research/strategy_answer）、固定エラーコード、HTTPステータス、許可リスト内のAPIエラー種別だけを記録し、画面にも同じ識別情報を表示する。APIエラー本文・例外メッセージ・CSV・会話・認証情報は出力しない。未完了応答も処理段階を記録し、自動再送しない。
+
 - 一覧カードから`/tools/youtube-game-strategy`。APIは`/api/tools/youtube-game-strategy/...`。専用指示・初回文・入力受付は`src/services/youtubeGameStrategy.js`。
 - 新しい相談では指定のモード選択文だけを自動表示（APIなし）。①/1/１でチャンネル詳細分析、②/2/２で新規ゲーム探索。選択後はチャンネルURL＋内容が異なるCSV3件が揃うまで指定のデータ提出案内と受領数だけを返す。分割送信・モード切り替えで同じ入力を再利用できる。同じCSVのコピーは1件として扱い、別チャンネル・4件以上の異なるCSVは新しい相談へ案内する。
 - チャンネルURLはHTTPSのyoutube.comの`/@...`、`/channel/...`、`/c/...`、`/user/...`のみ。動画URL・外部URL・認証付きURLは対象外。クエリーを除いて公開チャンネルURLを正規化する。

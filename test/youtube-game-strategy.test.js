@@ -57,6 +57,13 @@ test('専用カード・ゲームをする女性VTuberサムネイル・CSV相�
   const read=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');assert.match(read('views/tools.html'),/href="\/tools\/youtube-game-strategy"/);assert.match(read('views/youtube-game-strategy.html'),/data-tool="youtube-game-strategy"/);assert.match(read('views/youtube-game-strategy.html'),/Shift-JIS/);
   assert.equal(fs.readFileSync(path.join(__dirname,'../public/images/tools/youtube-game-strategy.webp')).toString('ascii',8,12),'WEBP');
 });
+test('処理段階とHTTPコードを記録し、APIエラー本文・秘密・CSV内容はログや画面へ出さない',async()=>{
+  const before={...process.env},oldError=console.error,logs=[];console.error=(...args)=>logs.push(args);
+  try{setup();const result=await game.answer(ready(),async()=>({ok:false,status:400,json:async()=>({error:{type:'invalid_request_error',code:'PRIVATE_SECRET',message:'PRIVATE_SECRET private CSV value'}})}));
+    assert.deepEqual(result.diagnostic,{stage:'container_create',code:'PROVIDER_ERROR',httpStatus:400,providerCode:'invalid_request_error'});
+    assert.equal(result.complete,false);assert.equal(result.usageKnown,false);assert.doesNotMatch(JSON.stringify([result,logs]),/PRIVATE_SECRET|PRIVATE_CONVERSATION_SENTINEL|Metric1/);assert.equal(logs.length,1);
+  }finally{console.error=oldError;process.env=before;}
+});
 test('隔離DB：指定の初回文・段階送信・履歴分離・本人制御・重複送信・集計・削除',{skip:!process.env.PGLITE_TEST_MODULE},async()=>{
   const {PGlite}=require(process.env.PGLITE_TEST_MODULE),pg=new PGlite(),db=require('../src/config/database');const old={query:db.query,connect:db.pool.connect,answer:game.answer,env:{...process.env}};let server;
   db.query=(s,p)=>s.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):pg.query(s,p);db.pool.connect=async()=>({query:db.query,release(){}});
