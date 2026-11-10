@@ -23,4 +23,8 @@ module.exports=async function createToolTables(){
   await db.query("ALTER TABLE tool_threads ADD COLUMN IF NOT EXISTS tool_key TEXT NOT NULL DEFAULT 'obs-master'");
   await db.query("ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS tool_key TEXT NOT NULL DEFAULT 'obs-master'");
   await db.query('CREATE INDEX IF NOT EXISTS idx_tool_threads_user_tool ON tool_threads(user_id,tool_key,created_at)');
+  await db.query("ALTER TABLE tool_messages ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'");
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS image_calls INTEGER');
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS image_model TEXT');
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS usage_known BOOLEAN');
 };
