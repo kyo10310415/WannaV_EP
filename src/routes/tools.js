@@ -27,7 +27,7 @@ const own=async(q)=>{
 };
 router.get('/config',route(async(_q,r)=>{
   let state;try{state=await budget.summary();}catch(_){state={blocked:true,reason:'現在使用できません。時間をおいて再度お試しください。'};}
-  r.json({enabled:service.config().enabled&&!state.blocked,...(state.blocked?{unavailableMessage:state.reason}:{}),...(isYoutube?{imageEnabled:service.config().imageEnabled}:{}),...(isGame?{initialMessage:service.initialMessage}:{})});
+  r.json({enabled:service.config().enabled&&!state.blocked,...(state.blocked?{unavailableMessage:state.reason,retryAfterSeconds:state.pending>0?15:state.reason===budget.UNAVAILABLE&&state.day?Math.max(5,Math.ceil((Date.parse(state.day+'T00:00:00+09:00')+86400000-Date.now())/1000)):30}:{}),...(isYoutube?{imageEnabled:service.config().imageEnabled}:{}),...(isGame?{initialMessage:service.initialMessage}:{})});
 }));
 router.get('/threads',route(async(q,r)=>r.json((await db.query('SELECT id,title,created_at FROM tool_threads WHERE user_id=$1 AND tool_key=$2 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100',[q.user.id,toolKey])).rows)));
 router.post('/threads',route(async(q,r)=>{
