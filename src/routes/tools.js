@@ -42,16 +42,16 @@ router.get('/threads/:id',route(async(q,r)=>{
   const messages=(await db.query(`SELECT m.id,m.role,m.text,m.citations,m.metadata,m.created_at,
     COALESCE((SELECT json_agg(json_build_object('id',a.id,'name',a.name,'kind',a.kind)) FROM tool_attachments a WHERE a.message_id=m.id),'[]') AS attachments
     FROM tool_messages m WHERE thread_id=$1 ORDER BY created_at,id`,[thread.id])).rows;
-  r.json({thread,messages});
+  const {game_session,...visibleThread}=thread;r.json({thread:visibleThread,messages});
 }));
 router.delete('/threads/:id',route(async(q,r)=>{
   const t=await own(q),client=await db.pool.connect();
   try{await client.query('BEGIN');
     const row=(await client.query('SELECT busy_until FROM tool_threads WHERE id=$1 FOR UPDATE',[t.id])).rows[0];
     if(row.busy_until&&new Date(row.busy_until)>new Date()) throw fail(409,'回答中は削除できません');
-    await client.query('UPDATE tool_threads SET deleted_at=CURRENT_TIMESTAMP,title=$2 WHERE id=$1',[t.id,'削除済み']);
+    await client.query('UPDATE tool_threads SET deleted_at=CURRENT_TIMESTAMP,title=$2,game_session=NULL WHERE id=$1',[t.id,'削除済み']);
     await client.query('DELETE FROM tool_messages WHERE thread_id=$1',[t.id]);
-    await client.query('COMMIT');r.json({success:true});
+    await client.query('COMMIT');if(isGame)await service.cleanupSession(t.game_session).catch(()=>console.warn('Game strategy session cleanup incomplete'));r.json({success:true});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
 router.get('/attachments/:id',route(async(q,r)=>{
@@ -115,7 +115,12 @@ router.post('/threads/:id/messages',(q,r,n)=>{
   try{
     const messages=(await db.query('SELECT * FROM tool_messages WHERE thread_id=$1 ORDER BY created_at,id',[t.id])).rows;
     for(const m of messages) m.attachments=(await db.query('SELECT kind,mime,data FROM tool_attachments WHERE message_id=$1',[m.id])).rows.map(a=>({...a,data:Buffer.from(a.data)}));
-    const result=await service.answer(messages);
+    const gameState=isGame?(await db.query("SELECT game_session FROM tool_threads WHERE id=$1 AND user_id=$2 AND tool_key='youtube-game-strategy' AND deleted_at IS NULL",[t.id,q.user.id])).rows[0]?.game_session:null;
+    const gameOptions=isGame?{session:gameState,saveSession:async session=>{
+      const saved=await db.query("UPDATE tool_threads SET game_session=$3 WHERE id=$1 AND user_id=$2 AND tool_key='youtube-game-strategy' AND deleted_at IS NULL RETURNING id",[t.id,q.user.id,JSON.stringify(session)]);
+      if(!saved.rows.length)throw new Error('SESSION_SAVE_FAILED');
+    }}:undefined;
+    const result=isGame?await service.answer(messages,fetch,gameOptions):await service.answer(messages);
     // Persist billing metadata even if a response is incomplete. No automatic billable retry.
     await db.query(`UPDATE tool_usage SET status=$2,model=$3,input_tokens=$4,cached_tokens=$5,output_tokens=$6,searches=$7,estimated_usd=$8,cost_details=$9,estimated_jpy=$10 WHERE id=$1`,
       [requestId,result.complete?'completed':'incomplete',result.model,result.usageKnown===false?null:result.usage.input_tokens,result.usageKnown===false?null:result.usage.input_tokens_details?.cached_tokens||0,result.usageKnown===false?null:result.usage.output_tokens,result.searches,result.usd,JSON.stringify(result.costDetails||null),pricing.jpy(result.usd,rateInfo.rate)]);
@@ -140,6 +145,7 @@ router.get('/usage',checkRole('管理者'),route(async(q,r)=>{
     sum(input_tokens) AS input_tokens,sum(cached_tokens) AS cached_tokens,sum(output_tokens) AS output_tokens,sum(searches) AS searches,sum(image_calls) AS image_calls,image_model,
     sum(COALESCE(estimated_jpy,estimated_usd*COALESCE(fx_rate,(SELECT rate FROM tool_exchange_rates e WHERE e.day=(tool_usage.created_at AT TIME ZONE 'Asia/Tokyo')::date),$1))) AS estimated_jpy,
     sum(COALESCE((cost_details->>'known_usd')::numeric,estimated_usd)*COALESCE(fx_rate,(SELECT rate FROM tool_exchange_rates e WHERE e.day=(tool_usage.created_at AT TIME ZONE 'Asia/Tokyo')::date),$1)) AS known_jpy,
+    sum((cost_details->>'reused_container')::boolean::int) AS reused_containers,sum((cost_details->>'reused_audit')::boolean::int) AS reused_audits,sum((cost_details->>'reused_research')::boolean::int) AS reused_researches,
     sum(estimated_usd) AS estimated_usd,sum(COALESCE((cost_details->>'known_usd')::numeric,estimated_usd)) AS known_usd,sum((cost_details->>'image_method'='configured_average')::int) AS image_estimates,count(*) FILTER(WHERE estimated_usd IS NULL) AS unpriced
     FROM tool_usage WHERE created_at>=CURRENT_TIMESTAMP-INTERVAL '62 days' GROUP BY day,tool_key,model,status,image_model ORDER BY day DESC`;
   let rateInfo;try{rateInfo=await exchange.dailyRate();}catch(_){}
