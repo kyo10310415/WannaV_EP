@@ -280,6 +280,7 @@ const scheduleLogCleanup = () => {
 // 全ジョブ一括起動
 // ─────────────────────────────────────────────────────────────────────────────
 const startAllSchedulers = () => {
+  scheduleToolExchangeRates();
   scheduleSocialMetrics();
   schedulePaymentSync();
   scheduleInactiveUserReminders();
@@ -290,6 +291,14 @@ const startAllSchedulers = () => {
   scheduleLogCleanup();
   console.log('🚀 All cron jobs registered');
 };
+
+function scheduleToolExchangeRates() {
+  const exchange=require('../services/toolExchangeRate');
+  if(!process.env.OPENAI_API_KEY||!exchange.autoEnabled())return;
+  const run=()=>exchange.dailyRate().catch(()=>console.error('Tool exchange rate update failed'));
+  cron.schedule('5 0 * * *',run,{timezone:'Asia/Tokyo'});
+  void run();
+}
 
 function scheduleSocialMetrics() {
   const { SocialMetrics } = require('../models/SocialMetrics');
