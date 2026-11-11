@@ -28,4 +28,11 @@ module.exports=async function createToolTables(){
   await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS image_model TEXT');
   await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS usage_known BOOLEAN');
   await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS cost_details JSONB');
+  await db.query(`CREATE TABLE IF NOT EXISTS tool_exchange_rates (
+    day DATE PRIMARY KEY,rate NUMERIC(18,8) NOT NULL CHECK(rate>0),source TEXT NOT NULL,
+    source_date DATE NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS fx_day DATE');
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS fx_rate NUMERIC(18,8)');
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS estimated_jpy NUMERIC(18,8)');
+  await db.query('ALTER TABLE tool_usage ADD COLUMN IF NOT EXISTS budget_hold_jpy NUMERIC(18,8) NOT NULL DEFAULT 0');
 };

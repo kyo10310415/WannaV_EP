@@ -8,7 +8,7 @@ function harness({uploadError=false,deferUpload=false}={}){
  const query=async(sql,p)=>{queries.push(sql);return {rows:sql.includes('SELECT * FROM tool_threads')?[{id:p[0],busy_until:null}]:sql.includes('FILTER(')?[{daily:0,monthly:0}]:sql.includes('octet_length')?[{n:0,bytes:0}]:[]}};
  const db={query,pool:{connect:async()=>({query,release(){}})}};
  const router={use(){},get(){},delete(){},post(path,...handlers){routes.push({path,handlers});}};
- const sandbox={module:{exports:{}},require:n=>n==='express'?{Router:()=>router}:n==='multer'?Object.assign(()=>({array:()=>(q,r,cb)=>{if(deferUpload)uploads.push(cb);else cb(uploadError?new Error('synthetic upload error'):null)}}),{memoryStorage:()=>({})}):n==='crypto'?{randomUUID}:n.includes('database')?db:n.includes('middleware/auth')?{auth(){},checkRole:()=>()=>{}}:n.includes('services/')?service:require(n),Buffer,console,Set:TrackedSet,Date,Number,Object,JSON};
+ const sandbox={module:{exports:{}},require:n=>n==='express'?{Router:()=>router}:n==='multer'?Object.assign(()=>({array:()=>(q,r,cb)=>{if(deferUpload)uploads.push(cb);else cb(uploadError?new Error('synthetic upload error'):null)}}),{memoryStorage:()=>({})}):n==='crypto'?{randomUUID}:n.includes('database')?db:n.includes('middleware/auth')?{auth(){},checkRole:()=>()=>{}}:n.endsWith('/toolExchangeRate')?{dailyRate:async()=>({day:'2026-11-11',rate:150})}:n.endsWith('/toolBudget')?{reserve:async()=>0}:n.endsWith('/toolPricing')?{jpy:()=>null}:n.includes('services/')?service:require(n),Buffer,console,Set:TrackedSet,Date,Number,Object,JSON};
  vm.runInNewContext(fs.readFileSync(file,'utf8'),sandbox);
  const h=routes.find(r=>r.path==='/threads/:id/messages').handlers;
  async function request(id=1,invalid=false){
