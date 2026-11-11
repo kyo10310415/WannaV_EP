@@ -19,7 +19,7 @@ router.use((_q,r,n)=>{r.set('Cache-Control','no-store');n();});
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:fileLimit,fields:isYoutube?4:3,fieldSize:24000,parts:isYoutube||isGame?7:5,fieldArrayIndexLimit:10}}).array('attachments',fileLimit);
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 const fail=(status,message)=>Object.assign(new Error(message),{status});
-const route=fn=>async(q,r)=>{try{await fn(q,r);}catch(e){if(!r.headersSent)r.status(e.status||500).json({error:e.status?e.message:'処理に失敗しました。時間をおいて再度お試しください。'});}};
+const route=fn=>async(q,r)=>{try{await fn(q,r);}catch(e){if(!r.headersSent)r.status(e.status||500).json({error:e.status?e.message:'処理に失敗しました。時間をおいて再度お試しください。'});}finally{q.releaseToolSlot?.();}};
 const own=async(q)=>{
   if(!uuid(q.params.id)) throw fail(400,'会話IDが不正です');
   const row=(await db.query('SELECT * FROM tool_threads WHERE id=$1 AND user_id=$2 AND tool_key=$3 AND deleted_at IS NULL',[q.params.id,q.user.id,toolKey])).rows[0];
@@ -61,8 +61,16 @@ router.post('/threads/:id/messages',(q,r,n)=>{
   if(!service.config().enabled) return r.status(503).json({error:title+'は準備中です。管理者へお問い合わせください。'});
   // Authenticate before parsing multipart and refuse parallel uploads per user in this process.
   if(active.has(q.user.id)||active.size>=4) return r.status(429).json({error:'回答処理が混み合っています。少しお待ちください。'});
-  active.add(q.user.id);r.once('finish',()=>active.delete(q.user.id));r.once('close',()=>active.delete(q.user.id));
-  upload(q,r,e=>e?r.status(400).json({error:`添付は${fileLimit}件、各2MBまで。文章は6000文字までです。`}):n());
+  active.add(q.user.id);
+  let processing=false,closed=false,released=false;
+  const release=()=>{if(!released){released=true;active.delete(q.user.id);}};q.releaseToolSlot=release;
+  // A disconnected client does not cancel provider work. Hold the slot until it settles.
+  r.once('close',()=>{closed=true;if(!processing)release();});
+  upload(q,r,e=>{
+    if(closed){release();return;}
+    if(e){release();return r.status(400).json({error:`添付は${fileLimit}件、各2MBまで。文章は6000文字までです。`});}
+    processing=true;n();
+  });
 },route(async(q,r)=>{
   const t=await own(q),text=typeof q.body.text==='string'?q.body.text.trim():'',requestId=q.body.requestId;
   if(!uuid(requestId)||text.length>6000||(!text&&!q.files?.length)) throw fail(400,'相談内容または添付を入力してください（6000文字以内）');
