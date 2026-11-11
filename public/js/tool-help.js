@@ -9,8 +9,8 @@
   };
   const key=document.body.dataset.tool||'obs-master',guide=guides[key],layout=document.querySelector('.tools-layout');if(!guide||!layout)return;
   const el=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
-  const section=el('section','');section.className='card tool-help';section.setAttribute('aria-labelledby','tool-help-title');
-  const title=el('h2','使い方と使用例');title.id='tool-help-title';section.append(title);
+  const section=el('details','');section.className='card tool-help';section.setAttribute('aria-labelledby','tool-help-title');
+  const title=el('summary','使い方と使用例');title.id='tool-help-title';section.append(title);
   const steps=el('ol','');for(const step of guide.steps)steps.append(el('li',step));section.append(steps);
   section.append(el('p','入力欄からそのまま送信できます。初回の送信時に会話を自動作成します。同じ話題は続けて送信し、別の話題は「＋ 新しい相談」で分けてください。続きは自分の履歴から再開できます。'));
   section.append(el('h3','使用例（クリックで入力欄にコピー）'));
@@ -18,5 +18,5 @@
     const input=document.getElementById('tool-text');if(input.value.trim()&&!confirm('入力中の文章を使用例に置き換えますか？'))return;input.value=example;input.focus();
   };section.append(button);}
   section.append(el('p','使用例は入力欄にコピーするだけで、自動送信しません。ご自身の情報に書き換えてから送信してください。'));
-  layout.before(section);
+  document.querySelector('.tool-sidebar').append(section);
 })();

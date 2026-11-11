@@ -1,11 +1,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('vm'),fs=require('fs'),path=require('path');
 const tick=()=>new Promise(setImmediate);
-async function setup(configs,{failHistory=false}={}){
- const nodes={},calls=[],intervals=[],events={},queue=[...configs];let time=0;
+async function setup(configs,{failHistory=false,holdGeneration=false,generationFails=false}={}){
+ const nodes={},calls=[],intervals=[],events={},queue=[...configs];let time=0,releaseGeneration;const generation=new Promise(resolve=>releaseGeneration=resolve);
  const node=()=>({children:[],textContent:'',value:'',files:[],hidden:false,disabled:false,append(...items){this.children.push(...items)},replaceChildren(){this.children=[]}}),get=id=>nodes[id]||(nodes[id]=node());
  const context={document:{body:{dataset:{tool:'kanau'}},hidden:false,getElementById:get,createElement:node,addEventListener:(name,fn)=>events[name]=fn},localStorage:{getItem:()=> 'token'},location:{},FormData,Date:{now:()=>time},crypto:{randomUUID:()=> '00000000-0000-0000-0000-000000000001'},setInterval:fn=>intervals.push(fn),confirm:()=>true,
- fetch:async(url,options)=>{calls.push({url,options});let data;if(url==='/api/auth/me')data={role:'生徒'};else if(url.endsWith('/config')){data=queue.length>1?queue.shift():queue[0];if(data instanceof Error)throw data;}else if(url.endsWith('/threads')){if(failHistory)throw new Error('履歴の取得に失敗');data=[];}else data={};return {ok:true,json:async()=>data};}};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/js/tools.js'),'utf8'),context);await tick();return {get,calls,intervals,events,context,advance:ms=>time+=ms};
+ fetch:async(url,options)=>{calls.push({url,options});let data;if(url==='/api/auth/me')data={role:'生徒'};else if(url.endsWith('/config')){data=queue.length>1?queue.shift():queue[0];if(data instanceof Error)throw data;}else if(url.endsWith('/messages')){if(holdGeneration)await generation;if(generationFails)throw new Error('生成エラー');data={success:true};}else if(url.endsWith('/threads/example'))data={thread:{title:'相談'},messages:[]};else if(url.endsWith('/threads')){if(failHistory)throw new Error('履歴の取得に失敗');data=options.method==='POST'?{id:'example'}:[];}else data={};return {ok:true,json:async()=>data};}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/js/tools.js'),'utf8'),context);await tick();return {get,calls,intervals,events,context,releaseGeneration,advance:ms=>time+=ms};
 }
 test('他の処理中に開いても、自動再確認でボタンが復帰し入力を消さない',async()=>{
  const h=await setup([{enabled:false,unavailableMessage:'回答を処理しています',retryAfterSeconds:15},{enabled:true}]);h.get('tool-text').value='作りたい画像';assert.equal(h.get('send').disabled,true);assert.equal(h.get('tool-availability').hidden,false);assert.match(h.get('tool-availability-message').textContent,/回答を処理/);
@@ -25,4 +25,14 @@ test('日次上限とモデル未設定は解除せず、案内を残す。非�
 });
 test('6画面に読み込み中から見える案内と、フォーム送信しない再確認ボタンがある',()=>{
  for(const name of ['obs-master','vtube-studio-master','streaming-gear','kanau','youtube-analyst','youtube-game-strategy']){const html=fs.readFileSync(path.join(__dirname,'../views/'+name+'.html'),'utf8');assert.match(html,/id="tool-availability"/);assert.match(html,/id="refresh-availability" type="button"/);assert.match(html,/利用状況を確認しています/);}
+});
+
+test('画像生成中だけインジケーターを表示し、成功・失敗のどちらでも解除する',async()=>{
+ for(const generationFails of [false,true]){
+  const h=await setup([{enabled:true}],{holdGeneration:true,generationFails});h.get('tool-text').value='画像を作成';
+  const pending=h.get('chat-form').onsubmit({preventDefault(){}});await tick();
+  assert.equal(h.get('tool-processing').hidden,false);assert.match(h.get('tool-processing-title').textContent,/画像を生成中/);assert.equal(h.get('send').disabled,true);
+  h.releaseGeneration();await pending;assert.equal(h.get('tool-processing').hidden,true);assert.equal(h.get('send').disabled,false);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/messages')).length,1);if(generationFails)assert.match(h.get('tool-status').textContent,/生成エラー/);
+ }
 });
