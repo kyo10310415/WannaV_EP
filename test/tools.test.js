@@ -29,7 +29,8 @@ test('本人限定の会話・添付・削除、管理者限定集計、二重�
   const db=require('../src/config/database'),oldQuery=db.query,oldConnect=db.pool.connect,oldAnswer=obs.answer,env={...process.env};let server;
   db.query=(sql,p)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):pg.query(sql,p);
   db.pool.connect=async()=>({query:db.query,release(){}});
-  try{Object.assign(process.env,{JWT_SECRET:'isolated-tools-test',PAYMENT_ACCESS_CONTROL_ENABLED:'false',OPENAI_API_KEY:'dummy',OPENAI_OBS_MODEL:'test-model'});
+  // This fixture covers tool ownership/quotas; FX and shared budgets have dedicated suites.
+  try{Object.assign(process.env,{TOOLS_FX_AUTO_ENABLED:'false',TOOLS_USD_TO_JPY:'150',TOOLS_DAILY_BUDGET_JPY:'off',JWT_SECRET:'isolated-tools-test',PAYMENT_ACCESS_CONTROL_ENABLED:'false',OPENAI_API_KEY:'dummy',OPENAI_OBS_MODEL:'test-model'});
     await require('../src/models/schema').createTables();const User=require('../src/models/User');
     const a=await User.create('tool-a','dummy','テストA'),b=await User.create('tool-b','dummy','テストB'),admin=await User.create('tool-admin','dummy','テスト管理者','管理者');
     const jwt=require('jsonwebtoken'),token=u=>jwt.sign({id:u.id,role:u.role},process.env.JWT_SECRET),express=require('express'),app=express();app.use(express.json());app.use('/api/tools',require('../src/routes/tools'));

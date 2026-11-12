@@ -46,7 +46,8 @@ test('隔離DB：分析・画像の切替、履歴分離、本人制御、集計
   const {PGlite}=require(process.env.PGLITE_TEST_MODULE),pg=new PGlite(),db=require('../src/config/database');
   const old={query:db.query,connect:db.pool.connect,answer:analyst.answer,env:{...process.env}};let server;
   db.query=(s,p)=>s.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):pg.query(s,p);db.pool.connect=async()=>({query:db.query,release(){}});
-  try{env();Object.assign(process.env,{JWT_SECRET:'isolated-youtube',PAYMENT_ACCESS_CONTROL_ENABLED:'false'});
+  // This fixture covers tool ownership/quotas; FX and shared budgets have dedicated suites.
+  try{env();Object.assign(process.env,{TOOLS_FX_AUTO_ENABLED:'false',TOOLS_USD_TO_JPY:'150',TOOLS_DAILY_BUDGET_JPY:'off',JWT_SECRET:'isolated-youtube',PAYMENT_ACCESS_CONTROL_ENABLED:'false'});
     await require('../src/models/schema').createTables();const User=require('../src/models/User'),a=await User.create('youtube-a','dummy','生徒A'),b=await User.create('youtube-b','dummy','生徒B'),admin=await User.create('youtube-admin','dummy','管理者','管理者');
     const express=require('express'),jwt=require('jsonwebtoken'),router=require('../src/routes/tools'),app=express();app.use(express.json());
     for(const key of ['vtube-studio','streaming-gear','kanau','youtube-analyst'])app.use('/api/tools/'+key,router.createToolRouter(key));app.use('/api/tools',router);

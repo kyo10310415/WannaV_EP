@@ -30,7 +30,8 @@ test('初回の立ち絵必須・本人限定の生成物・履歴分離・再�
   const {PGlite}=require(process.env.PGLITE_TEST_MODULE),pg=new PGlite(),db=require('../src/config/database');
   const old={query:db.query,connect:db.pool.connect,answer:kanau.answer,env:{...process.env}};let server;
   db.query=(s,p)=>s.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):pg.query(s,p);db.pool.connect=async()=>({query:db.query,release(){}});
-  try{Object.assign(process.env,{JWT_SECRET:'isolated-kanau',PAYMENT_ACCESS_CONTROL_ENABLED:'false',OPENAI_API_KEY:'dummy',OPENAI_OBS_MODEL:'test-model',OPENAI_KANAU_IMAGE_MODEL:'test-image-model'});
+  // This fixture covers tool ownership/quotas; FX and shared budgets have dedicated suites.
+  try{Object.assign(process.env,{TOOLS_FX_AUTO_ENABLED:'false',TOOLS_USD_TO_JPY:'150',TOOLS_DAILY_BUDGET_JPY:'off',JWT_SECRET:'isolated-kanau',PAYMENT_ACCESS_CONTROL_ENABLED:'false',OPENAI_API_KEY:'dummy',OPENAI_OBS_MODEL:'test-model',OPENAI_KANAU_IMAGE_MODEL:'test-image-model'});
     await require('../src/models/schema').createTables();const User=require('../src/models/User'),a=await User.create('kanau-a','dummy','生徒A'),b=await User.create('kanau-b','dummy','生徒B'),admin=await User.create('kanau-admin','dummy','管理者','管理者');
     const express=require('express'),jwt=require('jsonwebtoken'),router=require('../src/routes/tools'),app=express();app.use(express.json());app.use('/api/tools/kanau',router.createToolRouter('kanau'));app.use('/api/tools',router);
     server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port+'/api/tools';

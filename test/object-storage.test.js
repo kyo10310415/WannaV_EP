@@ -54,6 +54,11 @@ test('アップロード・再生権限・差し替え・削除・移行を隔�
     commands.push(command);
     const input=command.input;
     if (command instanceof sdk.PutObjectCommand) {
+      // Match the SDK promise lifetime: consume the file stream before resolving
+      // or rejecting, so route cleanup cannot unlink an unopened mock stream.
+      if (input.Body && typeof input.Body[Symbol.asyncIterator] === 'function') {
+        for await (const chunk of input.Body) { /* Consume test-only upload bytes. */ }
+      }
       if (failUpload) throw new Error('simulated upload failure');
       objects.set(input.Key,input.ContentLength);
       return {};
