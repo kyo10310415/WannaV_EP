@@ -25,6 +25,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.5.0",
     "node-cron": "^4.2.1",
+    "nodemailer": "10.5.0",
     "pg": "^8.20.0"
   },
   "engines": {
