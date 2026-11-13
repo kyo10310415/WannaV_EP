@@ -43,6 +43,10 @@ test('自己再設定：確認済メール限定・汎用応答・使い捨て�
   mail.sendResetLink = async (email, url, id, loginId) => { deliveries.push({ email, url, id, loginId }); await pendingMail; mailFinished = true; };
   const generic = await request(); assert.equal(generic.status, 202); assert.equal(mailFinished, false);
   releaseMail(); await flush(); assert.equal(deliveries.length, 1);
+  const cooldown = await request(); await flush();
+  assert.equal(cooldown.status, 202); assert.deepEqual(cooldown.data, generic.data);
+  assert.ok(cooldown.data.message.includes('前回のメール送信から60秒以上待って、もう一度お試しください'));
+  assert.equal(deliveries.length, 1);
   mail.sendResetLink = async (email, url, id, loginId) => { deliveries.push({ email, url, id, loginId }); };
   assert.equal(deliveries[0].email, 'shared@example.com'); assert.equal(deliveries[0].loginId, 'dummy_student');
   assert.equal(new URL(deliveries[0].url).origin, 'https://portal.example.com'); assert.equal(new URL(deliveries[0].url).search, '');
