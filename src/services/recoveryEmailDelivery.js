@@ -16,13 +16,12 @@ function configured() {
  return false;
 }
 
-async function send(to, code, id, transport = fetch, createSmtpTransport = nodemailer.createTransport) {
+async function sendMessage(to, id, content, transport = fetch, createSmtpTransport = nodemailer.createTransport) {
  if (!configured()) throw Error('RECOVERY_MAIL_NOT_CONFIGURED');
  const message = {
   from: { name: 'WannaV ポータル', address: process.env.RECOVERY_EMAIL_FROM },
   to: [to],
-  subject: '【WannaV ポータル】パスワード再設定用メールの確認',
-  text: 'パスワード再設定用のメールアドレスを登録するための確認コードです。\n\n確認コード：' + code + '\n\n有効期限は10分です。ログイン済みの登録画面に入力してください。\nこのコードは、第三者やサポート担当者にも伝えないでください。\n心当たりがない場合は、このメールを破棄してください。'
+  ...content
  };
  if (provider() === 'google_workspace') {
   let smtp;
@@ -53,4 +52,22 @@ async function send(to, code, id, transport = fetch, createSmtpTransport = nodem
  });
  if (!response.ok) throw Error('RECOVERY_MAIL_DELIVERY_FAILED');
 }
-module.exports = { configured, send };
+function send(to, code, id, transport, createSmtpTransport) {
+ return sendMessage(to, id, {
+  subject: '【WannaV ポータル】パスワード再設定用メールの確認',
+  text: 'パスワード再設定用のメールアドレスを登録するための確認コードです。\n\n確認コード：' + code + '\n\n有効期限は10分です。ログイン済みの登録画面に入力してください。\nこのコードは、第三者やサポート担当者にも伝えないでください。\n心当たりがない場合は、このメールを破棄してください。'
+ }, transport, createSmtpTransport);
+}
+function sendResetLink(to, url, id, loginId) {
+ return sendMessage(to, id, {
+  subject: '【WannaV ポータル】パスワード再設定のご案内',
+  text: 'ログインID：' + loginId + '\n\n次のリンクから新しいパスワードを設定してください。\n' + url + '\n\n有効期限は15分です。一度使うと無効になります。\nリンクは第三者に共有しないでください。\n心当たりがなければ、このメールを破棄してください。パスワードは変更されません。'
+ });
+}
+function sendResetNotice(to, id) {
+ return sendMessage(to, id, {
+  subject: '【WannaV ポータル】パスワードを再設定しました',
+  text: 'パスワードの再設定が完了しました。すべての端末で以前のログイン状態が無効になっています。\n\n心当たりがない場合は、速やかにWannaVの担当者へお問い合わせください。\n安全のため、パスワードそのものはメールに記載していません。'
+ });
+}
+module.exports = { configured, send, sendResetLink, sendResetNotice };
