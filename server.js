@@ -38,6 +38,11 @@ app.use('/uploads', require('./src/middleware/objectMediaRedirect'), require('./
 }));
 
 // Routes
+app.use('/api/auth/password-reset', require('./src/routes/passwordReset'));
+app.get(['/forgot-password', '/reset-password'], (_req, res) => res.set({
+  'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
+}).sendFile(path.join(__dirname, 'views', 'password-reset.html')));
 app.use('/api/auth/recovery-email',require('./src/routes/recoveryEmail'));
 app.get('/recovery-email',(_req,res)=>res.set('Cache-Control','no-store').sendFile(path.join(__dirname,'views','recovery-email.html')));
 app.use('/api/auth', require('./src/routes/auth'));

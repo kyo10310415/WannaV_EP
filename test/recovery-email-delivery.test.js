@@ -2,6 +2,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const mail = require('../src/services/recoveryEmailDelivery');
 
+test('再設定リンクと完了通知も既存の送信方式を使い、通知にPW・トークンを含めない', async () => {
+ const restore = setup(), originalFetch = global.fetch, sent = [];
+ try {
+  process.env.RECOVERY_EMAIL_PROVIDER = 'resend';
+  global.fetch = async (url, options) => { sent.push({ url, body: JSON.parse(options.body) }); return { ok: true }; };
+  const link = 'https://portal.example.com/reset-password#token=dummy-test-token';
+  await mail.sendResetLink('dummy@example.com', link, 'reset-link-id', 'dummy-student');
+  await mail.sendResetNotice('dummy@example.com', 'reset-notice-id');
+  assert.equal(sent.length, 2); assert.ok(sent.every(item => item.url === 'https://api.resend.com/emails'));
+  assert.ok(sent[0].body.text.includes(link)); assert.ok(sent[0].body.text.includes('dummy-student'));
+  assert.match(sent[1].body.subject, /再設定しました/); assert.ok(!sent[1].body.text.includes('dummy-test-token'));
+ } finally { global.fetch = originalFetch; restore(); }
+});
+
 function setup() {
  const env = { ...process.env };
  Object.assign(process.env, {
