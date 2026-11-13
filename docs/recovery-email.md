@@ -12,6 +12,34 @@
 
 既定では無効。メールの送信設定・受信テスト・十分な送信枠を用意するまで、`RECOVERY_EMAIL_ENROLLMENT_ENABLED=true` にしない。
 
+### Google Workspace（今回の推奨構成）
+
+既存の会社メールアカウントと、そのアカウントで発行したアプリパスワードを使う。Resendのドメイン認証やDNSレコード追加は不要。有料のRender Web Serviceで使用する（無料Web ServiceはSMTPの465/587ポートへの接続が禁止されている）。
+
+Renderの対象Web Service → Environmentに以下を設定し、Save and deployで適用する。
+
+```dotenv
+RECOVERY_EMAIL_PROVIDER=google_workspace
+GOOGLE_WORKSPACE_SMTP_USER=<アプリパスワードを発行した会社メールアドレス>
+GOOGLE_WORKSPACE_APP_PASSWORD=<発行した16文字のアプリパスワード>
+RECOVERY_EMAIL_FROM=<GOOGLE_WORKSPACE_SMTP_USERと同じメールアドレス>
+RECOVERY_EMAIL_ENROLLMENT_ENABLED=false
+RECOVERY_EMAIL_DAILY_LIMIT=90
+```
+
+- アドレスは実在するGoogle Workspaceアカウントを指定する。表示名・山括弧は入力しない。未作成のnoreplyアドレスや別アカウントのアドレスを指定しない。
+- パスワードは通常のGoogleログインパスワードではなく、発行したアプリパスワード。表示時の区切りの半角スペースはアプリ側でも取り除く。秘密情報をチャット・Git・画面画像・ログへ載せない。
+- サーバーはsmtp.gmail.com、465、暗号化TLSに固定。証明書検証は無効にしない。SMTP_HOST/SMTP_PORTなどの追加設定は不要。
+- RECOVERY_EMAIL_PROVIDER未指定時は従来のresendを使う。google_workspace選択時にはRESEND_API_KEYは不要で、残っていても使用しない。不備・失敗時の自動フォールバックや自動再送はしない。
+- 初回設定ではfalseのまま保存する。trueにすると全ロールの未登録ユーザーが次のログイン時から登録必須になる。受信確認には一時的にtrueとして担当者自身で再ログインし、登録→コード受信→確認完了を試す必要がある。その間ほかの未登録者も対象になるため、利用の少ない時間帯に行う。受信できない場合は直ちにfalseへ戻して再デプロイする。falseの間、登録APIからは送信しない。
+- 日次上限90はGoogle側の保証枠ではなく、アプリ独自の安全上限。既存ユーザーが集中すると上限後に登録を完了できない。全体展開前に利用人数に見合った上限を検討する。Google側の制限はアカウント・契約・試用状態によって異なり、同じアカウントからの通常メール送信とも共有される。
+- Googleのログインパスワード変更でアプリパスワードが失効した場合は、再発行してRenderを更新する。認証失敗時は会社のGoogle Workspace管理ポリシーも確認する。
+- SMTP受理は受信箱への到達保証ではない。迷惑メールフォルダーも含め、実受信まで確認する。SMTPにはResendのような冪等送信保証がないため、タイムアウト時は重複の可能性を考慮して自動再試行しない。再送すると以前のコードは無効になる。
+
+公式設定：https://knowledge.workspace.google.com/admin/gmail/send-email-from-a-printer-scanner-or-app
+
+### Resend（既存構成を維持）
+
 1. Resendのアカウントを作成する（契約・規約への同意は運用担当者が行う）。
 2. Domainsに `portal-mail.oneloopinc.net` を追加し、Resendが表示するDNSレコードをDNS管理画面へ追加する。既存のルートドメインのメール設定・MXを置き換えない。
 3. ドメイン認証の完了を確認する。送信元は `noreply@portal-mail.oneloopinc.net` を想定する。
@@ -21,6 +49,7 @@
 
 ```dotenv
 RESEND_API_KEY=<Resendの送信専用APIキー>
+RECOVERY_EMAIL_PROVIDER=resend
 RECOVERY_EMAIL_FROM=noreply@portal-mail.oneloopinc.net
 RECOVERY_EMAIL_ENROLLMENT_ENABLED=false
 RECOVERY_EMAIL_DAILY_LIMIT=90
@@ -56,7 +85,11 @@ PGliteの隔離DBとモック送信で確認する。本番DB・実メール・�
 
 Resend設定後の実配信・受信は別途確認が必要。
 
+Google Workspace追加分は送信先固定、TLS検証、アプリパスワードの区切り除去、設定不足・送信元不一致・未知プロバイダーの拒否、SMTP失敗・宛先拒否時の秘匿と再送防止、および実際のNodemailerによる日本語MIME生成をネットワーク通信なしで検証する。Googleへの実接続・認証・配信は環境変数設定後に別途確認が必要。
+
 検証結果（2026-11-13）：Node.js 22.23.5の隔離テスト277件が成功。ブラウザではモック送信のみを使い、未登録者のログイン誘導、コード確認、登録完了後のダッシュボード遷移、登録済みユーザーのスキップ、390px幅の表示を確認した。実配信・DNS認証・本番での必須化は未実施。
 
 公式設定手順：https://resend.com/docs/dashboard/domains/introduction
 公式料金・送信上限：https://resend.com/pricing
+
+Google Workspace送信対応の回帰検証（2026-11-13）：Node.js 22.23.5で281件成功（スキップ0）。npm audit --omit=devは脆弱性0件。実SMTP認証・実配信・受信および環境変数の本番設定は未実施。
