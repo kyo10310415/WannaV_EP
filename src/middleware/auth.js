@@ -16,6 +16,7 @@ const auth = async (req, res, next) => {
       });
     }
     await verifyPasswordReset(decoded);
+    if(decoded.recoveryEnrollmentRequired===true&&await require('../models/RecoveryEmail').required(decoded.id))return res.status(403).json({error:'パスワード再設定用のメールアドレスを登録してください。',code:'RECOVERY_EMAIL_REQUIRED'});
     req.user = decoded;
     return require('./portalAccess').requirePortalAccess(req, res, next);
   } catch (error) {

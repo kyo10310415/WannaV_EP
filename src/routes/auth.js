@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { verifyToken, verifyPasswordReset, respondTokenError } = require('../utils/jwtAuth');
 const User = require('../models/User');
+const recoveryEmail = require('../models/RecoveryEmail');
 
 // ログイン（ログインIDとして username または email を受け付ける）
 router.post('/login', async (req, res) => {
@@ -23,9 +24,10 @@ router.post('/login', async (req, res) => {
 
     // 初回パスワード変更が必要かどうか
     const needsPasswordChange = !user.password_changed_at;
+    const needsRecoveryEmailRegistration = await recoveryEmail.required(user.id);
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: needsPasswordChange,staffResetNonce:user.staff_password_reset_nonce || undefined },
+      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: needsPasswordChange,...(needsRecoveryEmailRegistration?{recoveryEnrollmentRequired:true,recoveryAuthAt:Math.floor(Date.now()/1000)}:{}),staffResetNonce:user.staff_password_reset_nonce || undefined },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -39,7 +41,7 @@ router.post('/login', async (req, res) => {
         username: user.username,
         role: user.role
       },
-      needsPasswordChange
+      needsPasswordChange,...(needsRecoveryEmailRegistration?{needsRecoveryEmailRegistration:true}:{})
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -68,12 +70,13 @@ router.post('/change-password', async (req, res) => {
     const user = await User.findById(decoded.id);
     if (!user || (user.staff_password_reset_nonce || null)!==(decoded.staffResetNonce || null) || !user.password_changed_at)
       throw new jwt.JsonWebTokenError('Session invalidated by password reset');
+    const needsRecoveryEmailRegistration = await recoveryEmail.required(user.id);
     const refreshedToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: false,staffResetNonce:user.staff_password_reset_nonce || undefined },
+      { id: user.id, email: user.email, role: user.role, passwordChangeRequired: false,...(needsRecoveryEmailRegistration?{recoveryEnrollmentRequired:true,recoveryAuthAt:decoded.recoveryAuthAt||decoded.iat}:{}),staffResetNonce:user.staff_password_reset_nonce || undefined },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-    res.json({ success: true, message: 'パスワードを変更しました', token: refreshedToken });
+    res.json({ success: true, message: 'パスワードを変更しました', token: refreshedToken,...(needsRecoveryEmailRegistration?{needsRecoveryEmailRegistration:true}:{}) });
   } catch (error) {
     if (respondTokenError(error, res)) return;
     console.error('Change password error:', error);
@@ -102,7 +105,7 @@ router.get('/me', async (req, res) => {
     const {staff_password_reset_nonce,...publicUser}=user;
     res.json({
       ...publicUser,
-      needsPasswordChange: !user.password_changed_at
+      needsPasswordChange: !user.password_changed_at,...(decoded.recoveryEnrollmentRequired===true&&await recoveryEmail.required(user.id)?{needsRecoveryEmailRegistration:true}:{})
     });
   } catch (error) {
     if (respondTokenError(error, res)) return;
