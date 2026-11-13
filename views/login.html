@@ -43,6 +43,13 @@
             transition: width 0.3s, background 0.3s;
             width: 0%;
         }
+        .password-reset-link,.password-reset-link:visited {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-height: 44px; color: #8cdaff; font-weight: 600;
+            text-decoration: underline; text-underline-offset: 4px;
+        }
+        .password-reset-link:hover { color: #c8efff; }
+        .password-reset-link:focus-visible { outline: 3px solid #a6edff; outline-offset: 4px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -79,7 +86,7 @@
                     🚀 ログイン
                 </button>
             </form>
-            <p style="margin-top:24px;"><a href="/forgot-password">パスワードを忘れた方はこちら</a></p>
+            <p style="margin-top:24px;"><a class="password-reset-link" href="/forgot-password">パスワードを忘れた方はこちら</a></p>
         </div>
     </div>
 
