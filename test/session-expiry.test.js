@@ -52,13 +52,13 @@ test('JWT期限切れ・不正・設定異常とDB障害を区別し、通常の
 });
 
 const source = fs.readFileSync(require.resolve('../public/js/session-expiry.js'),'utf8');
-function browser(pathname='/',code='TOKEN_EXPIRED') {
+function browser(pathname='/',code='TOKEN_EXPIRED',status=401) {
   const local = new Map([['token','old']]), session = new Map(), redirects=[], handlers={};
   const storage = map => ({getItem:key=>map.get(key),setItem:(key,val)=>map.set(key,val),removeItem:key=>map.delete(key)});
   let calls=0;
   const alert={textContent:'',setAttribute(){}};
   const window={location:{origin:'https://portal.example',pathname,search:'',replace:url=>redirects.push(url)},
-    history:{replaceState(){}},fetch:async()=>{calls++;return {status:401,clone:()=>({json:async()=>({code})})};}};
+    history:{replaceState(){}},fetch:async()=>{calls++;return {status,clone:()=>({json:async()=>({code})})};}};
   const context={window,Request,URL,URLSearchParams,localStorage:storage(local),sessionStorage:storage(session),
     document:{getElementById:()=>alert,addEventListener:(event,fn)=>handlers[event]=fn}};
   vm.runInNewContext(source,context);
@@ -88,3 +88,5 @@ test('全HTML画面でAPI実行前にセッション期限切れハンドラを�
     assert.match(fs.readFileSync(path.join(dir,file),'utf8'),/<head>\s*<script src="\/js\/session-expiry.js"><\/script>/);
   }
 });
+
+test('メール登録要求はトークンを残して登録画面へ誘導し、登録画面でループしない',async()=>{const a=browser('/dashboard','RECOVERY_EMAIL_REQUIRED',403);await a.window.fetch('/api/lessons');assert.deepEqual(a.redirects,['/recovery-email']);assert.equal(a.local.get('token'),'old');assert.equal(a.calls(),1);const b=browser('/recovery-email','RECOVERY_EMAIL_REQUIRED',403);await b.window.fetch('/api/lessons');assert.deepEqual(b.redirects,[]);});

@@ -38,6 +38,8 @@ app.use('/uploads', require('./src/middleware/objectMediaRedirect'), require('./
 }));
 
 // Routes
+app.use('/api/auth/recovery-email',require('./src/routes/recoveryEmail'));
+app.get('/recovery-email',(_req,res)=>res.set('Cache-Control','no-store').sendFile(path.join(__dirname,'views','recovery-email.html')));
 app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/lessons', require('./src/routes/lessons'));
 app.use('/api/progress', require('./src/routes/progress'));

@@ -5,6 +5,7 @@
     window.fetch = async (...args) => {
         const response = await originalFetch(...args);
         const url = new URL(args[0] instanceof Request ? args[0].url : args[0], window.location.origin);
+        if(response.status===403&&url.origin===window.location.origin&&url.pathname.startsWith('/api/')){const data=await response.clone().json().catch(()=>null);if(data?.code==='RECOVERY_EMAIL_REQUIRED'&&window.location.pathname!=='/recovery-email')window.location.replace('/recovery-email');}
         if (response.status === 401 && url.origin === window.location.origin && url.pathname.startsWith('/api/')) {
             const body = await response.clone().json().catch(() => null);
             if (body?.code === 'TOKEN_EXPIRED' && !redirecting) {
