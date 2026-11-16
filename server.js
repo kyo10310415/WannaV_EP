@@ -37,6 +37,11 @@ app.use('/uploads', require('./src/middleware/objectMediaRedirect'), require('./
   }
 }));
 
+// Dedicated read-only integration, independently authenticated.
+app.use('/integrations/chatgpt/v1', require('./chatgpt-readonly/reader.cjs').expressHandler({
+  catalog: require('./chatgpt-readonly/catalog.json'), pool: require('./src/config/database').pool
+}));
+
 // Routes
 app.use('/api/auth/password-reset', require('./src/routes/passwordReset'));
 app.get(['/forgot-password', '/reset-password'], (_req, res) => res.set({

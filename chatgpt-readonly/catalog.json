@@ -1,0 +1,66 @@
+{
+  "students": {
+    "title": "EP：現在のNotion生徒キャッシュ",
+    "sql": "SELECT id,student_number AS student_id,student_name AS name,status,contract_plan,synced_at FROM notion_students",
+    "fields": {
+      "id": "number",
+      "student_id": "text",
+      "name": "text",
+      "status": "text",
+      "contract_plan": "text",
+      "synced_at": "text"
+    },
+    "order": ["id"],
+    "history": "current"
+  },
+  "progress": {
+    "title": "EP：レッスン別進捗の現在値（視聴イベント全履歴ではない）",
+    "sql": "SELECT p.id,ns.student_number AS student_id,u.name,p.lesson_id,p.completed,p.watch_percent,p.quiz_passed,p.quiz_attempts,p.last_watched_at,p.completed_at FROM user_progress p JOIN users u ON u.id=p.user_id AND u.role='生徒' LEFT JOIN student_profiles sp ON sp.user_id=u.id LEFT JOIN notion_students ns ON ns.notion_page_id=sp.notion_page_id",
+    "fields": {
+      "id": "number",
+      "lesson_id": "number",
+      "watch_percent": "number",
+      "quiz_attempts": "number",
+      "student_id": "text",
+      "name": "text",
+      "last_watched_at": "text",
+      "completed_at": "text",
+      "completed": "boolean",
+      "quiz_passed": "boolean"
+    },
+    "order": ["id"],
+    "history": "current"
+  },
+  "usage": {
+    "title": "EP：日本時間の日別アプリ利用回数",
+    "sql": "SELECT a.user_id,ns.student_number AS student_id,to_char(a.usage_date,'YYYY-MM-DD') AS usage_date,a.open_count,a.last_opened_at FROM app_usage_daily a JOIN users u ON u.id=a.user_id AND u.role='生徒' LEFT JOIN student_profiles sp ON sp.user_id=u.id LEFT JOIN notion_students ns ON ns.notion_page_id=sp.notion_page_id",
+    "fields": {
+      "user_id": "number",
+      "open_count": "number",
+      "student_id": "text",
+      "usage_date": "text",
+      "last_opened_at": "text"
+    },
+    "order": ["user_id", "usage_date"],
+    "history": "event"
+  },
+  "surveys": {
+    "title": "EP：満足度回答（1〜5段階。中央管理の満足度とは別指標）",
+    "sql": "SELECT s.id,ns.student_number AS student_id,to_char(s.survey_date,'YYYY-MM-DD') AS survey_date,s.overall_score,s.lesson_score,s.support_score,s.good_points,s.improvement_points,s.free_comment,s.wants_extension,s.created_at FROM satisfaction_surveys s JOIN users u ON u.id=s.student_user_id AND u.role='生徒' LEFT JOIN student_profiles sp ON sp.user_id=u.id LEFT JOIN notion_students ns ON ns.notion_page_id=sp.notion_page_id",
+    "fields": {
+      "id": "number",
+      "overall_score": "number",
+      "lesson_score": "number",
+      "support_score": "number",
+      "student_id": "text",
+      "survey_date": "text",
+      "good_points": "text",
+      "improvement_points": "text",
+      "free_comment": "text",
+      "created_at": "text",
+      "wants_extension": "boolean"
+    },
+    "order": ["id"],
+    "history": "event"
+  }
+}
