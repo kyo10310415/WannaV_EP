@@ -50,6 +50,11 @@
         }
         .password-reset-link:hover { color: #c8efff; }
         .password-reset-link:focus-visible { outline: 3px solid #a6edff; outline-offset: 4px; border-radius: 4px; }
+        .login-help { margin-top: 24px; padding: 16px; text-align: left; border: 1px solid #466581; border-radius: 12px; background: #102335; }
+        .login-help h2 { margin: 0 0 10px; padding: 0; font-size: 16px; line-height: 1.6; color: #a8e3ff; }
+        .login-help h2::after { display: none; }
+        .login-help ul { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.9; color: #d4e2ef; }
+        .login-help li + li { margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -86,6 +91,14 @@
                     🚀 ログイン
                 </button>
             </form>
+            <section class="login-help" aria-labelledby="login-help-title">
+                <h2 id="login-help-title">ログインできないときは</h2>
+                <ul>
+                    <li>ログインIDのハイフンは<strong>半角の「-」</strong>です。全角の「－」や長音の「ー」になっている場合は、一度消して半角で入力し直してください。</li>
+                    <li>コピーしたIDの末尾に、空白や見えない文字が入ることがあります。<strong>IDを一度すべて消して、手入力</strong>してお試しください。</li>
+                    <li>パスワード再設定後もログインIDは変わりません。保存済みの古いパスワードが自動入力されていないか確認し、<strong>新しいパスワードを手入力</strong>してください。</li>
+                </ul>
+            </section>
             <p style="margin-top:24px;"><a class="password-reset-link" href="/forgot-password">パスワードを忘れた方はこちら</a></p>
         </div>
     </div>
