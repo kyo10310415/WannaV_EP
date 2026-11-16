@@ -3,7 +3,7 @@ test('一覧カードから専用相談ページへ進み、既存チャットJS
   const read=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');
   const catalog=read('views/tools.html'),chat=read('views/obs-master.html'),server=read('server.js');
   assert.match(catalog,/href="\/tools\/obs-master"/);assert.match(catalog,/src="\/images\/tools\/obs-master.webp"/);
-  assert.doesNotMatch(catalog,/id="chat-form"|src="\/js\/tools.js"/);assert.match(chat,/id="chat-form"/);assert.match(chat,/src="\/js\/tools.js"/);
+  assert.doesNotMatch(catalog,/id="chat-form"|src="\/js\/tools\.js(?:\?v=[\w-]+)?"/);assert.match(chat,/id="chat-form"/);assert.match(chat,/src="\/js\/tools\.js(?:\?v=[\w-]+)?"/);
   assert.match(chat,/href="\/tools"/);assert.match(server,/app.get\('\/tools\/obs-master'/);
   const image=fs.readFileSync(path.join(__dirname,'../public/images/tools/obs-master.webp'));
   assert.equal(image.toString('ascii',0,4),'RIFF');assert.equal(image.toString('ascii',8,12),'WEBP');

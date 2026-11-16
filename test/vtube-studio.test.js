@@ -27,7 +27,7 @@ test('VTube Studio専用の指示と既存モデル設定を使い、OBSの指�
 });
 test('カード・専用画面・サムネイル・使用量列が存在する',()=>{
   const html=fs.readFileSync(path.join(__dirname,'../views/vtube-studio-master.html'),'utf8');
-  assert.match(html,/data-tool="vtube-studio"/);assert.match(html,/<th>ツール<\/th>/);assert.match(html,/src="\/js\/tools.js"/);
+  assert.match(html,/data-tool="vtube-studio"/);assert.match(html,/<th>ツール<\/th>/);assert.match(html,/src="\/js\/tools\.js(?:\?v=[\w-]+)?"/);
   const catalog=fs.readFileSync(path.join(__dirname,'../views/tools.html'),'utf8');assert.match(catalog,/href="\/tools\/vtube-studio"/);
   const image=fs.readFileSync(path.join(__dirname,'../public/images/tools/vtube-studio-master.webp'));assert.equal(image.toString('ascii',8,12),'WEBP');
 });
