@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:chatgpt": "node --test chatgpt-readonly/*.test.cjs"
   },
   "keywords": [],
   "author": "",
