@@ -1,10 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('vm'),fs=require('fs'),path=require('path');
 const tick=()=>new Promise(setImmediate);
-async function setup(configs,{failHistory=false,holdGeneration=false,generationFails=false}={}){
+async function setup(configs,{failHistory=false,holdGeneration=false,generationFails=false,failAuth=false,failStorage=false,cryptoApi,formDataType}={}){
  const nodes={},calls=[],intervals=[],events={},queue=[...configs];let time=0,releaseGeneration;const generation=new Promise(resolve=>releaseGeneration=resolve);
  const node=()=>({children:[],textContent:'',value:'',files:[],hidden:false,disabled:false,append(...items){this.children.push(...items)},replaceChildren(){this.children=[]}}),get=id=>nodes[id]||(nodes[id]=node());
  const context={document:{body:{dataset:{tool:'kanau'}},hidden:false,getElementById:get,createElement:node,addEventListener:(name,fn)=>events[name]=fn},localStorage:{getItem:()=> 'token'},location:{},FormData,Date:{now:()=>time},crypto:{randomUUID:()=> '00000000-0000-0000-0000-000000000001'},setInterval:fn=>intervals.push(fn),confirm:()=>true,
- fetch:async(url,options)=>{calls.push({url,options});let data;if(url==='/api/auth/me')data={role:'生徒'};else if(url.endsWith('/config')){data=queue.length>1?queue.shift():queue[0];if(data instanceof Error)throw data;}else if(url.endsWith('/messages')){if(holdGeneration)await generation;if(generationFails)throw new Error('生成エラー');data={success:true};}else if(url.endsWith('/threads/example'))data={thread:{title:'相談'},messages:[]};else if(url.endsWith('/threads')){if(failHistory)throw new Error('履歴の取得に失敗');data=options.method==='POST'?{id:'example'}:[];}else data={};return {ok:true,json:async()=>data};}};
+ fetch:async(url,options)=>{calls.push({url,options});let data;if(url==='/api/auth/me')data=failAuth?{httpStatus:401,code:'INVALID_TOKEN',error:'認証に失敗しました'}:{role:'生徒'};else if(url.endsWith('/config')){data=queue.length>1?queue.shift():queue[0];if(data instanceof Error)throw data;}else if(url.endsWith('/messages')){if(holdGeneration)await generation;if(generationFails)throw new Error('生成エラー');data={success:true};}else if(url.endsWith('/threads/example'))data={thread:{title:'相談'},messages:[]};else if(url.endsWith('/threads')){if(failHistory)throw new Error('履歴の取得に失敗');data=options.method==='POST'?{id:'example'}:[];}else data={};return {ok:!data.httpStatus,status:data.httpStatus||200,json:async()=>data};}};
+ if(cryptoApi!==undefined)context.crypto=cryptoApi;
+ if(formDataType)context.FormData=formDataType;
+ if(failStorage)context.localStorage.getItem=()=>{throw Error('Storage unavailable');};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/js/tools.js'),'utf8'),context);await tick();return {get,calls,intervals,events,context,releaseGeneration,advance:ms=>time+=ms};
 }
 test('他の処理中に開いても、自動再確認でボタンが復帰し入力を消さない',async()=>{
@@ -35,4 +38,35 @@ test('画像生成中だけインジケーターを表示し、成功・失敗�
   h.releaseGeneration();await pending;assert.equal(h.get('tool-processing').hidden,true);assert.equal(h.get('send').disabled,false);
   assert.equal(h.calls.filter(c=>c.url.endsWith('/messages')).length,1);if(generationFails)assert.match(h.get('tool-status').textContent,/生成エラー/);
  }
+});
+
+test('初期確認の403は支払い等の理由と確認コードをボタンの近くに残す',async()=>{
+ const h=await setup([{httpStatus:403,code:'PAYMENT_REQUIRED',error:'お支払い状況をご確認ください。'}]);
+ assert.equal(h.get('send').disabled,true);assert.match(h.get('tool-action-status').textContent,/お支払い/);assert.match(h.get('tool-action-status').textContent,/CONFIG_403_PAYMENT_REQUIRED/);
+ assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});
+
+test('初期ログイン確認失敗の理由を一般的な通信失敗で上書きしない',async()=>{
+ const h=await setup([{enabled:true}],{failAuth:true});
+ assert.equal(h.get('send').disabled,true);assert.match(h.get('tool-action-status').textContent,/INITIALIZE_401_INVALID_TOKEN/);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/config')).length,0);
+});
+
+test('randomUUIDがないブラウザも暗号学的乱数で有効なv4 UUIDを送る',async()=>{
+ const h=await setup([{enabled:true}],{cryptoApi:{getRandomValues:bytes=>{for(let i=0;i<bytes.length;i++)bytes[i]=i;return bytes;}}});
+ h.get('tool-text').value='画像を作成';await h.get('chat-form').onsubmit({preventDefault(){}});
+ const call=h.calls.find(c=>c.url.endsWith('/messages'));assert.ok(call);assert.match(call.options.body.get('requestId'),/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+ assert.equal(h.get('send').disabled,false);
+});
+
+test('ブラウザの送信準備が失敗しても入力を保持し、ボタン・生成表示を復帰する',async()=>{
+ for(const options of [{cryptoApi:{}},{formDataType:class{constructor(){throw Error('FormDataの準備に失敗');}}}]){
+  const h=await setup([{enabled:true}],options);h.get('tool-text').value='消さない入力';await h.get('chat-form').onsubmit({preventDefault(){}});
+  assert.equal(h.get('send').disabled,false);assert.equal(h.get('new-thread').disabled,false);assert.equal(h.get('tool-processing').hidden,true);assert.equal(h.get('tool-text').value,'消さない入力');
+  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);assert.match(h.get('tool-action-status').textContent,/準備|BROWSER_CRYPTO/);
+ }
+});
+
+test('ブラウザが保存データを拒否しても無言で停止せず、入力欄の近くに確認コードを出す',async()=>{
+ const h=await setup([{enabled:true}],{failStorage:true});assert.match(h.get('tool-action-status').textContent,/BROWSER_STORAGE/);assert.equal(h.calls.length,0);
 });

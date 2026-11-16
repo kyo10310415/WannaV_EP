@@ -36,3 +36,5 @@
 .tool-intro>#usage-button{grid-column:2;grid-row:4;margin:0}.tool-intro>#tool-status{grid-column:1;grid-row:4;margin:4px 0}.tool-intro>#tool-availability{grid-column:1 / -1;grid-row:5;margin:8px 0}
 .tool-workspace .tools-heading h2{line-height:1.4;padding:0}.tool-workspace .tool-field-help summary{font-size:12px;min-height:28px;padding:2px 0}
 @media(max-width:760px){.tool-workspace .tool-intro{display:block}.tool-intro>#new-thread{margin-top:8px}.tool-intro>#new-thread-help{margin:6px 0}.tool-workspace .tool-intro>h2{font-size:18px}.tool-intro>p:not([id]){font-size:13px}}
+
+.tool-workspace #tool-action-status{white-space:pre-wrap;color:#ffe1a3;font-size:15px;line-height:1.8;overflow-wrap:anywhere}.tool-workspace #tool-action-status:empty{display:none}
