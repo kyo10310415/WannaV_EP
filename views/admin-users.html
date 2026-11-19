@@ -175,6 +175,21 @@
                         <div class="stat-label">アクティブ生徒数</div>
                     </div>
                     <div class="stat-card">
+                        <div class="stat-value">${Number(summaryData.monthly_active_students) || 0}</div>
+                        <div class="stat-label">今月利用した生徒数（人）</div>
+                        <small>日本時間・同じ生徒は1人として集計</small>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Number(summaryData.portal_users) || 0}</div>
+                        <div class="stat-label">ポータル利用人数（人）</div>
+                        <small>対象のアクティブ生徒のうち、過去にログイン済み</small>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${(Number(summaryData.portal_adoption_rate) || 0).toFixed(1)}%</div>
+                        <div class="stat-label">ポータル移行率</div>
+                        <small>ポータル利用人数 ÷ アクティブ生徒数</small>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-value" style="color: var(--accent-cyan);">${Number(summaryData.daily_usage_count) || 0}</div>
                         <div class="stat-label">本日の利用回数（Session）</div>
                     </div>
