@@ -406,6 +406,55 @@ test('isolated PostgreSQL migration, visits, learning, payment and authorization
         WHERE usage_date = (NOW() AT TIME ZONE 'Asia/Tokyo')::date`)).rows[0].total;
       assert.equal(summary.daily_usage_count, daily || 0);
     });
+    await t.test('利用人数は生徒単位・日本時間の当月で集計し移行率の母集団を揃える', async () => {
+      await query('BEGIN');
+      const originalQuery = db.query;
+      try {
+        await query(`INSERT INTO users(id,email,password,name,username,role,last_login)
+          VALUES (801,'usage1@test','x','対象1','usage1','生徒',NOW()),
+          (802,'usage2@test','x','対象2','usage2','生徒',NOW()),
+          (803,'usage3@test','x','未ログイン','usage3','生徒',NULL),
+          (804,'usage4@test','x','永久','usage4','生徒',NOW()),
+          (805,'usage5@test','x','休会','usage5','生徒',NOW()),
+          (806,'usage6@test','x','管理','usage6','管理者',NOW()),
+          (807,'usage7@test','x','Notion優先','usage7','生徒',NOW())`);
+        await query(`UPDATE student_profiles SET status='休会'`);
+        await query(`INSERT INTO notion_students(notion_page_id,student_name,status,contract_plan)
+          VALUES ('usage-page','Notion優先','休会','生徒プラン')`);
+        await query(`INSERT INTO student_profiles(user_id,status,contract_plan,notion_page_id)
+          VALUES (801,'アクティブ','スタンダードプラン',NULL),
+          (802,'レッスン準備中','生徒プラン',NULL),
+          (803,'アクティブ','エントリープラン',NULL),
+          (804,'アクティブ','永久会員',NULL),
+          (805,'休会','生徒プラン',NULL),
+          (806,'アクティブ','生徒プラン',NULL),
+          (807,'アクティブ','生徒プラン','usage-page')`);
+        await query(`INSERT INTO portal_active_days(user_id,activity_date)
+          VALUES (801,'2026-11-01'),(801,'2026-11-02'),(801,'2026-11-30'),
+          (802,'2026-10-31'),(802,'2026-12-01'),
+          (804,'2026-11-01'),(805,'2026-11-01'),(806,'2026-11-01'),(807,'2026-11-01')`);
+        db.query = (sql,params) => query(sql.replaceAll('CURRENT_TIMESTAMP', "TIMESTAMPTZ '2026-10-31T15:00:00Z'"),params);
+        const firstDay = await Progress.getAllUsersProgressSummary();
+        assert.equal(firstDay.total_students,3);
+        assert.equal(firstDay.monthly_active_students,1);
+        assert.equal(firstDay.monthly_active_student_days,1);
+        assert.equal(firstDay.portal_users,2);
+        assert.equal(Number(firstDay.portal_adoption_rate),66.7);
+        db.query = (sql,params) => query(sql.replaceAll('CURRENT_TIMESTAMP', "TIMESTAMPTZ '2026-11-30T14:59:59Z'"),params);
+        const lastDay = await Progress.getAllUsersProgressSummary();
+        assert.equal(lastDay.monthly_active_students,1);
+        assert.equal(lastDay.monthly_active_student_days,3);
+        await query(`UPDATE student_profiles SET status='休会'`);
+        const empty = await Progress.getAllUsersProgressSummary();
+        assert.equal(empty.total_students,0);
+        assert.equal(empty.monthly_active_students,0);
+        assert.equal(empty.portal_users,0);
+        assert.equal(Number(empty.portal_adoption_rate),0);
+      } finally {
+        db.query = originalQuery;
+        await query('ROLLBACK');
+      }
+    });
     await pg.exec(`INSERT INTO notion_students(notion_page_id, student_number, student_name,lesson_start_month)
       VALUES ('page-1',' ST-01 ','別表記','2020-01-01');
       INSERT INTO student_profiles(user_id,notion_page_id,lesson_start_date)

@@ -282,7 +282,8 @@ class Progress {
         SELECT COUNT(*) FILTER (
           WHERE ad.activity_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date
         )::integer AS daily_active_students,
-        COUNT(*)::integer AS monthly_active_student_days
+        COUNT(*)::integer AS monthly_active_student_days,
+        COUNT(DISTINCT ad.user_id)::integer AS monthly_active_students
         FROM portal_active_days ad
         JOIN users active_user ON active_user.id = ad.user_id AND active_user.role = '生徒'
         JOIN eligible_students eligible ON eligible.id = ad.user_id
@@ -308,6 +309,12 @@ class Progress {
         COALESCE(MAX(ut.monthly_usage_count), 0)::integer AS monthly_usage_count,
         COALESCE(MAX(adt.daily_active_students), 0)::integer AS daily_active_students,
         COALESCE(MAX(adt.monthly_active_student_days), 0)::integer AS monthly_active_student_days,
+        COALESCE(MAX(adt.monthly_active_students), 0)::integer AS monthly_active_students,
+        COUNT(*) FILTER (WHERE u.last_login IS NOT NULL)::integer AS portal_users,
+        COALESCE(ROUND(
+          COUNT(*) FILTER (WHERE u.last_login IS NOT NULL)::numeric /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ), 0) AS portal_adoption_rate,
         COUNT(*) FILTER (
           WHERE COALESCE(ns.status, sp.status) = 'アクティブ'
         )::integer AS contract_active_students,
