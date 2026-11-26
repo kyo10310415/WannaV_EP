@@ -83,6 +83,10 @@ class User {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT id, email, name, username, role, created_at, last_login, password_changed_at,
+              ${scope === 'students' ? `COALESCE((
+                SELECT CASE WHEN re.verified_at IS NOT NULL THEN 'verified' ELSE 'pending' END
+                FROM user_recovery_emails re WHERE re.user_id = users.id
+              ), 'unregistered') AS recovery_email_status,` : ''}
               COUNT(*) OVER()::integer AS total_count
        FROM users ${where}
        ORDER BY created_at DESC

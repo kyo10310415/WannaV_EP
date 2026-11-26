@@ -10,6 +10,7 @@ test('生徒アカウントは変更済みログインIDでも学籍番号・同
   try {
     await pg.exec(`CREATE TABLE users(id int,email text,name text,username text,role text,created_at timestamp,last_login timestamp,password_changed_at timestamp);
       CREATE TABLE student_profiles(user_id int,notion_page_id text);
+      CREATE TABLE user_recovery_emails(user_id int PRIMARY KEY,verified_at timestamp);
       CREATE TABLE notion_students(notion_page_id text,student_number text,student_name text);
       INSERT INTO users(id,email,name,username,role,created_at) VALUES
         (1,'one@local','旧名','custom-login','生徒',now()),(2,'two@local','手動生徒','test_seito','生徒',now()),
@@ -27,6 +28,15 @@ test('生徒アカウントは変更済みログインIDでも学籍番号・同
     const first=await User.getPage('students',{search:'生徒',limit:1});
     assert.equal(first.pagination.total,2);assert.equal(first.pagination.hasMore,true);
     assert.equal((await User.getPage('students',{search:'生徒',limit:1,offset:1})).users.length,1);
+    assert.equal((await User.getPage('students',{search:'custom-login'})).users[0].recovery_email_status,'unregistered');
+    await pg.exec('INSERT INTO user_recovery_emails VALUES(1,NULL)');
+    assert.equal((await User.getPage('students',{search:'custom-login'})).users[0].recovery_email_status,'pending');
+    await pg.exec('UPDATE user_recovery_emails SET verified_at=NOW() WHERE user_id=1');
+    const verified=(await User.getPage('students',{search:'custom-login'})).users[0];
+    assert.equal(verified.recovery_email_status,'verified');
+    assert.equal(Object.hasOwn(verified,'verified_at'),false);
+    assert.equal(Object.hasOwn(verified,'recovery_email'),false);
+    assert.equal(Object.hasOwn((await User.getPage('staff')).users[0],'recovery_email_status'),false);
   } finally {db.query=original;await pg.close();}
 });
 
@@ -43,4 +53,18 @@ test('検索をページ切替で保持し古い一覧応答で上書きしな�
   pending[0].resolve({ok:true,json:async()=>({users:[{id:1,role:'生徒'}]})});await old;
   assert.equal(rendered.length,1);assert.equal(rendered[0][0].id,2);
   assert.match(html,/studentSearch = document.getElementById\('student-search'\).value.trim\(\);\s+loadStudentUsers\(0\)/);
+});
+
+test('管理者とセールスの生徒一覧でメール確認状態を区別し、不明は未登録にしない',()=>{
+  const html=fs.readFileSync(require.resolve('../views/admin-students-accounts.html'),'utf8');
+  const code=html.slice(html.indexOf('function renderUsers(users)'),html.indexOf('// ===== ユーザー作成 ====='));
+  for(const role of ['管理者','セールス']) {
+    const container={innerHTML:''},count={textContent:''};
+    const context={currentUser:{role},studentSearch:'',document:{getElementById:id=>id==='users-container'?container:count}};
+    vm.runInNewContext(code,context);
+    context.renderUsers(['verified','pending','unregistered',undefined].map((status,i)=>({id:i+1,name:'生徒',username:'test'+i,email:'internal@local',created_at:'2026-01-01',recovery_email_status:status})));
+    assert.match(container.innerHTML,/<th>パスワード再設定用メール<\/th>/);
+    for(const label of ['✅ 登録済み','⏳ 確認待ち','未登録','取得できません'])assert.ok(container.innerHTML.includes(label));
+    assert.equal(count.textContent,'4 名');
+  }
 });
