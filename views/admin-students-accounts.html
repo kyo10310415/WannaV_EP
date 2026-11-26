@@ -326,6 +326,7 @@
                             <th>ユーザー名</th>
                             <th>名前</th>
                             <th>PW変更</th>
+                            <th>パスワード再設定用メール</th>
                             <th>登録日</th>
                             <th>操作</th>
                         </tr>
@@ -361,6 +362,13 @@
                         </td>
                         <td style="font-weight:600;">${user.name}</td>
                         <td>${pwChanged}</td>
+                        <td>${user.recovery_email_status === 'verified'
+                            ? '<span style="color:#6AEBB7;">✅ 登録済み</span>'
+                            : user.recovery_email_status === 'pending'
+                                ? '<span style="color:#F7C55B;">⏳ 確認待ち</span>'
+                                : user.recovery_email_status === 'unregistered'
+                                    ? '<span style="color:#F7C55B;">未登録</span>'
+                                    : '<span style="color:var(--gray-text);">取得できません</span>'}</td>
                         <td style="color:var(--gray-text); font-size:13px;">${createdDate}</td>
                         <td style="display:flex; gap:8px; flex-wrap:wrap;">${actionCell}${isAdmin && user.username === 'test_seito' ? '<button class="btn btn-secondary" onclick="openTestSocialSettings()">📈 SNS設定</button><button class="btn btn-secondary" onclick="openTestStudentSettings()">🧪 生徒情報・レッスン日</button>' : ''}</td>
                     </tr>
